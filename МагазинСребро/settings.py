@@ -153,6 +153,13 @@ MIDDLEWARE = [
 if not DEBUG:
     MIDDLEWARE.insert(1, 'ecommerce.middleware.WWWRedirectMiddleware')
 
+# Configure file upload handlers to use memory first (prevents temporary file creation)
+# This is important when using Cloudinary to avoid "No space left on device" errors
+FILE_UPLOAD_HANDLERS = [
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
+]
+
 ROOT_URLCONF = "МагазинСребро.urls"
 WSGI_APPLICATION = "МагазинСребро.wsgi.application"
 
