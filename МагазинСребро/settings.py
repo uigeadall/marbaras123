@@ -420,7 +420,8 @@ if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
         secure=True
     )
     
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    # Use hybrid storage that supports both old local files and new Cloudinary uploads
+    DEFAULT_FILE_STORAGE = "ecommerce.storage.HybridMediaStorage"
     # Cloudinary storage will generate URLs automatically via url() method
     # MEDIA_URL is used for serving old files from local storage (backward compatibility)
     MEDIA_URL = "/media/"
