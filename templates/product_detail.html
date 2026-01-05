@@ -890,43 +890,46 @@
                 </div>
                 
                 {% if product.category.name|lower == 'rings' %}
-                <div class="sizing-guide" style="margin-top: 20px;">
+                <div class="sizing-guide" style="margin-top: 24px;">
                   <button 
                     id="ring-sizing-guide-btn" 
                     type="button"
-                    style="display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);"
-                    onclick="openRingSizingGuide()"
-                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)';"
-                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(102, 126, 234, 0.3)';">
-                    <span style="font-size: 1.1rem;">📏</span>
+                    class="ring-sizing-btn"
+                    onclick="openRingSizingGuide()">
+                    <span class="ring-sizing-icon">💍</span>
                     <span>Ring Size Guide</span>
+                    <span class="ring-sizing-arrow">→</span>
                   </button>
                 </div>
                 
                 <!-- Ring Sizing Guide Modal -->
-                <div id="ring-sizing-modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.75); backdrop-filter: blur(4px); overflow: auto; animation: fadeIn 0.3s ease;">
-                  <div style="position: relative; background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); margin: 3% auto; padding: 0; border-radius: 16px; max-width: 800px; max-height: 90vh; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); overflow: hidden; animation: slideDown 0.3s ease;">
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px 24px; color: #fff;">
-                      <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="margin: 0; font-size: 1.5rem; font-weight: 700; color: #fff;">Ring Size Guide</h3>
-                        <button 
-                          id="ring-sizing-close" 
-                          type="button"
-                          style="background: rgba(255,255,255,0.2); border: none; color: #fff; font-size: 24px; font-weight: bold; cursor: pointer; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; line-height: 1;"
-                          onclick="closeRingSizingGuide()"
-                          onmouseover="this.style.background='rgba(255,255,255,0.3)'; this.style.transform='rotate(90deg)';"
-                          onmouseout="this.style.background='rgba(255,255,255,0.2)'; this.style.transform='rotate(0deg)';">
-                          &times;
-                        </button>
+                <div id="ring-sizing-modal" class="ring-sizing-modal">
+                  <div class="ring-sizing-modal-content">
+                    <div class="ring-sizing-modal-header">
+                      <div class="ring-sizing-header-content">
+                        <span class="ring-sizing-header-icon">💍</span>
+                        <h3>Ring Size Guide</h3>
                       </div>
+                      <button 
+                        id="ring-sizing-close" 
+                        type="button"
+                        class="ring-sizing-close-btn"
+                        onclick="closeRingSizingGuide()"
+                        aria-label="Close">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </button>
                     </div>
-                    <div style="padding: 24px; text-align: center; max-height: calc(90vh - 100px); overflow-y: auto;">
-                      <img 
-                        src="{% static 'images/ring-sizing-guide.jpg' %}" 
-                        alt="Ring Size Guide" 
-                        style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); margin-bottom: 16px;"
-                        onerror="this.style.display='none';">
-                      <p style="margin: 0; font-size: 0.95rem; color: #6b7280; font-weight: 500;">
+                    <div class="ring-sizing-modal-body">
+                      <div class="ring-sizing-image-wrapper">
+                        <img 
+                          src="{% static 'images/ring-sizing-guide.jpg' %}" 
+                          alt="Ring Size Guide" 
+                          class="ring-sizing-image"
+                          onerror="this.style.display='none';">
+                      </div>
+                      <p class="ring-sizing-description">
                         Use this guide to find your perfect ring size
                       </p>
                     </div>
@@ -934,18 +937,224 @@
                 </div>
                 
                 <style>
-                  @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
+                  /* Ring Sizing Guide Button */
+                  .ring-sizing-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: #fff;
+                    border: none;
+                    padding: 12px 20px;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+                    position: relative;
+                    overflow: hidden;
                   }
-                  @keyframes slideDown {
+                  
+                  .ring-sizing-btn::before {
+                    content: '';
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    width: 0;
+                    height: 0;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.2);
+                    transform: translate(-50%, -50%);
+                    transition: width 0.6s, height 0.6s;
+                  }
+                  
+                  .ring-sizing-btn:hover::before {
+                    width: 300px;
+                    height: 300px;
+                  }
+                  
+                  .ring-sizing-btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.35);
+                  }
+                  
+                  .ring-sizing-btn:active {
+                    transform: translateY(0);
+                    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+                  }
+                  
+                  .ring-sizing-icon {
+                    font-size: 1.2rem;
+                    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+                  }
+                  
+                  .ring-sizing-arrow {
+                    font-size: 1rem;
+                    transition: transform 0.3s ease;
+                  }
+                  
+                  .ring-sizing-btn:hover .ring-sizing-arrow {
+                    transform: translateX(4px);
+                  }
+                  
+                  /* Ring Sizing Modal */
+                  .ring-sizing-modal {
+                    display: none;
+                    position: fixed;
+                    z-index: 10000;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0, 0, 0, 0.8);
+                    backdrop-filter: blur(8px);
+                    overflow: auto;
+                    animation: fadeInModal 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                  }
+                  
+                  .ring-sizing-modal-content {
+                    position: relative;
+                    background: #ffffff;
+                    margin: 2% auto;
+                    padding: 0;
+                    border-radius: 20px;
+                    max-width: 900px;
+                    max-height: 95vh;
+                    width: 92%;
+                    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+                    overflow: hidden;
+                    animation: slideUpModal 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                  }
+                  
+                  .ring-sizing-modal-header {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 24px 28px;
+                    color: #fff;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                  }
+                  
+                  .ring-sizing-header-content {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                  }
+                  
+                  .ring-sizing-header-icon {
+                    font-size: 1.8rem;
+                    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+                  }
+                  
+                  .ring-sizing-modal-header h3 {
+                    margin: 0;
+                    font-size: 1.6rem;
+                    font-weight: 700;
+                    color: #fff;
+                    letter-spacing: -0.5px;
+                  }
+                  
+                  .ring-sizing-close-btn {
+                    background: rgba(255, 255, 255, 0.15);
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                    color: #fff;
+                    font-size: 20px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    line-height: 1;
+                    padding: 0;
+                  }
+                  
+                  .ring-sizing-close-btn:hover {
+                    background: rgba(255, 255, 255, 0.25);
+                    border-color: rgba(255, 255, 255, 0.5);
+                    transform: rotate(90deg) scale(1.1);
+                  }
+                  
+                  .ring-sizing-close-btn:active {
+                    transform: rotate(90deg) scale(0.95);
+                  }
+                  
+                  .ring-sizing-modal-body {
+                    padding: 32px;
+                    text-align: center;
+                    max-height: calc(95vh - 120px);
+                    overflow-y: auto;
+                    background: linear-gradient(to bottom, #ffffff 0%, #f8f9fa 100%);
+                  }
+                  
+                  .ring-sizing-image-wrapper {
+                    margin-bottom: 20px;
+                    position: relative;
+                    display: inline-block;
+                  }
+                  
+                  .ring-sizing-image {
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 16px;
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+                    transition: transform 0.3s ease;
+                  }
+                  
+                  .ring-sizing-image:hover {
+                    transform: scale(1.02);
+                  }
+                  
+                  .ring-sizing-description {
+                    margin: 0;
+                    font-size: 1rem;
+                    color: #6b7280;
+                    font-weight: 500;
+                    letter-spacing: 0.3px;
+                  }
+                  
+                  @keyframes fadeInModal {
                     from { 
                       opacity: 0;
-                      transform: translateY(-30px);
                     }
                     to { 
                       opacity: 1;
-                      transform: translateY(0);
+                    }
+                  }
+                  
+                  @keyframes slideUpModal {
+                    from { 
+                      opacity: 0;
+                      transform: translateY(40px) scale(0.95);
+                    }
+                    to { 
+                      opacity: 1;
+                      transform: translateY(0) scale(1);
+                    }
+                  }
+                  
+                  @media (max-width: 768px) {
+                    .ring-sizing-modal-content {
+                      width: 95%;
+                      margin: 5% auto;
+                      border-radius: 16px;
+                    }
+                    
+                    .ring-sizing-modal-header {
+                      padding: 20px;
+                    }
+                    
+                    .ring-sizing-modal-header h3 {
+                      font-size: 1.3rem;
+                    }
+                    
+                    .ring-sizing-modal-body {
+                      padding: 24px 20px;
                     }
                   }
                 </style>
