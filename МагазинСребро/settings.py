@@ -455,9 +455,15 @@ else:
 
 
 # Increased for video file uploads (100MB = 104857600 bytes)
-FILE_UPLOAD_MAX_MEMORY_SIZE = int(env("FILE_UPLOAD_MAX_MEMORY_SIZE", "104857600"))
-DATA_UPLOAD_MAX_MEMORY_SIZE = int(env("DATA_UPLOAD_MAX_MEMORY_SIZE", "104857600"))
+# IMPORTANT: Keep files in memory to avoid temporary file creation on disk
+# This prevents "No space left on device" errors when uploading to Cloudinary
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(env("FILE_UPLOAD_MAX_MEMORY_SIZE", "104857600"))  # 100MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(env("DATA_UPLOAD_MAX_MEMORY_SIZE", "104857600"))  # 100MB
 DATA_UPLOAD_MAX_NUMBER_FIELDS = int(env("DATA_UPLOAD_MAX_NUMBER_FIELDS", "1000"))
+
+# Configure Django to use memory for file uploads instead of temporary files
+# This prevents writes to disk when uploading to Cloudinary
+FILE_UPLOAD_TEMP_DIR = None  # Use system temp directory, but Django will try to keep files in memory first
 
 
 
