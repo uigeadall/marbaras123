@@ -139,7 +139,7 @@
   .carousel-slide img {
     width: 100% !important;
     height: 100% !important;
-    object-fit: contain !important;
+    object-fit: cover !important;
     object-position: center;
     display: block;
     min-width: 100%;
@@ -293,7 +293,7 @@
                     src="{{ banner.image.url }}"
                     alt="{{ banner.title|default:'Shop Banner' }}"
                     loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
-                    class="w-full h-full object-contain"
+                    class="w-full h-full object-cover"
                   >
                 {% if banner.link_url %}
                 </a>
