@@ -53,11 +53,13 @@ class SendGridBackend(BaseEmailBackend):
     def _send_email(self, message):
         """Send a single email message via SendGrid API."""
         try:
-            # Use DEFAULT_FROM_EMAIL if from_email contains mail.marbaras.com or is not set
+            # Use DEFAULT_FROM_EMAIL if from_email is not set
             from_email = message.from_email or getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com")
-            # Replace mail.marbaras.com with marbaras.com if present
-            if "mail.marbaras.com" in from_email:
-                from_email = from_email.replace("mail.marbaras.com", "marbaras.com")
+            
+            # If email contains mail.marbaras.com, try to use marbaras.com instead
+            # But only if we're sure SendGrid has marbaras.com verified
+            # For now, keep mail.marbaras.com if that's what's configured
+            # User needs to verify marbaras.com in SendGrid first, then change DEFAULT_FROM_EMAIL env var
             
             # Prepare email data for SendGrid API
             email_data = {

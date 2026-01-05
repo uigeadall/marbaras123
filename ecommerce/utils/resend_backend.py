@@ -53,11 +53,14 @@ class ResendBackend(BaseEmailBackend):
     def _send_email(self, message):
         """Send a single email message via Resend API."""
         try:
-            # Use DEFAULT_FROM_EMAIL if from_email contains mail.marbaras.com or is not set
+            # Use DEFAULT_FROM_EMAIL if from_email is not set
             from_email = message.from_email or getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com")
+            
             # Replace mail.marbaras.com with marbaras.com if present
+            # Note: This requires marbaras.com to be verified in Resend
             if "mail.marbaras.com" in from_email:
                 from_email = from_email.replace("mail.marbaras.com", "marbaras.com")
+                log.info("  Replaced mail.marbaras.com with marbaras.com in from_email")
             
             # Prepare email data
             email_data = {
