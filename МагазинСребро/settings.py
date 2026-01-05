@@ -461,11 +461,12 @@ else:
     os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 
-# Increased for video file uploads (100MB = 104857600 bytes)
+# Increased for video file uploads (500MB = 524288000 bytes)
 # IMPORTANT: Keep files in memory to avoid temporary file creation on disk
 # This prevents "No space left on device" errors when uploading to Cloudinary
-FILE_UPLOAD_MAX_MEMORY_SIZE = int(env("FILE_UPLOAD_MAX_MEMORY_SIZE", "104857600"))  # 100MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = int(env("DATA_UPLOAD_MAX_MEMORY_SIZE", "104857600"))  # 100MB
+# Note: Files larger than this will use temporary file handler, but will still go to Cloudinary
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(env("FILE_UPLOAD_MAX_MEMORY_SIZE", "524288000"))  # 500MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(env("DATA_UPLOAD_MAX_MEMORY_SIZE", "524288000"))  # 500MB
 DATA_UPLOAD_MAX_NUMBER_FIELDS = int(env("DATA_UPLOAD_MAX_NUMBER_FIELDS", "1000"))
 
 # Configure Django to use memory for file uploads instead of temporary files

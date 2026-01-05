@@ -617,7 +617,7 @@ class BannerImage(models.Model):
         blank=True, 
         null=True,
         storage=_get_storage(),
-        help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 100MB"
+        help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 500MB"
     )
     title = models.CharField(max_length=200, blank=True, help_text="Optional title/alt text")
     link_url = models.URLField(blank=True, null=True, help_text="Optional link URL when banner is clicked")
