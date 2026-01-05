@@ -12,6 +12,8 @@ def fix_category_slugs(apps, schema_editor):
         'Accessories': 'accessories',
         'Bracelets': 'bracelets',
         'Earrings': 'earrings',
+        'Amber': 'amber',
+        'Maestro Italy': 'maestro-italy',
     }
     
     for cat_name, expected_slug in category_slugs.items():
