@@ -505,13 +505,24 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
     # Use filter().first() instead of get() to avoid MultipleObjectsReturned exception
     # IMPORTANT: Use exact match to avoid any partial matches
     # Use get() with exact slug match to ensure we get the right category
+    logger.info(f"Looking up category with slug: '{slug}'")
+    
+    # First, get all categories to see what we have
+    all_cats = Category.objects.only('id', 'name', 'slug').all()
+    logger.info(f"All categories in DB: {[(c.id, c.name, c.slug) for c in all_cats]}")
+    
     try:
         category = Category.objects.only('id', 'name', 'slug').get(slug=slug)
+        logger.info(f"Found category via get(): ID {category.pk}, Name: '{category.name}', Slug: '{category.slug}'")
     except Category.DoesNotExist:
+        logger.warning(f"Category with slug '{slug}' not found via get()")
         category = None
-    except Category.MultipleObjectsReturned:
+    except Category.MultipleObjectsReturned as e:
+        logger.warning(f"Multiple categories found with slug '{slug}': {e}")
         # If multiple categories have the same slug, get the first one
         category = Category.objects.only('id', 'name', 'slug').filter(slug=slug).first()
+        if category:
+            logger.info(f"Using first category: ID {category.pk}, Name: '{category.name}', Slug: '{category.slug}'")
     
     if not category:
         # Log for debugging - this should never happen if URLs are correct
@@ -526,7 +537,7 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
         from django.http import Http404
         raise Http404(f"Category slug mismatch")
     
-    logger.info(f"Found category: ID {category.pk}, Name: '{category.name}', Slug: '{category.slug}'")
+    logger.info(f"Final category selected: ID {category.pk}, Name: '{category.name}', Slug: '{category.slug}'")
     sort = request.GET.get("sort")
 
     # Use categories ManyToManyField if available, fallback to category ForeignKey
