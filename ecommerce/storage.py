@@ -1,23 +1,21 @@
 """
 Custom storage backend that supports both Cloudinary (for new files) and local storage (for old files).
 """
-from django.core.files.storage import FileSystemStorage
+from django.core.files.storage import Storage
 from django.conf import settings
 import os
 
 
-class HybridMediaStorage(FileSystemStorage):
+class HybridMediaStorage(Storage):
     """
     Storage backend that checks local storage first, then falls back to Cloudinary.
     This allows old files in Railway volume to still be accessible.
+    New files are saved directly to Cloudinary without touching local storage.
     """
     
-    def __init__(self, location=None, base_url=None):
-        if location is None:
-            location = getattr(settings, 'MEDIA_ROOT', None)
-        if base_url is None:
-            base_url = getattr(settings, 'MEDIA_URL', None)
-        super().__init__(location, base_url)
+    def __init__(self):
+        self.location = getattr(settings, 'MEDIA_ROOT', None)
+        self.base_url = getattr(settings, 'MEDIA_URL', '/media/')
     
     def url(self, name):
         """
@@ -27,7 +25,9 @@ class HybridMediaStorage(FileSystemStorage):
         # Check if file exists in local storage
         if self.location and os.path.exists(os.path.join(self.location, name)):
             # File exists locally, serve from local storage
-            return super().url(name)
+            if self.base_url and not self.base_url.endswith('/'):
+                return f"{self.base_url}/{name}"
+            return f"{self.base_url}{name}"
         
         # File doesn't exist locally, try Cloudinary
         # Import here to avoid circular imports
@@ -37,7 +37,9 @@ class HybridMediaStorage(FileSystemStorage):
             return cloudinary_storage.url(name)
         except Exception:
             # Fallback to local URL if Cloudinary fails
-            return super().url(name)
+            if self.base_url and not self.base_url.endswith('/'):
+                return f"{self.base_url}/{name}"
+            return f"{self.base_url}{name}"
     
     def exists(self, name):
         """Check if file exists in either local storage or Cloudinary."""
@@ -57,6 +59,7 @@ class HybridMediaStorage(FileSystemStorage):
         """
         Save file to Cloudinary (for new files).
         Old files remain in local storage.
+        NEVER writes to local storage to avoid "No space left on device" errors.
         """
         # Always use Cloudinary for new uploads to avoid Railway storage issues
         try:
@@ -71,4 +74,18 @@ class HybridMediaStorage(FileSystemStorage):
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to save to Cloudinary: {e}")
             raise Exception(f"Failed to upload to Cloudinary. Please check your Cloudinary credentials. Error: {e}")
+    
+    def _open(self, name, mode='rb'):
+        """Open file for reading - check local first, then Cloudinary."""
+        # Check local storage first
+        if self.location and os.path.exists(os.path.join(self.location, name)):
+            return open(os.path.join(self.location, name), mode)
+        
+        # Try Cloudinary
+        try:
+            from cloudinary_storage.storage import MediaCloudinaryStorage
+            cloudinary_storage = MediaCloudinaryStorage()
+            return cloudinary_storage._open(name, mode)
+        except Exception as e:
+            raise FileNotFoundError(f"File {name} not found in local storage or Cloudinary: {e}")
 
