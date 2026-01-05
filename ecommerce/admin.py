@@ -370,6 +370,11 @@ class BannerImageAdmin(admin.ModelAdmin):
             super().save_model(request, obj, form, change)
         except Exception as e:
             from django.contrib import messages
-            messages.error(request, f"Error saving banner: {str(e)}")
+            error_msg = str(e)
+            # Check if it's a storage space error
+            if "No space left on device" in error_msg or "Errno 28" in error_msg:
+                messages.error(request, f"Storage space error: {error_msg}. Please check Cloudinary credentials in Railway environment variables (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET).")
+            else:
+                messages.error(request, f"Error saving banner: {error_msg}")
             raise
 
