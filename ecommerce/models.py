@@ -586,11 +586,21 @@ class BlogPost(models.Model):
 
 class BannerImage(models.Model):
     """Banner images/videos for the home page carousel."""
-    image = models.ImageField(upload_to="banners/", blank=True, null=True, help_text="Banner image for carousel")
+    # Use default_storage which will be Cloudinary if configured in settings
+    from django.core.files.storage import default_storage
+    
+    image = models.ImageField(
+        upload_to="banners/", 
+        blank=True, 
+        null=True, 
+        storage=default_storage,
+        help_text="Banner image for carousel"
+    )
     video_file = models.FileField(
         upload_to="banners/videos/", 
         blank=True, 
-        null=True, 
+        null=True,
+        storage=default_storage,
         help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 100MB"
     )
     title = models.CharField(max_length=200, blank=True, help_text="Optional title/alt text")
