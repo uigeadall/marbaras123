@@ -462,6 +462,11 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"products_by_category called with slug: '{slug}'")
+    logger.info(f"Request path: {request.path}")
+    logger.info(f"Request GET params: {request.GET}")
+    
+    # Clear category cache to ensure fresh data
+    cache.delete('all_categories_ids')
     
     # If slug is numeric, it's an old pk-based URL - find category and redirect once
     if slug.isdigit():
@@ -499,7 +504,14 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
     # Find category by slug - simple lookup
     # Use filter().first() instead of get() to avoid MultipleObjectsReturned exception
     # IMPORTANT: Use exact match to avoid any partial matches
-    category = Category.objects.only('id', 'name', 'slug').filter(slug=slug).first()
+    # Use get() with exact slug match to ensure we get the right category
+    try:
+        category = Category.objects.only('id', 'name', 'slug').get(slug=slug)
+    except Category.DoesNotExist:
+        category = None
+    except Category.MultipleObjectsReturned:
+        # If multiple categories have the same slug, get the first one
+        category = Category.objects.only('id', 'name', 'slug').filter(slug=slug).first()
     
     if not category:
         # Log for debugging - this should never happen if URLs are correct
