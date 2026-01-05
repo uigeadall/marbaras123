@@ -122,6 +122,10 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "ecommerce.apps.EcommerceConfig",
+    
+    # Cloudinary for media file storage
+    "cloudinary_storage",
+    "cloudinary",
 ]
 
 try:
