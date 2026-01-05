@@ -290,7 +290,7 @@
                     src="{{ banner.image.url }}"
                     alt="{{ banner.title|default:'Shop Banner' }}"
                     loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
-                    class="w-full h-full object-cover"
+                    class="w-full h-full object-contain"
                   >
                 {% if banner.link_url %}
                 </a>
