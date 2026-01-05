@@ -407,7 +407,7 @@ CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", "")
 CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", "")
 
 if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
-    # Use Cloudinary for NEW media storage
+    # Use Cloudinary for ALL new media storage
     # Old files will still be served from local storage via /media/ URL
     import cloudinary
     import cloudinary.uploader
@@ -420,8 +420,8 @@ if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
         secure=True
     )
     
-    # Use hybrid storage that supports both old local files and new Cloudinary uploads
-    DEFAULT_FILE_STORAGE = "ecommerce.storage.HybridMediaStorage"
+    # Use Cloudinary storage directly for new uploads to prevent any local writes
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
     # Cloudinary storage will generate URLs automatically via url() method
     # MEDIA_URL is used for serving old files from local storage (backward compatibility)
     MEDIA_URL = "/media/"
