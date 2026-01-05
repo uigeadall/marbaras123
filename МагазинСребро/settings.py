@@ -399,16 +399,28 @@ STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
 ]
 
-MEDIA_URL = "/media/"
+# Cloudinary Configuration for Media Files
+# If Cloudinary credentials are provided, use Cloudinary for media storage
+# Otherwise, fall back to local storage
+CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", "")
 
-
-import os
-if os.path.exists("/app/media"):
-    MEDIA_ROOT = "/app/media"
+if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+    # Use Cloudinary for media storage
+    MEDIA_URL = "/media/"
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    # Cloudinary will handle MEDIA_ROOT automatically
+    MEDIA_ROOT = ""  # Not used when using Cloudinary
 else:
-    MEDIA_ROOT = BASE_DIR / "media"
-
-os.makedirs(MEDIA_ROOT, exist_ok=True)
+    # Fall back to local storage
+    MEDIA_URL = "/media/"
+    import os
+    if os.path.exists("/app/media"):
+        MEDIA_ROOT = "/app/media"
+    else:
+        MEDIA_ROOT = BASE_DIR / "media"
+    os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 
 # Increased for video file uploads (100MB = 104857600 bytes)
