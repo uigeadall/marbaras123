@@ -58,12 +58,17 @@ class HybridMediaStorage(FileSystemStorage):
         Save file to Cloudinary (for new files).
         Old files remain in local storage.
         """
-        # Use Cloudinary for new uploads
+        # Always use Cloudinary for new uploads to avoid Railway storage issues
         try:
             from cloudinary_storage.storage import MediaCloudinaryStorage
             cloudinary_storage = MediaCloudinaryStorage()
+            # Save directly to Cloudinary without touching local storage
             return cloudinary_storage._save(name, content)
-        except Exception:
-            # Fallback to local storage if Cloudinary fails
-            return super()._save(name, content)
+        except Exception as e:
+            # If Cloudinary fails, raise the error instead of falling back to local
+            # This prevents "No space left on device" errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to save to Cloudinary: {e}")
+            raise Exception(f"Failed to upload to Cloudinary. Please check your Cloudinary credentials. Error: {e}")
 
