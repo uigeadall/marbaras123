@@ -888,6 +888,21 @@
                   </div>
                   <div id="variantMeta" class="variant-meta"></div>
                 </div>
+                
+                {% if product.category.name|lower == 'rings' %}
+                <div class="sizing-guide" style="margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                  <h4 style="font-weight: 700; font-size: 1rem; margin-bottom: 12px; color: #111827;">Ring Size Guide</h4>
+                  <div style="text-align: center;">
+                    <img src="{% static 'images/ring-sizing-guide.jpg' %}" 
+                         alt="Ring Size Guide" 
+                         style="max-width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                         onerror="this.style.display='none';">
+                    <p style="margin-top: 8px; font-size: 0.85rem; color: #6b7280; text-align: center;">
+                      Use this guide to find your perfect ring size
+                    </p>
+                  </div>
+                </div>
+                {% endif %}
               {% endif %}
 
               <div id="stockLine"
