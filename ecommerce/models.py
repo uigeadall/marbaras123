@@ -604,6 +604,17 @@ class BannerImage(models.Model):
         verbose_name = "Banner Image"
         verbose_name_plural = "Banner Images"
 
+    def clean(self):
+        """Validate that at least one of image or video_file is provided."""
+        from django.core.exceptions import ValidationError
+        if not self.image and not self.video_file:
+            raise ValidationError("You must provide either an image or a video file.")
+
+    def save(self, *args, **kwargs):
+        """Override save to call clean validation."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return self.title or f"Banner {self.id}"
 
