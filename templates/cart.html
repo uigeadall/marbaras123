@@ -356,9 +356,9 @@
               </div>
               {% endif %}
               
-              <div class="flex gap-3 flex-wrap" style="justify-content: space-between;">
-                <a href="{% url 'home' %}?all=true" class="btn btn-outline">← Continue Shopping</a>
-                <a href="{% url 'checkout' %}" class="btn btn-dark">🧾 Proceed to Checkout</a>
+              <div class="flex gap-3 flex-wrap" style="justify-content: space-between; align-items: center;">
+                <a href="{% url 'home' %}?all=true" class="btn btn-outline" style="flex: 1; min-width: 200px; text-align: center;">← Continue Shopping</a>
+                <a href="{% url 'checkout' %}" class="btn btn-dark" style="flex: 1; min-width: 200px; text-align: center;">🧾 Proceed to Checkout</a>
               </div>
             </div>
 
