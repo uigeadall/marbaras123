@@ -362,4 +362,14 @@ class BannerImageAdmin(admin.ModelAdmin):
         return bool(obj.video_file)
     has_video.boolean = True
     has_video.short_description = "Has Video"
+    
+    def save_model(self, request, obj, form, change):
+        """Override save to handle validation errors gracefully."""
+        try:
+            obj.full_clean()
+            super().save_model(request, obj, form, change)
+        except Exception as e:
+            from django.contrib import messages
+            messages.error(request, f"Error saving banner: {str(e)}")
+            raise
 
