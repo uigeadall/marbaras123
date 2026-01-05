@@ -282,7 +282,7 @@
         <!-- Banner Carousel -->
         {% if banner_images %}
         <div class="mt-0 mb-6">
-          <div class="banner-carousel rounded-2xl overflow-hidden bg-white shadow-sm relative">
+          <div class="banner-carousel overflow-hidden relative">
             <div class="carousel-container relative">
               {% for banner in banner_images %}
               <div class="carousel-slide {% if forloop.first %}active{% endif %}" data-slide-index="{{ forloop.counter0 }}">
