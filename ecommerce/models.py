@@ -587,30 +587,33 @@ class BlogPost(models.Model):
 class BannerImage(models.Model):
     """Banner images/videos for the home page carousel."""
     # Get storage dynamically to ensure Cloudinary is used if configured
-    def get_storage():
+    # This function is called when the model class is loaded, ensuring settings are available
+    @staticmethod
+    def _get_storage():
         from django.conf import settings
-        from django.core.files.storage import default_storage
         # Check if Cloudinary is configured
         if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
             try:
                 from cloudinary_storage.storage import MediaCloudinaryStorage
                 return MediaCloudinaryStorage()
-            except ImportError:
+            except (ImportError, AttributeError):
                 pass
+        # Fallback to default_storage (which should be Cloudinary if DEFAULT_FILE_STORAGE is set)
+        from django.core.files.storage import default_storage
         return default_storage
     
     image = models.ImageField(
         upload_to="banners/", 
         blank=True, 
         null=True, 
-        storage=get_storage(),
+        storage=_get_storage(),
         help_text="Banner image for carousel"
     )
     video_file = models.FileField(
         upload_to="banners/videos/", 
         blank=True, 
         null=True,
-        storage=get_storage(),
+        storage=_get_storage(),
         help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 100MB"
     )
     title = models.CharField(max_length=200, blank=True, help_text="Optional title/alt text")
