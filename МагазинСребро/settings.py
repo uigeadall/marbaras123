@@ -427,12 +427,15 @@ if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     MEDIA_URL = "/media/"
     # Keep MEDIA_ROOT for old files that are still in Railway volume
     # This allows old images to still be served via /media/ URLs
+    # NOTE: We don't create directories here to avoid "No space left on device" errors
+    # New files go directly to Cloudinary, old files are read-only from Railway volume
     import os
     if os.path.exists("/app/media"):
         MEDIA_ROOT = "/app/media"
     else:
         MEDIA_ROOT = BASE_DIR / "media"
-    os.makedirs(MEDIA_ROOT, exist_ok=True)
+    # Don't create directories - they should already exist for old files
+    # New files will go to Cloudinary, not local storage
     
     # Also configure Cloudinary storage settings
     CLOUDINARY_STORAGE = {
