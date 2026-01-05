@@ -46,27 +46,6 @@
   </script>
 
   <style>
-    /* Prevent image downloading */
-    img {
-      user-select: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-      pointer-events: auto;
-      -webkit-user-drag: none;
-      -khtml-user-drag: none;
-      -moz-user-drag: none;
-      -o-user-drag: none;
-      user-drag: none;
-    }
-    
-    /* Prevent text selection on images */
-    img::selection {
-      background: transparent;
-    }
-    img::-moz-selection {
-      background: transparent;
-    }
 
     .cart-tip::after{
       content:""; position:absolute; top:-6px; left:50%; transform:translateX(-50%);
