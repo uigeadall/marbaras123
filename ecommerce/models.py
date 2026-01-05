@@ -585,8 +585,14 @@ class BlogPost(models.Model):
 
 
 class BannerImage(models.Model):
-    """Banner images for the home page carousel."""
-    image = models.ImageField(upload_to="banners/", help_text="Banner image for carousel")
+    """Banner images/videos for the home page carousel."""
+    image = models.ImageField(upload_to="banners/", blank=True, null=True, help_text="Banner image for carousel")
+    video_file = models.FileField(
+        upload_to="banners/videos/", 
+        blank=True, 
+        null=True, 
+        help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 100MB"
+    )
     title = models.CharField(max_length=200, blank=True, help_text="Optional title/alt text")
     link_url = models.URLField(blank=True, null=True, help_text="Optional link URL when banner is clicked")
     is_active = models.BooleanField(default=True, help_text="Show this banner in carousel")

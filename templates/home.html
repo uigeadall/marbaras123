@@ -289,12 +289,24 @@
                 {% if banner.link_url %}
                 <a href="{{ banner.link_url }}" class="block h-full">
                 {% endif %}
-                  <img
-                    src="{{ banner.image.url }}"
-                    alt="{{ banner.title|default:'Shop Banner' }}"
-                    loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
-                    class="w-full h-full object-cover"
-                  >
+                  {% if banner.video_file %}
+                    <video
+                      src="{{ banner.video_file.url }}"
+                      autoplay
+                      loop
+                      muted
+                      playsinline
+                      class="w-full h-full object-cover"
+                      style="pointer-events: none;"
+                    ></video>
+                  {% elif banner.image %}
+                    <img
+                      src="{{ banner.image.url }}"
+                      alt="{{ banner.title|default:'Shop Banner' }}"
+                      loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
+                      class="w-full h-full object-cover"
+                    >
+                  {% endif %}
                 {% if banner.link_url %}
                 </a>
                 {% endif %}

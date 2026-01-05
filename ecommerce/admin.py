@@ -339,13 +339,17 @@ class CouponAdmin(admin.ModelAdmin):
 
 @admin.register(BannerImage)
 class BannerImageAdmin(admin.ModelAdmin):
-    list_display = ("title", "order", "is_active", "has_image", "created_at")
+    list_display = ("title", "order", "is_active", "has_image", "has_video", "created_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title",)
     ordering = ("order", "-created_at")
     fieldsets = (
         ("Basic Information", {
-            "fields": ("image", "title", "link_url", "order", "is_active")
+            "fields": ("title", "link_url", "order", "is_active")
+        }),
+        ("Media", {
+            "fields": ("image", "video_file"),
+            "description": "Upload either an image OR a video. Video will autoplay, loop, and be muted like a GIF."
         }),
     )
     
@@ -353,4 +357,9 @@ class BannerImageAdmin(admin.ModelAdmin):
         return bool(obj.image)
     has_image.boolean = True
     has_image.short_description = "Has Image"
+    
+    def has_video(self, obj):
+        return bool(obj.video_file)
+    has_video.boolean = True
+    has_video.short_description = "Has Video"
 
