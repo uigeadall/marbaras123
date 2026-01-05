@@ -587,20 +587,23 @@ class BlogPost(models.Model):
 class BannerImage(models.Model):
     """Banner images/videos for the home page carousel."""
     # Get storage dynamically to ensure Cloudinary is used if configured
-    # This function is called when the model class is loaded, ensuring settings are available
+    # Create Cloudinary storage instance directly to avoid default_storage initialization issues
     @staticmethod
     def _get_storage():
         from django.conf import settings
-        # Check if Cloudinary is configured
+        # Always try to use Cloudinary if credentials are available
         if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
             try:
                 from cloudinary_storage.storage import MediaCloudinaryStorage
+                # Create a new instance to ensure it's properly initialized
                 return MediaCloudinaryStorage()
-            except (ImportError, AttributeError):
-                pass
-        # Fallback to default_storage (which should be Cloudinary if DEFAULT_FILE_STORAGE is set)
-        from django.core.files.storage import default_storage
-        return default_storage
+            except (ImportError, AttributeError, Exception) as e:
+                # If Cloudinary fails, log error but don't fail silently
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to initialize Cloudinary storage: {e}")
+        # If Cloudinary is not available, this will fail - we don't want to use local storage
+        raise Exception("Cloudinary storage is required but not properly configured. Please check CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables.")
     
     image = models.ImageField(
         upload_to="banners/", 
