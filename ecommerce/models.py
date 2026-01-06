@@ -631,10 +631,24 @@ class BannerImage(models.Model):
         verbose_name_plural = "Banner Images"
 
     def clean(self):
-        """Validate that at least one of image or video_file is provided."""
+        """Validate that at least one of image or video_file is provided, and check file sizes."""
         from django.core.exceptions import ValidationError
+        
         if not self.image and not self.video_file:
             raise ValidationError("You must provide either an image or a video file.")
+        
+        # Validate video file size (500MB = 524288000 bytes)
+        if self.video_file:
+            max_size = 524288000  # 500MB
+            if hasattr(self.video_file, 'size') and self.video_file.size > max_size:
+                raise ValidationError(f"Video file is too large. Maximum size is 500MB. Your file is {self.video_file.size / 1024 / 1024:.2f}MB.")
+            
+            # Validate video file extension
+            allowed_extensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi']
+            if hasattr(self.video_file, 'name'):
+                file_ext = self.video_file.name.lower()
+                if not any(file_ext.endswith(ext) for ext in allowed_extensions):
+                    raise ValidationError(f"Invalid video file format. Allowed formats: {', '.join(allowed_extensions)}")
 
     def save(self, *args, **kwargs):
         """Override save to call clean validation."""
