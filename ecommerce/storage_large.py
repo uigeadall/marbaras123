@@ -15,6 +15,39 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
     For files larger than 10MB, we need to use unsigned upload with a preset.
     """
     
+    def url(self, name):
+        """
+        Override url() to generate correct Cloudinary URLs for video files.
+        Video files need /video/upload/ instead of /image/upload/ in the URL.
+        """
+        # Check if this is a video file by checking the name/path
+        is_video = "video" in name.lower() or any(ext in name.lower() for ext in ['.mp4', '.webm', '.ogg', '.mov', '.avi'])
+        
+        if is_video:
+            # Generate video URL using Cloudinary API
+            import cloudinary
+            from django.conf import settings
+            
+            # Get public_id from the name (remove folder prefix if present)
+            public_id = name
+            if '/' in public_id:
+                # Remove upload_to folder prefix
+                public_id = public_id.replace('banners/videos/', '').replace('banners/', '')
+            if public_id.endswith(('.mp4', '.webm', '.ogg', '.mov', '.avi')):
+                # Remove extension for public_id
+                import os
+                public_id = os.path.splitext(public_id)[0]
+            
+            # Generate video URL
+            video_url = cloudinary.CloudinaryImage(public_id).build_url(
+                resource_type="video",
+                secure=True
+            )
+            return video_url
+        else:
+            # For images and other files, use parent method
+            return super().url(name)
+    
     def _save(self, name, content):
         """
         Save file to Cloudinary, using unsigned upload for large files.
