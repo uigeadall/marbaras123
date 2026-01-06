@@ -101,6 +101,20 @@ class FedExShipping(ShippingCarrierBase):
             
             logger.info(f"FedEx API response status: {response.status_code}")
             
+            # Log request body for debugging (first 3000 chars)
+            import json
+            try:
+                request_body_str = json.dumps(shipment_data, indent=2)
+                logger.info(f"FedEx API request body (first 3000 chars):\n{request_body_str[:3000]}")
+                # Also log specific sections
+                if 'accountNumber' in shipment_data:
+                    logger.info(f"Top-level accountNumber: {shipment_data['accountNumber']}")
+                if 'requestedShipment' in shipment_data and 'shippingChargesPayment' in shipment_data['requestedShipment']:
+                    if 'payor' in shipment_data['requestedShipment']['shippingChargesPayment']:
+                        logger.info(f"payor section: {json.dumps(shipment_data['requestedShipment']['shippingChargesPayment']['payor'], indent=2)}")
+            except Exception as e:
+                logger.error(f"Error logging request body: {e}")
+            
             if response.status_code == 200:
                 data = response.json()
                 logger.info(f"FedEx API response data: {data}")
