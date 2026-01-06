@@ -113,18 +113,29 @@ class FedExShipping(ShippingCarrierBase):
     def _get_access_token(self) -> Optional[str]:
         """Get OAuth access token from FedEx."""
         try:
-            token_url = 'https://apis.fedex.com/oauth/token'
+            # Use sandbox token URL if sandbox API URL is configured
+            if 'sandbox' in self.api_url.lower():
+                token_url = 'https://apis-sandbox.fedex.com/oauth/token'
+            else:
+                token_url = 'https://apis.fedex.com/oauth/token'
+            
+            logger.info(f"Requesting FedEx OAuth token from {token_url}")
             data = {
                 'grant_type': 'client_credentials',
                 'client_id': self.api_key,
                 'client_secret': self.api_secret
             }
             response = requests.post(token_url, data=data, timeout=10)
+            
             if response.status_code == 200:
-                return response.json().get('access_token')
-            return None
+                token = response.json().get('access_token')
+                logger.info("✅ FedEx OAuth token obtained successfully")
+                return token
+            else:
+                logger.error(f"FedEx token request failed: {response.status_code} - {response.text}")
+                return None
         except Exception as e:
-            logger.error(f"FedEx token request failed: {e}")
+            logger.error(f"FedEx token request exception: {e}", exc_info=True)
             return None
     
     def _prepare_shipment_data(self, order) -> Dict[str, Any]:
