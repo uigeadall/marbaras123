@@ -358,16 +358,34 @@ class FedExShipping(ShippingCarrierBase):
             # Build commodities list from order items (REQUIRED by FedEx)
             commodities = []
             for item in order.items.all():
+                # Get item price - try different possible field names
+                item_price = 0.0
+                if hasattr(item, 'price'):
+                    item_price = float(item.price)
+                elif hasattr(item, 'unit_price'):
+                    item_price = float(item.unit_price)
+                elif hasattr(item, 'product') and item.product:
+                    if hasattr(item.product, 'price'):
+                        item_price = float(item.product.price)
+                    elif hasattr(item.product, 'sale_price') and item.product.sale_price:
+                        item_price = float(item.product.sale_price)
+                    elif hasattr(item.product, 'regular_price'):
+                        item_price = float(item.product.regular_price)
+                
+                # Ensure minimum price of 0.01 USD
+                item_price = max(item_price, 0.01)
+                total_item_value = item_price * item.quantity
+                
                 commodities.append({
-                    'description': item.product.name[:50] if item.product else 'Product',  # Max 50 chars
+                    'description': (item.product.name[:50] if item.product and hasattr(item.product, 'name') else 'Product'),  # Max 50 chars
                     'quantity': item.quantity,
                     'quantityUnits': 'PCS',  # Pieces
                     'unitPrice': {
-                        'amount': f"{float(item.price):.2f}",
+                        'amount': f"{item_price:.2f}",
                         'currency': 'USD'
                     },
                     'customsValue': {
-                        'amount': f"{float(item.price * item.quantity):.2f}",
+                        'amount': f"{total_item_value:.2f}",
                         'currency': 'USD'
                     },
                     'countryOfManufacture': getattr(settings, 'SHOP_COUNTRY', 'BG'),  # Origin country
