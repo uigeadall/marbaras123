@@ -119,16 +119,41 @@ class FedExShipping(ShippingCarrierBase):
                 data = response.json()
                 logger.info(f"FedEx API response data: {data}")
                 output = data.get('output', {})
-                tracking_number = output.get('transactionShipments', [{}])[0].get('masterTrackingNumber', '')
-                label_url = output.get('labelDocuments', [{}])[0].get('url', '')
-                shipment_id = output.get('jobId', '')
                 
-                logger.info(f"✅ FedEx shipment created: tracking={tracking_number}, label_url={label_url}")
+                # Extract tracking number
+                transaction_shipments = output.get('transactionShipments', [])
+                tracking_number = ''
+                if transaction_shipments:
+                    tracking_number = transaction_shipments[0].get('masterTrackingNumber', '')
+                    logger.info(f"Found transactionShipments: {len(transaction_shipments)}")
+                    logger.info(f"First shipment data: {transaction_shipments[0]}")
+                
+                # Extract label URL - check multiple possible locations
+                label_url = ''
+                label_documents = output.get('labelDocuments', [])
+                if label_documents:
+                    label_url = label_documents[0].get('url', '')
+                    logger.info(f"Found labelDocuments: {len(label_documents)}")
+                    logger.info(f"First label document: {label_documents[0]}")
+                else:
+                    # Try alternative location
+                    if transaction_shipments:
+                        label_docs = transaction_shipments[0].get('labelDocuments', [])
+                        if label_docs:
+                            label_url = label_docs[0].get('url', '')
+                            logger.info(f"Found labelDocuments in transactionShipments: {label_docs[0]}")
+                
+                # Extract shipment ID
+                shipment_id = output.get('jobId', '')
+                if not shipment_id and transaction_shipments:
+                    shipment_id = transaction_shipments[0].get('shipmentId', '')
+                
+                logger.info(f"✅ FedEx shipment created: tracking={tracking_number}, label_url={label_url or 'N/A'}, shipment_id={shipment_id or 'N/A'}")
                 
                 return {
-                    'tracking_number': tracking_number,
-                    'label_url': label_url,
-                    'shipment_id': shipment_id,
+                    'tracking_number': tracking_number or None,
+                    'label_url': label_url or None,
+                    'shipment_id': shipment_id or None,
                 }
             else:
                 logger.error(f"FedEx API error: {response.status_code}")
