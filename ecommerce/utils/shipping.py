@@ -319,8 +319,13 @@ class FedExShipping(ShippingCarrierBase):
                 'customsValue': {
                     'amount': str(order.total_price),
                     'currency': 'USD'  # or get from order if available
+                },
+                'totalCustomsValue': {
+                    'amount': str(order.total_price),
+                    'currency': 'USD'
                 }
             }
+            logger.info(f"Added customs clearance detail with customsValue and totalCustomsValue: {order.total_price} USD")
         
         # Build shipment data structure
         shipment_data = {
