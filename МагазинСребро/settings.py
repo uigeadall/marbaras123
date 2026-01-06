@@ -473,6 +473,13 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = int(env("DATA_UPLOAD_MAX_NUMBER_FIELDS", "1000")
 # This prevents writes to disk when uploading to Cloudinary
 FILE_UPLOAD_TEMP_DIR = None  # Use system temp directory, but Django will try to keep files in memory first
 
+# Configure file upload handlers to prioritize memory storage
+# This ensures files stay in memory and go directly to Cloudinary
+FILE_UPLOAD_HANDLERS = [
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
+]
+
 
 
 
