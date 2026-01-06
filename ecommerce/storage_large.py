@@ -111,5 +111,24 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
                 raise Exception(error_msg)
         else:
             # For files under 10MB, use regular upload
-            return super()._save(name, content)
+            # But check if it's a video file and use correct resource_type
+            is_video = hasattr(content, 'name') and any(ext in content.name.lower() for ext in ['.mp4', '.webm', '.ogg', '.mov', '.avi'])
+            if is_video or "video" in name.lower():
+                # For video files, we need to explicitly set resource_type="video"
+                # Otherwise Cloudinary might try to validate it as an image
+                try:
+                    import cloudinary.uploader
+                    result = cloudinary.uploader.upload(
+                        content,
+                        resource_type="video",
+                        folder="banners/videos/" if "video" in name.lower() else "banners/",
+                    )
+                    return result['public_id']
+                except Exception as e:
+                    logger.error(f"Failed to upload video file to Cloudinary: {e}")
+                    # Fallback to parent method
+                    return super()._save(name, content)
+            else:
+                # For images and other files, use parent method
+                return super()._save(name, content)
 
