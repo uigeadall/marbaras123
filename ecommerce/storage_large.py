@@ -30,24 +30,20 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
             
             # Get public_id from name - remove any folder prefixes and extensions
             public_id = name
-            # Remove upload_to folder prefix
+            # Remove upload_to folder prefix (banners/videos/ or banners/)
             if public_id.startswith('banners/videos/'):
                 public_id = public_id.replace('banners/videos/', '')
             elif public_id.startswith('banners/'):
                 public_id = public_id.replace('banners/', '')
-            elif public_id.startswith('media/'):
-                public_id = public_id.replace('media/', '')
             
             # Remove file extension for public_id
             import os
             if public_id.endswith(('.mp4', '.webm', '.ogg', '.mov', '.avi')):
                 public_id = os.path.splitext(public_id)[0]
             
-            # Remove /v1/ or version prefix if present
-            if '/v1/' in public_id:
-                public_id = public_id.split('/v1/')[-1]
-            elif public_id.startswith('v1/'):
-                public_id = public_id.replace('v1/', '')
+            # If public_id is just the filename without extension, that's correct
+            # Cloudinary will use this as the public_id
+            logger.info(f"Extracted public_id '{public_id}' from name '{name}'")
             
             # Generate video URL using CloudinaryVideo
             try:
