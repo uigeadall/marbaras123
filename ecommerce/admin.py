@@ -244,6 +244,8 @@ class OrderAdmin(admin.ModelAdmin):
         "email",
         "total_price",
         "shipping_option",
+        "shipping_carrier",
+        "tracking_number",
         "coupon_code",
         "items_count",
         "print_label_link",
@@ -254,7 +256,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_select_related = ("shipping_option", "coupon", "user")
     readonly_fields = ()
 
-    actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels"]
+    actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels", "create_shipping_labels"]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -332,15 +334,38 @@ class OrderAdmin(admin.ModelAdmin):
     export_orders_csv.short_description = "Export selected orders to CSV"
     
     def save_model(self, request, obj, form, change):
-        """Override save to auto-print label for new orders."""
+        """Override save to auto-create shipping label for new orders."""
         is_new = not change  # change=False means it's a new object
         super().save_model(request, obj, form, change)
         
-        # Auto-print label for new orders
-        if is_new:
+        # Auto-create shipping label for new orders if carrier is configured
+        if is_new and obj.shipping_carrier:
+            from ecommerce.utils.shipping import create_shipping_label
+            label_data = create_shipping_label(obj, obj.shipping_carrier)
+            
+            if label_data:
+                # Update order with tracking info
+                obj.tracking_number = label_data.get('tracking_number')
+                obj.shipping_label_url = label_data.get('label_url')
+                obj.shipment_id = label_data.get('shipment_id')
+                obj.save(update_fields=['tracking_number', 'shipping_label_url', 'shipment_id'])
+                
+                from django.urls import reverse
+                url = reverse('admin:print_shipping_label', args=[obj.pk])
+                messages.success(request, format_html(
+                    '✅ Order created! Shipping label generated. <a href="{}" target="_blank" style="color: #667eea; font-weight: bold;">🖨️ Print Label</a> | Tracking: {}',
+                    url, obj.tracking_number or 'N/A'
+                ))
+            else:
+                from django.urls import reverse
+                url = reverse('admin:print_shipping_label', args=[obj.pk])
+                messages.warning(request, format_html(
+                    '⚠️ Order created but shipping label could not be generated. <a href="{}" target="_blank">Try manual print</a>',
+                    url
+                ))
+        elif is_new:
             from django.urls import reverse
             url = reverse('admin:print_shipping_label', args=[obj.pk])
-            # Show message with link to print label
             messages.info(request, format_html(
                 '✅ Order created! <a href="{}" target="_blank" style="color: #667eea; font-weight: bold;">🖨️ Print Shipping Label</a>',
                 url
@@ -378,6 +403,44 @@ class OrderAdmin(admin.ModelAdmin):
             return HttpResponse(html)
     
     print_shipping_labels.short_description = "🖨️ Print shipping labels"
+    
+    def create_shipping_labels(self, request, queryset):
+        """Admin action to create shipping labels via carrier APIs."""
+        from ecommerce.utils.shipping import create_shipping_label
+        
+        created_count = 0
+        failed_count = 0
+        
+        for order in queryset:
+            if not order.shipping_carrier:
+                failed_count += 1
+                continue
+            
+            label_data = create_shipping_label(order, order.shipping_carrier)
+            
+            if label_data:
+                order.tracking_number = label_data.get('tracking_number')
+                order.shipping_label_url = label_data.get('label_url')
+                order.shipment_id = label_data.get('shipment_id')
+                order.save(update_fields=['tracking_number', 'shipping_label_url', 'shipment_id'])
+                created_count += 1
+            else:
+                failed_count += 1
+        
+        if created_count > 0:
+            self.message_user(
+                request,
+                f"✅ Created {created_count} shipping labels.",
+                messages.SUCCESS
+            )
+        if failed_count > 0:
+            self.message_user(
+                request,
+                f"⚠️ {failed_count} labels could not be created (check carrier configuration or select carrier).",
+                messages.WARNING
+            )
+    
+    create_shipping_labels.short_description = "📦 Create shipping labels via carrier API"
     
     def get_urls(self):
         """Add custom URL for printing shipping labels."""

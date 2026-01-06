@@ -481,6 +481,21 @@ class Order(models.Model):
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     stripe_checkout_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
 
+    # Shipping carrier integration fields
+    shipping_carrier = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        choices=[
+            ('fedex', 'FedEx'),
+            ('dhl', 'DHL'),
+            ('deutsche_post', 'Deutsche Post'),
+        ],
+        help_text="Shipping carrier for this order"
+    )
+    tracking_number = models.CharField(max_length=100, blank=True, null=True, help_text="Tracking number from carrier")
+    shipping_label_url = models.URLField(blank=True, null=True, help_text="URL to shipping label PDF")
+    shipment_id = models.CharField(max_length=100, blank=True, null=True, help_text="Carrier shipment ID")
 
     email = models.EmailField(blank=True, null=True)
     full_name = models.CharField(max_length=100)
