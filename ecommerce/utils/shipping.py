@@ -265,18 +265,22 @@ class FedExShipping(ShippingCarrierBase):
             
             # Add shipping location if configured (may be required for some accounts)
             shipping_location = getattr(settings, 'FEDEX_SHIPPING_LOCATION', None)
+            logger.info(f"FEDEX_SHIPPING_LOCATION from settings: {shipping_location}")
             if shipping_location:
-                shipment_data['requestedShipment']['shippingChargesPayment']['payor'] = {
-                    'responsibleParty': {
-                        'accountNumber': {
-                            'value': account_value
-                        },
-                        'address': {
-                            'countryCode': shipping_location
-                        }
-                    }
+                if 'payor' not in shipment_data['requestedShipment']['shippingChargesPayment']:
+                    shipment_data['requestedShipment']['shippingChargesPayment']['payor'] = {}
+                if 'responsibleParty' not in shipment_data['requestedShipment']['shippingChargesPayment']['payor']:
+                    shipment_data['requestedShipment']['shippingChargesPayment']['payor']['responsibleParty'] = {}
+                
+                shipment_data['requestedShipment']['shippingChargesPayment']['payor']['responsibleParty']['accountNumber'] = {
+                    'value': account_value
                 }
-                logger.info(f"Added shipping location: {shipping_location}")
+                shipment_data['requestedShipment']['shippingChargesPayment']['payor']['responsibleParty']['address'] = {
+                    'countryCode': shipping_location
+                }
+                logger.info(f"✅ Added shipping location: {shipping_location} to payor.responsibleParty")
+            else:
+                logger.warning("⚠️ FEDEX_SHIPPING_LOCATION not set - may be required for account authorization")
         else:
             logger.error("FedEx account_number is REQUIRED but not provided!")
         
