@@ -23,33 +23,47 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
         # Check if this is a video file by checking the name/path
         is_video = "video" in name.lower() or any(ext in name.lower() for ext in ['.mp4', '.webm', '.ogg', '.mov', '.avi'])
         
-        # Get URL from parent method first
-        url = super().url(name)
-        
         if is_video:
-            # Replace /image/upload/ with /video/upload/ for video files
-            # This is the simplest and most reliable approach
-            if '/image/upload/' in url:
-                url = url.replace('/image/upload/', '/video/upload/')
-                logger.info(f"Converted image URL to video URL for {name}: {url}")
-            elif '/video/upload/' not in url and 'res.cloudinary.com' in url:
-                # If URL doesn't have /image/upload/ or /video/upload/, try to insert /video/upload/
-                # This handles cases where Cloudinary storage might generate different URL formats
-                if '/v1/' in url:
-                    url = url.replace('/v1/', '/video/upload/v1/')
-                elif '/v' in url and url.count('/v') == 1:
-                    # Pattern: https://res.cloudinary.com/cloud_name/v1234567890/folder/file
-                    parts = url.split('/')
-                    if len(parts) > 4:
-                        # Insert 'video/upload' after cloud_name
-                        cloud_name_idx = next((i for i, part in enumerate(parts) if 'cloudinary.com' in part), -1)
-                        if cloud_name_idx >= 0 and cloud_name_idx + 1 < len(parts):
-                            parts.insert(cloud_name_idx + 1, 'video')
-                            parts.insert(cloud_name_idx + 2, 'upload')
-                            url = '/'.join(parts)
-                            logger.info(f"Inserted video/upload into URL for {name}: {url}")
-        
-        return url
+            # For video files, we need to generate the URL manually to ensure correct format
+            import cloudinary
+            from django.conf import settings
+            
+            # Get public_id from name - remove any folder prefixes and extensions
+            public_id = name
+            # Remove upload_to folder prefix
+            if public_id.startswith('banners/videos/'):
+                public_id = public_id.replace('banners/videos/', '')
+            elif public_id.startswith('banners/'):
+                public_id = public_id.replace('banners/', '')
+            elif public_id.startswith('media/'):
+                public_id = public_id.replace('media/', '')
+            
+            # Remove file extension for public_id
+            import os
+            if public_id.endswith(('.mp4', '.webm', '.ogg', '.mov', '.avi')):
+                public_id = os.path.splitext(public_id)[0]
+            
+            # Remove /v1/ or version prefix if present
+            if '/v1/' in public_id:
+                public_id = public_id.split('/v1/')[-1]
+            elif public_id.startswith('v1/'):
+                public_id = public_id.replace('v1/', '')
+            
+            # Generate video URL using CloudinaryVideo
+            try:
+                video_url = cloudinary.CloudinaryVideo(public_id).build_url(secure=True)
+                logger.info(f"Generated video URL for {name} (public_id: {public_id}): {video_url}")
+                return video_url
+            except Exception as e:
+                logger.warning(f"Failed to generate video URL using CloudinaryVideo for {name}, trying parent method: {e}")
+                # Fallback to parent method and fix URL
+                url = super().url(name)
+                if '/image/upload/' in url:
+                    url = url.replace('/image/upload/', '/video/upload/')
+                return url
+        else:
+            # For images and other files, use parent method
+            return super().url(name)
     
     def _save(self, name, content):
         """
