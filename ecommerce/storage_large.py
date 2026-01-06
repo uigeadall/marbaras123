@@ -42,48 +42,73 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
         max_signed_size = 10485760
         
         if file_size > max_signed_size:
-            # For large files, we need to use unsigned upload
-            # This requires a preset to be configured in Cloudinary dashboard
-            # For now, we'll try to upload with chunked upload or use resource_type="video"
+            # For large files (>10MB), we need to use unsigned upload with a preset
+            # This requires an unsigned upload preset to be configured in Cloudinary dashboard
+            # Steps to create preset:
+            # 1. Go to Cloudinary Dashboard > Settings > Upload
+            # 2. Create a new unsigned upload preset
+            # 3. Set it to allow videos and increase max file size
+            # 4. Add the preset name to CLOUDINARY_UNSIGNED_PRESET environment variable
+            
+            from django.conf import settings
+            unsigned_preset = getattr(settings, 'CLOUDINARY_UNSIGNED_PRESET', None)
+            
+            if not unsigned_preset:
+                error_msg = (
+                    f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds Cloudinary free plan signed upload limit (10MB). "
+                    f"To upload large files, you need to:\n"
+                    f"1. Create an unsigned upload preset in Cloudinary Dashboard (Settings > Upload > Add upload preset)\n"
+                    f"2. Set the preset name in Railway environment variable: CLOUDINARY_UNSIGNED_PRESET\n"
+                    f"3. Or compress the video file to under 10MB\n"
+                    f"4. Or upgrade your Cloudinary plan"
+                )
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
             try:
-                # Try using upload_large for videos
-                if hasattr(content, 'name') and any(ext in content.name.lower() for ext in ['.mp4', '.webm', '.ogg', '.mov', '.avi']):
-                    # Use video resource type and chunked upload
-                    result = cloudinary.uploader.upload_large(
-                        content,
-                        resource_type="video",
-                        folder="banners/videos/",
-                        chunk_size=6000000,  # 6MB chunks
-                        timeout=600,  # 10 minutes timeout
-                    )
+                # Use unsigned upload with preset for large files
+                is_video = hasattr(content, 'name') and any(ext in content.name.lower() for ext in ['.mp4', '.webm', '.ogg', '.mov', '.avi'])
+                
+                if is_video:
+                    # Try upload_large first (works on paid plans)
+                    try:
+                        result = cloudinary.uploader.upload_large(
+                            content,
+                            resource_type="video",
+                            folder="banners/videos/",
+                            upload_preset=unsigned_preset,
+                            chunk_size=6000000,  # 6MB chunks
+                            timeout=600,  # 10 minutes timeout
+                        )
+                        return result['public_id']
+                    except AttributeError:
+                        # upload_large not available, use unsigned upload
+                        result = cloudinary.uploader.upload(
+                            content,
+                            resource_type="video",
+                            folder="banners/videos/",
+                            upload_preset=unsigned_preset,
+                            timeout=600,
+                        )
+                        return result['public_id']
                 else:
-                    # For other large files, try regular upload with increased timeout
+                    # For other large files
                     result = cloudinary.uploader.upload(
                         content,
                         folder="banners/videos/" if "video" in name.lower() else "banners/",
                         resource_type="auto",
+                        upload_preset=unsigned_preset,
                         timeout=600,
                     )
-                return result['public_id']
-            except Exception as e:
-                logger.error(f"Failed to upload large file to Cloudinary: {e}")
-                # If upload_large fails, try regular upload (might work if account allows it)
-                try:
-                    result = cloudinary.uploader.upload(
-                        content,
-                        folder="banners/videos/" if "video" in name.lower() else "banners/",
-                        resource_type="auto",
-                    )
                     return result['public_id']
-                except Exception as upload_error:
-                    error_msg = (
-                        f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds Cloudinary free plan limit (10MB). "
-                        f"Please either: 1) Upgrade your Cloudinary plan, 2) Compress the video file, "
-                        f"or 3) Configure an unsigned upload preset in Cloudinary dashboard. "
-                        f"Error: {upload_error}"
-                    )
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
+            except Exception as e:
+                error_msg = (
+                    f"Failed to upload large file ({file_size / 1024 / 1024:.2f}MB) to Cloudinary. "
+                    f"Error: {e}. "
+                    f"Please check that CLOUDINARY_UNSIGNED_PRESET is correctly configured in Railway environment variables."
+                )
+                logger.error(error_msg)
+                raise Exception(error_msg)
         else:
             # For files under 10MB, use regular upload
             return super()._save(name, content)
