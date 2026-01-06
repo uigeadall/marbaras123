@@ -325,6 +325,44 @@ class FedExShipping(ShippingCarrierBase):
         if is_international:
             customs_amount = max(float(order.total_price), 1.0)  # Minimum 1.00 USD
             customs_amount_str = f"{customs_amount:.2f}"
+            
+            # Build commodities list from order items (REQUIRED by FedEx)
+            commodities = []
+            for item in order.items.all():
+                commodities.append({
+                    'description': item.product.name[:50] if item.product else 'Product',  # Max 50 chars
+                    'quantity': item.quantity,
+                    'quantityUnits': 'PCS',  # Pieces
+                    'unitPrice': {
+                        'amount': f"{float(item.price):.2f}",
+                        'currency': 'USD'
+                    },
+                    'customsValue': {
+                        'amount': f"{float(item.price * item.quantity):.2f}",
+                        'currency': 'USD'
+                    },
+                    'countryOfManufacture': getattr(settings, 'SHOP_COUNTRY', 'BG'),  # Origin country
+                    'harmonizedCode': '7117190000'  # Generic jewelry code (can be customized per product)
+                })
+            
+            # If no items, add a default commodity
+            if not commodities:
+                commodities.append({
+                    'description': 'Jewelry',
+                    'quantity': 1,
+                    'quantityUnits': 'PCS',
+                    'unitPrice': {
+                        'amount': customs_amount_str,
+                        'currency': 'USD'
+                    },
+                    'customsValue': {
+                        'amount': customs_amount_str,
+                        'currency': 'USD'
+                    },
+                    'countryOfManufacture': getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                    'harmonizedCode': '7117190000'
+                })
+            
             customs_detail = {
                 'dutiesPayment': {
                     'paymentType': 'SENDER'
@@ -336,11 +374,12 @@ class FedExShipping(ShippingCarrierBase):
                 'totalCustomsValue': {
                     'amount': customs_amount_str,
                     'currency': 'USD'
-                }
+                },
+                'commodities': commodities  # REQUIRED by FedEx
             }
             requested_shipment['customsClearanceDetail'] = customs_detail
             import json
-            logger.info(f"Added customs clearance detail (amount: {customs_amount_str} USD): {json.dumps(customs_detail, indent=2)}")
+            logger.info(f"Added customs clearance detail with {len(commodities)} commodities (amount: {customs_amount_str} USD)")
         
         # Build shipment data structure
         shipment_data = {
