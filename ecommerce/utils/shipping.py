@@ -218,6 +218,34 @@ class FedExShipping(ShippingCarrierBase):
         logger.warning(f"Unknown country format: {country}, defaulting to BG")
         return 'BG'
     
+    def _normalize_postal_code(self, postal_code: str, country_code: str) -> str:
+        """Normalize postal code format based on country."""
+        if not postal_code:
+            return ''
+        
+        # Remove spaces and non-digit characters
+        cleaned = ''.join(filter(str.isdigit, str(postal_code)))
+        
+        # Country-specific formatting
+        if country_code == 'BG':  # Bulgaria - 4 digits
+            if len(cleaned) >= 4:
+                return cleaned[:4]
+            elif len(cleaned) > 0:
+                # Pad with zeros if less than 4 digits
+                return cleaned.zfill(4)
+            else:
+                return '1000'  # Default Sofia postal code
+        elif country_code == 'GB':  # UK - various formats, keep as is
+            return postal_code.strip()
+        elif country_code == 'US':  # USA - 5 or 9 digits
+            if len(cleaned) >= 5:
+                return cleaned[:5] if len(cleaned) < 9 else f"{cleaned[:5]}-{cleaned[5:9]}"
+            else:
+                return cleaned.zfill(5)
+        else:
+            # For other countries, return cleaned version
+            return cleaned if cleaned else postal_code.strip()
+    
     def _get_service_type(self, order) -> str:
         """Determine appropriate FedEx service type based on origin and destination."""
         # Get origin country from FEDEX_SHIPPING_LOCATION (where FedEx account is registered)
