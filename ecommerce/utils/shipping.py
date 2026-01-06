@@ -116,39 +116,58 @@ class FedExShipping(ShippingCarrierBase):
                 logger.error(f"Error logging request body: {e}")
             
             if response.status_code == 200:
-                data = response.json()
-                logger.info(f"FedEx API response data: {data}")
-                output = data.get('output', {})
-                
-                # Extract tracking number
-                transaction_shipments = output.get('transactionShipments', [])
-                tracking_number = ''
-                if transaction_shipments:
-                    tracking_number = transaction_shipments[0].get('masterTrackingNumber', '')
-                    logger.info(f"Found transactionShipments: {len(transaction_shipments)}")
-                    logger.info(f"First shipment data: {transaction_shipments[0]}")
-                
-                # Extract label URL - check multiple possible locations
-                label_url = ''
-                label_documents = output.get('labelDocuments', [])
-                if label_documents:
-                    label_url = label_documents[0].get('url', '')
-                    logger.info(f"Found labelDocuments: {len(label_documents)}")
-                    logger.info(f"First label document: {label_documents[0]}")
-                else:
-                    # Try alternative location
+                try:
+                    data = response.json()
+                    logger.info(f"FedEx API response status: {response.status_code}")
+                    logger.info(f"FedEx API response keys: {list(data.keys())}")
+                    
+                    output = data.get('output', {})
+                    logger.info(f"Output keys: {list(output.keys()) if isinstance(output, dict) else 'Not a dict'}")
+                    
+                    # Extract tracking number
+                    transaction_shipments = output.get('transactionShipments', [])
+                    tracking_number = ''
                     if transaction_shipments:
-                        label_docs = transaction_shipments[0].get('labelDocuments', [])
-                        if label_docs:
-                            label_url = label_docs[0].get('url', '')
-                            logger.info(f"Found labelDocuments in transactionShipments: {label_docs[0]}")
-                
-                # Extract shipment ID
-                shipment_id = output.get('jobId', '')
-                if not shipment_id and transaction_shipments:
-                    shipment_id = transaction_shipments[0].get('shipmentId', '')
-                
-                logger.info(f"✅ FedEx shipment created: tracking={tracking_number}, label_url={label_url or 'N/A'}, shipment_id={shipment_id or 'N/A'}")
+                        tracking_number = transaction_shipments[0].get('masterTrackingNumber', '')
+                        logger.info(f"Found transactionShipments: {len(transaction_shipments)}")
+                        logger.info(f"First shipment keys: {list(transaction_shipments[0].keys()) if transaction_shipments[0] else 'Empty'}")
+                        logger.info(f"First shipment data: {transaction_shipments[0]}")
+                    else:
+                        logger.warning("No transactionShipments found in output")
+                    
+                    # Extract label URL - check multiple possible locations
+                    label_url = ''
+                    label_documents = output.get('labelDocuments', [])
+                    logger.info(f"labelDocuments in output: {len(label_documents)}")
+                    if label_documents:
+                        label_url = label_documents[0].get('url', '')
+                        logger.info(f"Found labelDocuments: {len(label_documents)}")
+                        logger.info(f"First label document keys: {list(label_documents[0].keys()) if label_documents[0] else 'Empty'}")
+                        logger.info(f"First label document: {label_documents[0]}")
+                    else:
+                        # Try alternative location
+                        logger.info("Checking transactionShipments for labelDocuments...")
+                        if transaction_shipments:
+                            label_docs = transaction_shipments[0].get('labelDocuments', [])
+                            logger.info(f"labelDocuments in transactionShipments: {len(label_docs)}")
+                            if label_docs:
+                                label_url = label_docs[0].get('url', '')
+                                logger.info(f"Found labelDocuments in transactionShipments: {label_docs[0]}")
+                            else:
+                                logger.warning("No labelDocuments found in transactionShipments either")
+                    
+                    # Extract shipment ID
+                    shipment_id = output.get('jobId', '')
+                    logger.info(f"jobId in output: {shipment_id}")
+                    if not shipment_id and transaction_shipments:
+                        shipment_id = transaction_shipments[0].get('shipmentId', '')
+                        logger.info(f"shipmentId in transactionShipments: {shipment_id}")
+                    
+                    logger.info(f"✅ FedEx shipment created: tracking={tracking_number}, label_url={label_url or 'N/A'}, shipment_id={shipment_id or 'N/A'}")
+                    
+                except Exception as e:
+                    logger.error(f"Error parsing FedEx response: {e}", exc_info=True)
+                    raise
                 
                 return {
                     'tracking_number': tracking_number or None,
