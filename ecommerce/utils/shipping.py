@@ -43,6 +43,11 @@ class FedExShipping(ShippingCarrierBase):
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
         """Create FedEx shipment and return tracking info."""
+        logger.info(f"FedEx create_shipment called for Order #{order.id}")
+        logger.info(f"FedEx API URL: {self.api_url}")
+        logger.info(f"FedEx API Key present: {bool(self.api_key)}")
+        logger.info(f"FedEx API Secret present: {bool(self.api_secret)}")
+        
         # For sandbox, account_number might not be required
         if not all([self.api_key, self.api_secret]):
             logger.error("FedEx credentials not configured - missing API key or secret")
@@ -52,12 +57,17 @@ class FedExShipping(ShippingCarrierBase):
         
         try:
             # Get OAuth token
+            logger.info("Requesting FedEx OAuth token...")
             token = self._get_access_token()
             if not token:
+                logger.error("Failed to obtain FedEx OAuth token")
                 return None
+            logger.info("✅ FedEx OAuth token obtained")
             
             # Prepare shipment data
+            logger.info("Preparing shipment data...")
             shipment_data = self._prepare_shipment_data(order)
+            logger.debug(f"Shipment data prepared: {shipment_data}")
             
             # Create shipment via FedEx API
             headers = {
@@ -66,6 +76,7 @@ class FedExShipping(ShippingCarrierBase):
                 'X-locale': 'en_US'
             }
             
+            logger.info(f"Posting to FedEx API: {self.api_url}")
             response = requests.post(
                 self.api_url,
                 json=shipment_data,
@@ -73,20 +84,30 @@ class FedExShipping(ShippingCarrierBase):
                 timeout=30
             )
             
+            logger.info(f"FedEx API response status: {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
+                logger.info(f"FedEx API response data: {data}")
                 output = data.get('output', {})
+                tracking_number = output.get('transactionShipments', [{}])[0].get('masterTrackingNumber', '')
+                label_url = output.get('labelDocuments', [{}])[0].get('url', '')
+                shipment_id = output.get('jobId', '')
+                
+                logger.info(f"✅ FedEx shipment created: tracking={tracking_number}, label_url={label_url}")
+                
                 return {
-                    'tracking_number': output.get('transactionShipments', [{}])[0].get('masterTrackingNumber', ''),
-                    'label_url': output.get('labelDocuments', [{}])[0].get('url', ''),
-                    'shipment_id': output.get('jobId', ''),
+                    'tracking_number': tracking_number,
+                    'label_url': label_url,
+                    'shipment_id': shipment_id,
                 }
             else:
-                logger.error(f"FedEx API error: {response.status_code} - {response.text}")
+                logger.error(f"FedEx API error: {response.status_code}")
+                logger.error(f"FedEx API error response: {response.text}")
                 return None
                 
         except Exception as e:
-            logger.error(f"FedEx shipment creation failed: {e}")
+            logger.error(f"FedEx shipment creation exception: {e}", exc_info=True)
             return None
     
     def _get_access_token(self) -> Optional[str]:
