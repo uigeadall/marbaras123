@@ -242,7 +242,10 @@ class FedExShipping(ShippingCarrierBase):
                     }
                 }],
                 'shipDatestamp': order.created_at.strftime('%Y-%m-%d'),
-                'serviceType': 'STANDARD_OVERNIGHT',
+                # Determine service type based on destination
+                # For international shipments, use INTERNATIONAL_ECONOMY or INTERNATIONAL_PRIORITY
+                # For domestic shipments, use STANDARD_OVERNIGHT or FEDEX_GROUND
+                'serviceType': self._get_service_type(order),
                 'packagingType': 'YOUR_PACKAGING',
                 'pickupType': 'USE_SCHEDULED_PICKUP',
                 'blockInsightVisibility': False,
