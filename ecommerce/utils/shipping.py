@@ -408,6 +408,10 @@ class FedExShipping(ShippingCarrierBase):
                     'description': 'Jewelry',
                     'quantity': 1,
                     'quantityUnits': 'PCS',
+                    'weight': {
+                        'units': 'KG',
+                        'value': 0.5  # Default weight
+                    },
                     'unitPrice': {
                         'amount': customs_amount_str,
                         'currency': 'USD'
