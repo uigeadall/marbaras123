@@ -863,14 +863,6 @@
             </div>
 
             <div class="info-section">
-              {% if has_gold_plated %}
-              <div class="gold-plated-toggle" style="margin-bottom: 20px; padding: 12px; background: #f5f5f5; border-radius: 8px;">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;">
-                  <input type="checkbox" id="goldPlatedToggle" style="width: 20px; height: 20px; cursor: pointer;">
-                  <span>Show Gold Plated Version</span>
-                </label>
-              </div>
-              {% endif %}
               <h1>{{ product.name }}</h1>
               
               {% if is_sale and sale_expires_at %}
