@@ -229,11 +229,18 @@ class FedExShipping(ShippingCarrierBase):
                         'value': max(total_weight, 0.5)  # Minimum 0.5kg
                     }
                 }]
-            },
-            'accountNumber': {
-                'value': self.account_number
             }
         }
+        
+        # Add account number only if provided (required for production, optional for sandbox)
+        if self.account_number:
+            shipment_data['accountNumber'] = {
+                'value': self.account_number
+            }
+        else:
+            logger.warning("FedEx account_number not provided - shipment may fail")
+        
+        return shipment_data
 
 
 class DHLShipping(ShippingCarrierBase):
