@@ -419,15 +419,20 @@ class OrderAdmin(admin.ModelAdmin):
     def create_shipping_labels(self, request, queryset):
         """Admin action to create shipping labels via carrier APIs."""
         from ecommerce.utils.shipping import create_shipping_label
+        import logging
         
+        logger = logging.getLogger(__name__)
         created_count = 0
         failed_count = 0
+        error_details = []
         
         for order in queryset:
             if not order.shipping_carrier:
                 failed_count += 1
+                error_details.append(f"Order #{order.id}: No carrier selected")
                 continue
             
+            logger.info(f"Creating shipping label for Order #{order.id} with carrier {order.shipping_carrier}")
             label_data = create_shipping_label(order, order.shipping_carrier)
             
             if label_data:
@@ -436,8 +441,11 @@ class OrderAdmin(admin.ModelAdmin):
                 order.shipment_id = label_data.get('shipment_id')
                 order.save(update_fields=['tracking_number', 'shipping_label_url', 'shipment_id'])
                 created_count += 1
+                logger.info(f"✅ Successfully created label for Order #{order.id}: tracking={order.tracking_number}")
             else:
                 failed_count += 1
+                error_details.append(f"Order #{order.id}: Label creation failed (check logs)")
+                logger.error(f"❌ Failed to create label for Order #{order.id} with carrier {order.shipping_carrier}")
         
         if created_count > 0:
             self.message_user(
@@ -446,9 +454,12 @@ class OrderAdmin(admin.ModelAdmin):
                 messages.SUCCESS
             )
         if failed_count > 0:
+            error_msg = f"⚠️ {failed_count} labels could not be created."
+            if error_details:
+                error_msg += f" Details: {', '.join(error_details[:3])}"  # Show first 3 errors
             self.message_user(
                 request,
-                f"⚠️ {failed_count} labels could not be created (check carrier configuration or select carrier).",
+                error_msg + " Check Railway logs for more details.",
                 messages.WARNING
             )
     
