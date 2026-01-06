@@ -20,6 +20,9 @@ class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
     max_num = 10
+    fields = ("image", "is_gold_plated")
+    verbose_name = "Product Image"
+    verbose_name_plural = "Product Images"
 
 class ProductVariantInline(admin.TabularInline):
     model = ProductVariant
@@ -86,6 +89,10 @@ class ProductAdmin(admin.ModelAdmin):
             }),
             ("Images", {
                 "fields": ("image",)
+            }),
+            ("Product Variant", {
+                "fields": ("is_gold_plated",),
+                "description": "Check if this product is gold plated. When checked, only gold plated images will be shown. When unchecked, only normal images will be shown.",
             }),
         )
         

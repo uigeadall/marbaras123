@@ -92,6 +92,10 @@ class Product(models.Model):
         validators=[RegexValidator(r"^[\w\-\.]+$")]
     )
     brand = models.CharField(max_length=50, blank=True, null=True)
+    is_gold_plated = models.BooleanField(
+        default=False,
+        help_text="Check if this product is gold plated. When checked, gold plated images will be shown. When unchecked, normal images will be shown."
+    )
 
     cart_add_count = models.PositiveIntegerField(default=0)
     stock = models.PositiveIntegerField(default=0)
@@ -281,9 +285,18 @@ class ProductVariant(models.Model):
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
     image = models.ImageField(upload_to='products/multiple/')
+    is_gold_plated = models.BooleanField(
+        default=False,
+        help_text="Check if this image is for the gold plated version of the product. Leave unchecked for normal version images."
+    )
+
+    class Meta:
+        verbose_name = "Product Image"
+        verbose_name_plural = "Product Images"
 
     def __str__(self) -> str:
-        return f"{self.product.name} image"
+        version = "Gold Plated" if self.is_gold_plated else "Normal"
+        return f"{self.product.name} image ({version})"
 
 
 class Rating(models.Model):

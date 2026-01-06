@@ -649,7 +649,15 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     comments = Comment.objects.filter(product=product).order_by("-created_at")
 
 
-    product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
+    # Filter images based on product's gold plated status
+    # If product is gold plated, show only gold plated images
+    # If product is not gold plated, show only normal images
+    product_images = list(
+        ProductImage.objects.filter(
+            product=product,
+            is_gold_plated=product.is_gold_plated
+        ).order_by('id')
+    )
 
 
     logger.debug(f"Product {product.pk} ({product.name}): Found {len(product_images)} ProductImage records")
