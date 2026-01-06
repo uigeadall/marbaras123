@@ -212,7 +212,8 @@ class FedExShipping(ShippingCarrierBase):
         recipient_country = self._normalize_country_code(order.country)
         logger.info(f"Order #{order.id} - recipient country: {order.country} -> normalized: {recipient_country}")
         
-        return {
+        # Build shipment data structure
+        shipment_data = {
             'labelResponseOptions': 'URL_ONLY',
             'requestedShipment': {
                 'shipper': {
