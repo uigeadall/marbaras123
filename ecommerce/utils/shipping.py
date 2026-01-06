@@ -48,12 +48,14 @@ class FedExShipping(ShippingCarrierBase):
         logger.info(f"FedEx API Key present: {bool(self.api_key)}")
         logger.info(f"FedEx API Secret present: {bool(self.api_secret)}")
         
-        # For sandbox, account_number might not be required
+        # Check required credentials
         if not all([self.api_key, self.api_secret]):
             logger.error("FedEx credentials not configured - missing API key or secret")
             return None
         if not self.account_number:
-            logger.warning("FedEx account_number not configured - may fail for production")
+            logger.error("FedEx account_number is REQUIRED - even for sandbox. Please add FEDEX_ACCOUNT_NUMBER in Railway variables.")
+            logger.error("You can find your test account number in FedEx Developer Portal -> Project Settings or Account Information")
+            return None
         
         try:
             # Get OAuth token
