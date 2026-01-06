@@ -527,6 +527,9 @@ if RESEND_API_KEY:
     EMAIL_BACKEND = "ecommerce.utils.resend_backend.ResendBackend"
 elif SENDGRID_API_KEY:
     EMAIL_BACKEND = "ecommerce.utils.sendgrid_backend.SendGridBackend"
+else:
+    # Fallback to SMTP (will fail on Railway Hobby plan)
+    EMAIL_BACKEND = env("EMAIL_BACKEND", "ecommerce.utils.smtp_backend.SMTPSBackend")
 
 # Shipping Carrier API Configuration
 # FedEx
@@ -557,9 +560,6 @@ SHOP_STATE = env("SHOP_STATE", "")
 SHOP_COUNTRY = env("SHOP_COUNTRY", "BG")
 SHOP_PHONE = env("SHOP_PHONE", "")
 SHOP_EMAIL = env("SHOP_EMAIL", DEFAULT_FROM_EMAIL)
-else:
-    # Fallback to SMTP (will fail on Railway Hobby plan)
-    EMAIL_BACKEND = env("EMAIL_BACKEND", "ecommerce.utils.smtp_backend.SMTPSBackend")
 
 # SMTP Configuration
 # Jump.bg Email Hosting Configuration
