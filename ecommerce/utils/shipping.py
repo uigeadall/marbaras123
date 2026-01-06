@@ -237,13 +237,28 @@ class FedExShipping(ShippingCarrierBase):
             }
         }
         
-        # Add account number only if provided (required for production, optional for sandbox)
+        # Add account number (REQUIRED by FedEx API)
+        # Note: Account number must be authorized for use with these API credentials
         if self.account_number:
+            # Try to convert to string if it's a number, ensure it's properly formatted
+            account_value = str(self.account_number).strip()
             shipment_data['accountNumber'] = {
-                'value': self.account_number
+                'value': account_value
             }
+            logger.info(f"Added accountNumber to shipment data: {account_value}")
+            
+            # Also add meter number if available (sometimes required)
+            if self.meter_number:
+                shipment_data['requestedShipment']['shippingChargesPayment']['payor'] = {
+                    'responsibleParty': {
+                        'accountNumber': {
+                            'value': account_value
+                        }
+                    }
+                }
+                logger.info(f"Added meter number: {self.meter_number}")
         else:
-            logger.warning("FedEx account_number not provided - shipment may fail")
+            logger.error("FedEx account_number is REQUIRED but not provided!")
         
         return shipment_data
 
