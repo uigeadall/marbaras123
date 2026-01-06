@@ -250,12 +250,18 @@ class FedExShipping(ShippingCarrierBase):
         # Add account number (REQUIRED by FedEx API)
         # Note: Account number must be authorized for use with these API credentials
         if self.account_number:
-            # Try to convert to string if it's a number, ensure it's properly formatted
+            # Ensure account number is properly formatted (as string, but ensure it's numeric)
             account_value = str(self.account_number).strip()
+            # Verify it's numeric
+            if not account_value.isdigit():
+                logger.error(f"FedEx account number must be numeric, got: {account_value}")
+                return None
+            
             shipment_data['accountNumber'] = {
                 'value': account_value
             }
             logger.info(f"Added accountNumber to shipment data: {account_value}")
+            logger.info(f"Account number type: {type(account_value)}, value: '{account_value}'")
             
             # Add meter number if available (required for some operations)
             if self.meter_number:
