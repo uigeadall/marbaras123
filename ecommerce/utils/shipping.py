@@ -285,21 +285,6 @@ class FedExShipping(ShippingCarrierBase):
             logger.info(f"Account number in shipment: {shipment_data['accountNumber']}")
         
         return shipment_data
-                'shippingChargesPayment': {
-                    'paymentType': 'SENDER'
-                },
-                'labelSpecification': {
-                    'imageType': 'PDF',
-                    'labelStockType': 'PAPER_4X6'
-                },
-                'requestedPackageLineItems': [{
-                    'weight': {
-                        'units': 'KG',
-                        'value': max(total_weight, 0.5)  # Minimum 0.5kg
-                    }
-                }]
-            }
-        }
         
         # Add account number (REQUIRED by FedEx API)
         # Note: Account number must be authorized for use with these API credentials
