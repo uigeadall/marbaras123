@@ -651,12 +651,11 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
 
     # Get all images (both normal and gold plated)
     # We'll filter them on the frontend with JavaScript based on user selection
-    product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
+    all_product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
     
     # Separate normal and gold plated images for frontend filtering
-    normal_images = [img for img in product_images if not img.is_gold_plated]
-    gold_plated_images = [img for img in product_images if img.is_gold_plated]
-
+    normal_images = [img for img in all_product_images if not img.is_gold_plated]
+    gold_plated_images = [img for img in all_product_images if img.is_gold_plated]
 
     logger.debug(f"Product {product.pk} ({product.name}): Found {len(all_product_images)} ProductImage records")
     
