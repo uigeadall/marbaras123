@@ -132,7 +132,14 @@ class FedExShipping(ShippingCarrierBase):
                 }
             else:
                 logger.error(f"FedEx API error: {response.status_code}")
-                logger.error(f"FedEx API error response: {response.text}")
+                try:
+                    error_data = response.json()
+                    logger.error(f"FedEx API error response (JSON): {error_data}")
+                    if 'errors' in error_data:
+                        for error in error_data['errors']:
+                            logger.error(f"  - Error code: {error.get('code')}, Message: {error.get('message')}")
+                except:
+                    logger.error(f"FedEx API error response (text): {response.text}")
                 return None
                 
         except Exception as e:
