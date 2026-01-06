@@ -247,18 +247,25 @@ class FedExShipping(ShippingCarrierBase):
             }
             logger.info(f"Added accountNumber to shipment data: {account_value}")
             
-            # Also add meter number if available (sometimes required)
+            # Add meter number if available (required for some operations)
             if self.meter_number:
-                shipment_data['requestedShipment']['shippingChargesPayment']['payor'] = {
-                    'responsibleParty': {
-                        'accountNumber': {
-                            'value': account_value
-                        }
-                    }
-                }
-                logger.info(f"Added meter number: {self.meter_number}")
+                meter_value = str(self.meter_number).strip()
+                # Meter number goes in the shipper contact or as separate field
+                # For Ship API v1, meter number might be needed in shipper details
+                if 'shipper' in shipment_data['requestedShipment']:
+                    shipment_data['requestedShipment']['shipper']['tins'] = [{
+                        'number': meter_value,
+                        'tinType': 'BUSINESS_NATIONAL'
+                    }]
+                logger.info(f"Added meter number: {meter_value}")
+            else:
+                logger.warning("FedEx meter_number not provided - may be required for some operations")
         else:
             logger.error("FedEx account_number is REQUIRED but not provided!")
+        
+        logger.info(f"Final shipment data keys: {list(shipment_data.keys())}")
+        if 'accountNumber' in shipment_data:
+            logger.info(f"Account number in shipment: {shipment_data['accountNumber']}")
         
         return shipment_data
 
