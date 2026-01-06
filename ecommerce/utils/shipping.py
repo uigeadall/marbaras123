@@ -205,14 +205,21 @@ class FedExShipping(ShippingCarrierBase):
     
     def _get_service_type(self, order) -> str:
         """Determine appropriate FedEx service type based on origin and destination."""
-        # Get origin country from settings
-        origin_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+        # Get origin country from FEDEX_SHIPPING_LOCATION (where FedEx account is registered)
+        # If not set, fall back to SHOP_COUNTRY
+        origin_country = getattr(settings, 'FEDEX_SHIPPING_LOCATION', None)
+        if not origin_country:
+            origin_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+        
         # Normalize destination country
         dest_country = self._normalize_country_code(order.country)
+        
+        logger.info(f"Service type check: origin={origin_country}, destination={dest_country}")
         
         # If domestic shipment (same country)
         if origin_country == dest_country:
             # Use domestic service types
+            logger.info(f"Domestic shipment detected: {origin_country} -> {dest_country}, using FEDEX_GROUND")
             return 'FEDEX_GROUND'  # or 'STANDARD_OVERNIGHT' for express
         
         # For international shipments, use international service types
