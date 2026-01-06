@@ -132,14 +132,22 @@ class FedExShipping(ShippingCarrierBase):
                 }
             else:
                 logger.error(f"FedEx API error: {response.status_code}")
+                logger.error(f"FedEx API response headers: {dict(response.headers)}")
+                logger.error(f"FedEx API response text (first 2000 chars): {response.text[:2000]}")
                 try:
                     error_data = response.json()
                     logger.error(f"FedEx API error response (JSON): {error_data}")
                     if 'errors' in error_data:
-                        for error in error_data['errors']:
-                            logger.error(f"  - Error code: {error.get('code')}, Message: {error.get('message')}")
-                except:
-                    logger.error(f"FedEx API error response (text): {response.text}")
+                        logger.error(f"Number of errors: {len(error_data['errors'])}")
+                        for idx, error in enumerate(error_data['errors'], 1):
+                            logger.error(f"  Error #{idx}:")
+                            logger.error(f"    Code: {error.get('code')}")
+                            logger.error(f"    Message: {error.get('message')}")
+                            if 'parameterList' in error:
+                                logger.error(f"    Parameters: {error.get('parameterList')}")
+                except Exception as e:
+                    logger.error(f"Failed to parse error response as JSON: {e}")
+                    logger.error(f"FedEx API error response (raw text): {response.text}")
                 return None
                 
         except Exception as e:
