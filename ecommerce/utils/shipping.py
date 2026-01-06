@@ -138,10 +138,50 @@ class FedExShipping(ShippingCarrierBase):
             logger.error(f"FedEx token request exception: {e}", exc_info=True)
             return None
     
+    def _normalize_country_code(self, country: Optional[str]) -> str:
+        """Normalize country code to ISO 2-letter format for FedEx."""
+        if not country:
+            return 'BG'  # Default to Bulgaria
+        
+        country = country.strip().upper()
+        
+        # If already a 2-letter code, return as is
+        if len(country) == 2:
+            return country
+        
+        # Common country name mappings to ISO codes
+        country_mapping = {
+            'BULGARIA': 'BG',
+            'БЪЛГАРИЯ': 'BG',
+            'UNITED STATES': 'US',
+            'USA': 'US',
+            'UNITED KINGDOM': 'GB',
+            'UK': 'GB',
+            'GERMANY': 'DE',
+            'FRANCE': 'FR',
+            'ITALY': 'IT',
+            'SPAIN': 'ES',
+            'GREECE': 'GR',
+            'ROMANIA': 'RO',
+            'TURKEY': 'TR',
+        }
+        
+        # Check mapping
+        if country in country_mapping:
+            return country_mapping[country]
+        
+        # Default fallback
+        logger.warning(f"Unknown country format: {country}, defaulting to BG")
+        return 'BG'
+    
     def _prepare_shipment_data(self, order) -> Dict[str, Any]:
         """Prepare shipment data for FedEx API."""
         # Get order weight (estimate based on items)
         total_weight = sum(item.quantity for item in order.items.all()) * 0.5  # Estimate 0.5kg per item
+        
+        # Normalize country codes
+        recipient_country = self._normalize_country_code(order.country)
+        logger.info(f"Order #{order.id} - recipient country: {order.country} -> normalized: {recipient_country}")
         
         return {
             'labelResponseOptions': 'URL_ONLY',
