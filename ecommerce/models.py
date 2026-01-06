@@ -616,6 +616,7 @@ class BannerImage(models.Model):
         upload_to="banners/videos/", 
         blank=True, 
         null=True,
+        max_length=None,  # Remove default 10MB limit
         storage=_get_storage(),
         help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 500MB"
     )
