@@ -43,9 +43,12 @@ class FedExShipping(ShippingCarrierBase):
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
         """Create FedEx shipment and return tracking info."""
-        if not all([self.api_key, self.api_secret, self.account_number]):
-            logger.error("FedEx credentials not configured")
+        # For sandbox, account_number might not be required
+        if not all([self.api_key, self.api_secret]):
+            logger.error("FedEx credentials not configured - missing API key or secret")
             return None
+        if not self.account_number:
+            logger.warning("FedEx account_number not configured - may fail for production")
         
         try:
             # Get OAuth token
