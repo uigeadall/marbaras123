@@ -222,7 +222,21 @@ class FedExShipping(ShippingCarrierBase):
                 'pickupType': 'USE_SCHEDULED_PICKUP',
                 'blockInsightVisibility': False,
                 'shippingChargesPayment': {
-                    'paymentType': 'SENDER'
+                    'paymentType': 'SENDER',
+                    'payor': {
+                        'responsibleParty': {
+                            'accountNumber': {
+                                'value': str(self.account_number).strip() if self.account_number else ''
+                            },
+                            'address': {
+                                'streetLines': [getattr(settings, 'SHOP_ADDRESS', '')],
+                                'city': getattr(settings, 'SHOP_CITY', 'Sofia'),
+                                'stateOrProvinceCode': getattr(settings, 'SHOP_STATE', ''),
+                                'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                                'countryCode': getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                            }
+                        }
+                    }
                 },
                 'labelSpecification': {
                     'imageType': 'PDF',
