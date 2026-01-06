@@ -594,14 +594,21 @@ class BannerImage(models.Model):
         # Always try to use Cloudinary if credentials are available
         if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
             try:
-                from cloudinary_storage.storage import MediaCloudinaryStorage
-                # Create a new instance to ensure it's properly initialized
-                return MediaCloudinaryStorage()
+                # Use custom storage for large files (videos)
+                from ecommerce.storage_large import LargeFileCloudinaryStorage
+                return LargeFileCloudinaryStorage()
             except (ImportError, AttributeError, Exception) as e:
-                # If Cloudinary fails, log error but don't fail silently
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to initialize Cloudinary storage: {e}")
+                # Fallback to regular Cloudinary storage
+                try:
+                    from cloudinary_storage.storage import MediaCloudinaryStorage
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Using regular Cloudinary storage (large file storage failed): {e}")
+                    return MediaCloudinaryStorage()
+                except Exception as fallback_error:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to initialize Cloudinary storage: {fallback_error}")
         # If Cloudinary is not available, this will fail - we don't want to use local storage
         raise Exception("Cloudinary storage is required but not properly configured. Please check CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables.")
     
