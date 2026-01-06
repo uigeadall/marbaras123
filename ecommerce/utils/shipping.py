@@ -237,6 +237,10 @@ class FedExShipping(ShippingCarrierBase):
         recipient_country = self._normalize_country_code(order.country)
         logger.info(f"Order #{order.id} - recipient country: {order.country} -> normalized: {recipient_country}")
         
+        # Check if this is an international shipment (for customs value requirement)
+        origin_country = getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG')
+        is_international = origin_country != recipient_country
+        
         # Build shipment data structure
         shipment_data = {
             'labelResponseOptions': 'URL_ONLY',
@@ -287,8 +291,23 @@ class FedExShipping(ShippingCarrierBase):
                     'weight': {
                         'units': 'KG',
                         'value': max(total_weight, 0.5)  # Minimum 0.5kg
+                    },
+                    # Add customs value for international shipments (REQUIRED)
+                    **({'declaredValue': {
+                        'amount': str(order.total_price),
+                        'currency': 'USD'  # or get from order if available
+                    }} if is_international else {})
+                }],
+                # Add total customs value for international shipments (REQUIRED)
+                **({'customsClearanceDetail': {
+                    'dutiesPayment': {
+                        'paymentType': 'SENDER'
+                    },
+                    'customsValue': {
+                        'amount': str(order.total_price),
+                        'currency': 'USD'  # or get from order if available
                     }
-                }]
+                }} if is_international else {})
             }
         }
         
