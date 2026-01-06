@@ -203,6 +203,24 @@ class FedExShipping(ShippingCarrierBase):
         logger.warning(f"Unknown country format: {country}, defaulting to BG")
         return 'BG'
     
+    def _get_service_type(self, order) -> str:
+        """Determine appropriate FedEx service type based on origin and destination."""
+        # Get origin country from settings
+        origin_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+        # Normalize destination country
+        dest_country = self._normalize_country_code(order.country)
+        
+        # If domestic shipment (same country)
+        if origin_country == dest_country:
+            # Use domestic service types
+            return 'FEDEX_GROUND'  # or 'STANDARD_OVERNIGHT' for express
+        
+        # For international shipments, use international service types
+        # INTERNATIONAL_ECONOMY - slower but cheaper
+        # INTERNATIONAL_PRIORITY - faster but more expensive
+        logger.info(f"International shipment detected: {origin_country} -> {dest_country}, using INTERNATIONAL_ECONOMY")
+        return 'INTERNATIONAL_ECONOMY'
+    
     def _prepare_shipment_data(self, order) -> Dict[str, Any]:
         """Prepare shipment data for FedEx API."""
         # Get order weight (estimate based on items)
