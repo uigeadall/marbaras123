@@ -4,6 +4,7 @@ from django.db.models import Count, Sum, Case, When, Value
 from django.http import HttpResponse
 from django.contrib import messages
 from django.utils.html import format_html
+from django import forms
 import csv
 
 from .models import (
@@ -337,8 +338,40 @@ class CouponAdmin(admin.ModelAdmin):
     list_filter = ("active",)
 
 
+class BannerImageAdminForm(forms.ModelForm):
+    """Custom form for BannerImage to allow large video file uploads."""
+    class Meta:
+        model = BannerImage
+        fields = '__all__'
+        widgets = {
+            'video_file': forms.FileInput(attrs={'accept': 'video/*'}),
+        }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove any size restrictions from the form field
+        if 'video_file' in self.fields:
+            # Remove max_length restriction if it exists
+            self.fields['video_file'].widget.attrs.pop('max_length', None)
+            # Set a very high max_length to allow large files
+            self.fields['video_file'].max_length = None
+    
+    def clean_video_file(self):
+        """Custom validation for video file - allow large files."""
+        video_file = self.cleaned_data.get('video_file')
+        if video_file:
+            # Check file size (500MB limit)
+            max_size = 524288000  # 500MB
+            if hasattr(video_file, 'size') and video_file.size > max_size:
+                raise forms.ValidationError(
+                    f"Video file is too large ({video_file.size / 1024 / 1024:.2f}MB). Maximum size is 500MB."
+                )
+        return video_file
+
+
 @admin.register(BannerImage)
 class BannerImageAdmin(admin.ModelAdmin):
+    form = BannerImageAdminForm
     list_display = ("title", "order", "is_active", "has_image", "has_video", "created_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("title",)
@@ -349,7 +382,7 @@ class BannerImageAdmin(admin.ModelAdmin):
         }),
         ("Media", {
             "fields": ("image", "video_file"),
-            "description": "Upload either an image OR a video. Video will autoplay, loop, and be muted like a GIF."
+            "description": "Upload either an image OR a video. Video will autoplay, loop, and be muted like a GIF. Maximum video size: 500MB."
         }),
     )
     
