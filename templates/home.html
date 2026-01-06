@@ -297,9 +297,25 @@
                       loop
                       muted
                       playsinline
+                      preload="auto"
                       class="w-full h-full object-cover"
-                      style="pointer-events: none;"
-                    ></video>
+                      style="pointer-events: none; background-color: #000; display: block;"
+                      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                      onloadstart="this.style.opacity='1';"
+                    >
+                      <source src="{{ banner.video_file.url }}" type="video/mp4">
+                      <source src="{{ banner.video_file.url }}" type="video/webm">
+                      Your browser does not support the video tag.
+                    </video>
+                    {% if banner.image %}
+                    <img
+                      src="{{ banner.image.url }}"
+                      alt="{{ banner.title|default:'Shop Banner' }}"
+                      class="w-full h-full object-cover"
+                      style="display: none;"
+                      onerror="this.style.display='none';"
+                    >
+                    {% endif %}
                   {% elif banner.image %}
                     <img
                       src="{{ banner.image.url }}"
