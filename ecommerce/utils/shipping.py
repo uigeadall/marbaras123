@@ -116,6 +116,11 @@ class FedExShipping(ShippingCarrierBase):
                 logger.error(f"Error logging request body: {e}")
             
             if response.status_code == 200:
+                # Initialize variables
+                tracking_number = ''
+                label_url = ''
+                shipment_id = ''
+                
                 try:
                     data = response.json()
                     logger.info(f"FedEx API response status: {response.status_code}")
@@ -126,7 +131,6 @@ class FedExShipping(ShippingCarrierBase):
                     
                     # Extract tracking number
                     transaction_shipments = output.get('transactionShipments', [])
-                    tracking_number = ''
                     if transaction_shipments:
                         tracking_number = transaction_shipments[0].get('masterTrackingNumber', '')
                         logger.info(f"Found transactionShipments: {len(transaction_shipments)}")
@@ -136,7 +140,6 @@ class FedExShipping(ShippingCarrierBase):
                         logger.warning("No transactionShipments found in output")
                     
                     # Extract label URL - check multiple possible locations
-                    label_url = ''
                     label_documents = output.get('labelDocuments', [])
                     logger.info(f"labelDocuments in output: {len(label_documents)}")
                     if label_documents:
