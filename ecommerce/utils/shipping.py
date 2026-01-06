@@ -265,10 +265,12 @@ class FedExShipping(ShippingCarrierBase):
         }
         
         # Add declared value for international shipments (REQUIRED)
+        # FedEx requires minimum value of 1.00 USD for customs
         if is_international:
+            customs_amount = max(float(order.total_price), 1.0)  # Minimum 1.00 USD
             package_item['declaredValue'] = {
-                'amount': str(order.total_price),
-                'currency': 'USD'  # or get from order if available
+                'amount': f"{customs_amount:.2f}",
+                'currency': 'USD'
             }
         
         # Build requested shipment structure
@@ -319,23 +321,26 @@ class FedExShipping(ShippingCarrierBase):
         }
         
         # Add customs clearance detail for international shipments (REQUIRED)
+        # FedEx requires minimum value of 1.00 USD for customs
         if is_international:
+            customs_amount = max(float(order.total_price), 1.0)  # Minimum 1.00 USD
+            customs_amount_str = f"{customs_amount:.2f}"
             customs_detail = {
                 'dutiesPayment': {
                     'paymentType': 'SENDER'
                 },
                 'customsValue': {
-                    'amount': str(order.total_price),
-                    'currency': 'USD'  # or get from order if available
+                    'amount': customs_amount_str,
+                    'currency': 'USD'
                 },
                 'totalCustomsValue': {
-                    'amount': str(order.total_price),
+                    'amount': customs_amount_str,
                     'currency': 'USD'
                 }
             }
             requested_shipment['customsClearanceDetail'] = customs_detail
             import json
-            logger.info(f"Added customs clearance detail: {json.dumps(customs_detail, indent=2)}")
+            logger.info(f"Added customs clearance detail (amount: {customs_amount_str} USD): {json.dumps(customs_detail, indent=2)}")
         
         # Build shipment data structure
         shipment_data = {
