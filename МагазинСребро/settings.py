@@ -538,6 +538,7 @@ FEDEX_API_SECRET = env("FEDEX_API_SECRET", "")
 FEDEX_ACCOUNT_NUMBER = env("FEDEX_ACCOUNT_NUMBER", "")
 FEDEX_METER_NUMBER = env("FEDEX_METER_NUMBER", "")
 FEDEX_API_URL = env("FEDEX_API_URL", "https://apis.fedex.com/ship/v1/shipments")
+FEDEX_SHIPPING_LOCATION = env("FEDEX_SHIPPING_LOCATION", "GB")  # GB for United Kingdom, US for USA, etc.
 
 # DHL
 DHL_API_KEY = env("DHL_API_KEY", "")

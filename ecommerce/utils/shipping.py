@@ -263,6 +263,60 @@ class FedExShipping(ShippingCarrierBase):
             logger.info(f"Added accountNumber to shipment data: {account_value}")
             logger.info(f"Account number type: {type(account_value)}, value: '{account_value}'")
             
+            # Add shipping location if configured (may be required for some accounts)
+            shipping_location = getattr(settings, 'FEDEX_SHIPPING_LOCATION', None)
+            if shipping_location:
+                shipment_data['requestedShipment']['shippingChargesPayment']['payor'] = {
+                    'responsibleParty': {
+                        'accountNumber': {
+                            'value': account_value
+                        },
+                        'address': {
+                            'countryCode': shipping_location
+                        }
+                    }
+                }
+                logger.info(f"Added shipping location: {shipping_location}")
+        else:
+            logger.error("FedEx account_number is REQUIRED but not provided!")
+        
+        logger.info(f"Final shipment data keys: {list(shipment_data.keys())}")
+        if 'accountNumber' in shipment_data:
+            logger.info(f"Account number in shipment: {shipment_data['accountNumber']}")
+        
+        return shipment_data
+                'shippingChargesPayment': {
+                    'paymentType': 'SENDER'
+                },
+                'labelSpecification': {
+                    'imageType': 'PDF',
+                    'labelStockType': 'PAPER_4X6'
+                },
+                'requestedPackageLineItems': [{
+                    'weight': {
+                        'units': 'KG',
+                        'value': max(total_weight, 0.5)  # Minimum 0.5kg
+                    }
+                }]
+            }
+        }
+        
+        # Add account number (REQUIRED by FedEx API)
+        # Note: Account number must be authorized for use with these API credentials
+        if self.account_number:
+            # Ensure account number is properly formatted (as string, but ensure it's numeric)
+            account_value = str(self.account_number).strip()
+            # Verify it's numeric
+            if not account_value.isdigit():
+                logger.error(f"FedEx account number must be numeric, got: {account_value}")
+                return None
+            
+            shipment_data['accountNumber'] = {
+                'value': account_value
+            }
+            logger.info(f"Added accountNumber to shipment data: {account_value}")
+            logger.info(f"Account number type: {type(account_value)}, value: '{account_value}'")
+            
             # Add meter number if available (required for some operations)
             if self.meter_number:
                 meter_value = str(self.meter_number).strip()
