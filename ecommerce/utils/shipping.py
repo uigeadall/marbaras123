@@ -251,7 +251,9 @@ class FedExShipping(ShippingCarrierBase):
                         'city': getattr(settings, 'SHOP_CITY', 'Sofia'),
                         'stateOrProvinceCode': getattr(settings, 'SHOP_STATE', ''),
                         'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
-                        'countryCode': getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                        # Use FEDEX_SHIPPING_LOCATION for shipper country (where FedEx account is registered)
+                        # This must match the shipping location in Developer Portal
+                        'countryCode': getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG'),
                     }
                 },
                 'recipients': [{
