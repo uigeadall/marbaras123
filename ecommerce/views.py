@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 import hashlib
 from decimal import Decimal, ROUND_HALF_UP
@@ -403,33 +404,34 @@ def home(request: HttpRequest) -> HttpResponse:
 
 
     POPULAR_LIMIT = 15
-    cache_key_popular = 'popular_products'
+    # Generate cache key based on 5-minute intervals (round down to nearest 5 minutes)
+    # This ensures all requests within the same 5-minute window get the same random products
+    current_timestamp = int(time.time())
+    five_minutes = 300  # 5 minutes in seconds
+    time_slot = (current_timestamp // five_minutes) * five_minutes
+    cache_key_popular = f'popular_products_{time_slot}'
     popular_products = cache.get(cache_key_popular)
     if popular_products is None:
+        # Get random products for "Trending Now" section
         popular_products = list(
             Product.objects
             .select_related("category")
             .prefetch_related(Prefetch("images", queryset=ProductImage.objects.all()))
-            .annotate(_pop=Coalesce("cart_add_count", Value(0)))
-            .order_by("-_pop", "-id")[:POPULAR_LIMIT]
+            .order_by('?')[:POPULAR_LIMIT]  # Random order
         )
-        cache.set(cache_key_popular, popular_products, 1800)
+        cache.set(cache_key_popular, popular_products, five_minutes + 10)  # Cache for 5 min + 10 sec buffer
 
 
-    cache_key_editors = 'editors_choice_products'
+    cache_key_editors = f'editors_choice_products_{time_slot}'
     editors_choice = cache.get(cache_key_editors)
     if editors_choice is None:
+        # Get random products for "Handpicked This Month" section
         editors_choice = list(
             Product.objects.select_related("category")
             .prefetch_related(Prefetch("images", queryset=ProductImage.objects.all()))
-            .annotate(
-                variant_stock=Coalesce(Sum("variants__stock"), Value(0)),
-                base_stock=Coalesce(F("stock"), Value(0)),
-            )
-            .annotate(total_stock=F("base_stock") + F("variant_stock"))
-            .order_by("-total_stock", "name", "-id")[:10]
+            .order_by('?')[:10]  # Random order
         )
-        cache.set(cache_key_editors, editors_choice, 3600)
+        cache.set(cache_key_editors, editors_choice, five_minutes + 10)  # Cache for 5 min + 10 sec buffer
 
     # Get active banner images for carousel
     banner_images = BannerImage.objects.filter(is_active=True).order_by("order", "-created_at")[:4]
@@ -1227,7 +1229,13 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
         product.cart_add_count = (product.cart_add_count or 0) + actually_added
         product.save(update_fields=["cart_add_count"])
 
-        cache.delete('popular_products')
+        # Clear all time-slot based cache keys for popular products (last 2 slots = 10 minutes)
+        current_timestamp = int(time.time())
+        five_minutes = 300
+        for i in range(2):
+            time_slot = ((current_timestamp // five_minutes) - i) * five_minutes
+            cache.delete(f'popular_products_{time_slot}')
+            cache.delete(f'editors_choice_products_{time_slot}')
 
 
     if is_bundle_add:

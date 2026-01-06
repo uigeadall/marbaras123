@@ -6,6 +6,7 @@ from django.core.cache import cache
 from allauth.account.signals import user_signed_up
 import logging
 import threading
+import time
 
 log = logging.getLogger(__name__)
 
@@ -143,5 +144,14 @@ def invalidate_categories_cache(sender, instance, **kwargs):
 @receiver(post_delete, sender=Product, dispatch_uid="invalidate_products_cache_delete")
 def invalidate_products_cache(sender, instance, **kwargs):
     """Invalidate popular products and editors choice cache when a product is saved or deleted."""
+    # Clear old cache keys (for backward compatibility)
     cache.delete('popular_products')
     cache.delete('editors_choice_products')
+    
+    # Clear time-slot based cache keys (last 3 slots = 15 minutes to cover all possible active slots)
+    current_timestamp = int(time.time())
+    five_minutes = 300
+    for i in range(3):
+        time_slot = ((current_timestamp // five_minutes) - i) * five_minutes
+        cache.delete(f'popular_products_{time_slot}')
+        cache.delete(f'editors_choice_products_{time_slot}')
