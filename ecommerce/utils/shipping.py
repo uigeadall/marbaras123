@@ -47,6 +47,9 @@ class FedExShipping(ShippingCarrierBase):
         logger.info(f"FedEx API URL: {self.api_url}")
         logger.info(f"FedEx API Key present: {bool(self.api_key)}")
         logger.info(f"FedEx API Secret present: {bool(self.api_secret)}")
+        logger.info(f"FedEx Account Number present: {bool(self.account_number)}")
+        if self.account_number:
+            logger.info(f"FedEx Account Number: {self.account_number}")
         
         # Check required credentials
         if not all([self.api_key, self.api_secret]):
