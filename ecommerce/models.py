@@ -83,7 +83,29 @@ class Product(models.Model):
         help_text="All categories this product belongs to (including Sale)",
     )
 
-    image = models.ImageField(upload_to="products/", blank=True, null=True)
+    # Get storage dynamically to ensure Cloudinary is used if configured
+    @staticmethod
+    def _get_storage():
+        from django.conf import settings
+        # Always try to use Cloudinary if credentials are available
+        if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
+            try:
+                from cloudinary_storage.storage import MediaCloudinaryStorage
+                return MediaCloudinaryStorage()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to initialize Cloudinary storage: {e}")
+        # Fallback to default storage if Cloudinary is not available
+        from django.core.files.storage import default_storage
+        return default_storage
+    
+    image = models.ImageField(
+        upload_to="products/", 
+        blank=True, 
+        null=True,
+        storage=_get_storage()
+    )
     serial_number = models.CharField(
         max_length=50,
         unique=True,
@@ -284,7 +306,28 @@ class ProductVariant(models.Model):
 
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
-    image = models.ImageField(upload_to='products/multiple/')
+    
+    # Get storage dynamically to ensure Cloudinary is used if configured
+    @staticmethod
+    def _get_storage():
+        from django.conf import settings
+        # Always try to use Cloudinary if credentials are available
+        if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
+            try:
+                from cloudinary_storage.storage import MediaCloudinaryStorage
+                return MediaCloudinaryStorage()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to initialize Cloudinary storage: {e}")
+        # Fallback to default storage if Cloudinary is not available
+        from django.core.files.storage import default_storage
+        return default_storage
+    
+    image = models.ImageField(
+        upload_to='products/multiple/',
+        storage=_get_storage()
+    )
     is_gold_plated = models.BooleanField(
         default=False,
         help_text="Check if this image is for the gold plated version of the product. Leave unchecked for normal version images."
