@@ -241,74 +241,84 @@ class FedExShipping(ShippingCarrierBase):
         origin_country = getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG')
         is_international = origin_country != recipient_country
         
+        # Build package line items
+        package_item = {
+            'weight': {
+                'units': 'KG',
+                'value': max(total_weight, 0.5)  # Minimum 0.5kg
+            }
+        }
+        
+        # Add declared value for international shipments (REQUIRED)
+        if is_international:
+            package_item['declaredValue'] = {
+                'amount': str(order.total_price),
+                'currency': 'USD'  # or get from order if available
+            }
+        
+        # Build requested shipment structure
+        requested_shipment = {
+            'shipper': {
+                'contact': {
+                    'personName': 'Marbaras',
+                    'phoneNumber': getattr(settings, 'SHOP_PHONE', ''),
+                },
+                'address': {
+                    'streetLines': [getattr(settings, 'SHOP_ADDRESS', '')],
+                    'city': getattr(settings, 'SHOP_CITY', 'Sofia'),
+                    'stateOrProvinceCode': getattr(settings, 'SHOP_STATE', ''),
+                    'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                    # Use FEDEX_SHIPPING_LOCATION for shipper country (where FedEx account is registered)
+                    # This must match the shipping location in Developer Portal
+                    'countryCode': getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                }
+            },
+            'recipients': [{
+                'contact': {
+                    'personName': order.full_name,
+                    'phoneNumber': order.phone,
+                },
+                'address': {
+                    'streetLines': [order.address],
+                    'city': order.city,
+                    'postalCode': order.postal_code,
+                    'countryCode': self._normalize_country_code(order.country),
+                }
+            }],
+            'shipDatestamp': order.created_at.strftime('%Y-%m-%d'),
+            # Determine service type based on destination
+            # For international shipments, use INTERNATIONAL_ECONOMY or INTERNATIONAL_PRIORITY
+            # For domestic shipments, use STANDARD_OVERNIGHT or FEDEX_GROUND
+            'serviceType': self._get_service_type(order),
+            'packagingType': 'YOUR_PACKAGING',
+            'pickupType': 'USE_SCHEDULED_PICKUP',
+            'blockInsightVisibility': False,
+            'shippingChargesPayment': {
+                'paymentType': 'SENDER'
+            },
+            'labelSpecification': {
+                'imageType': 'PDF',
+                'labelStockType': 'PAPER_4X6'
+            },
+            'requestedPackageLineItems': [package_item]
+        }
+        
+        # Add customs clearance detail for international shipments (REQUIRED)
+        if is_international:
+            requested_shipment['customsClearanceDetail'] = {
+                'dutiesPayment': {
+                    'paymentType': 'SENDER'
+                },
+                'customsValue': {
+                    'amount': str(order.total_price),
+                    'currency': 'USD'  # or get from order if available
+                }
+            }
+        
         # Build shipment data structure
         shipment_data = {
             'labelResponseOptions': 'URL_ONLY',
-            'requestedShipment': {
-                'shipper': {
-                    'contact': {
-                        'personName': 'Marbaras',
-                        'phoneNumber': getattr(settings, 'SHOP_PHONE', ''),
-                    },
-                    'address': {
-                        'streetLines': [getattr(settings, 'SHOP_ADDRESS', '')],
-                        'city': getattr(settings, 'SHOP_CITY', 'Sofia'),
-                        'stateOrProvinceCode': getattr(settings, 'SHOP_STATE', ''),
-                        'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
-                        # Use FEDEX_SHIPPING_LOCATION for shipper country (where FedEx account is registered)
-                        # This must match the shipping location in Developer Portal
-                        'countryCode': getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG'),
-                    }
-                },
-                'recipients': [{
-                    'contact': {
-                        'personName': order.full_name,
-                        'phoneNumber': order.phone,
-                    },
-                    'address': {
-                        'streetLines': [order.address],
-                        'city': order.city,
-                        'postalCode': order.postal_code,
-                        'countryCode': self._normalize_country_code(order.country),
-                    }
-                }],
-                'shipDatestamp': order.created_at.strftime('%Y-%m-%d'),
-                # Determine service type based on destination
-                # For international shipments, use INTERNATIONAL_ECONOMY or INTERNATIONAL_PRIORITY
-                # For domestic shipments, use STANDARD_OVERNIGHT or FEDEX_GROUND
-                'serviceType': self._get_service_type(order),
-                'packagingType': 'YOUR_PACKAGING',
-                'pickupType': 'USE_SCHEDULED_PICKUP',
-                'blockInsightVisibility': False,
-                'shippingChargesPayment': {
-                    'paymentType': 'SENDER'
-                },
-                'labelSpecification': {
-                    'imageType': 'PDF',
-                    'labelStockType': 'PAPER_4X6'
-                },
-                'requestedPackageLineItems': [{
-                    'weight': {
-                        'units': 'KG',
-                        'value': max(total_weight, 0.5)  # Minimum 0.5kg
-                    },
-                    # Add customs value for international shipments (REQUIRED)
-                    **({'declaredValue': {
-                        'amount': str(order.total_price),
-                        'currency': 'USD'  # or get from order if available
-                    }} if is_international else {})
-                }],
-                # Add total customs value for international shipments (REQUIRED)
-                **({'customsClearanceDetail': {
-                    'dutiesPayment': {
-                        'paymentType': 'SENDER'
-                    },
-                    'customsValue': {
-                        'amount': str(order.total_price),
-                        'currency': 'USD'  # or get from order if available
-                    }
-                }} if is_international else {})
-            }
+            'requestedShipment': requested_shipment
         }
         
         # Add account number (REQUIRED by FedEx API)
