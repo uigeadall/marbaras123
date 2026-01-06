@@ -235,8 +235,19 @@ class FedExShipping(ShippingCarrierBase):
                 return cleaned.zfill(4)
             else:
                 return '1000'  # Default Sofia postal code
-        elif country_code == 'GB':  # UK - various formats, keep as is
-            return postal_code.strip()
+        elif country_code == 'GB':  # UK - various formats (e.g., SW1A 1AA, M1 1AA, etc.)
+            # UK postal codes can be: SW1A 1AA, M1 1AA, B33 8TH, etc.
+            # Remove spaces and convert to uppercase
+            uk_code = postal_code.strip().upper().replace(' ', '')
+            # If it's a Bulgarian postal code (4 digits), use a default UK code
+            if uk_code.isdigit() and len(uk_code) == 4:
+                return 'SW1A 1AA'  # Default London postal code for UK
+            # If it looks like a valid UK format (6-8 chars with letters and numbers), return as is
+            if len(uk_code) >= 5 and len(uk_code) <= 8:
+                # Format as UK postal code (e.g., SW1A1AA -> SW1A 1AA)
+                if len(uk_code) >= 5:
+                    return f"{uk_code[:-3]} {uk_code[-3:]}" if len(uk_code) > 5 else uk_code
+            return 'SW1A 1AA'  # Default UK postal code
         elif country_code == 'US':  # USA - 5 or 9 digits
             if len(cleaned) >= 5:
                 return cleaned[:5] if len(cleaned) < 9 else f"{cleaned[:5]}-{cleaned[5:9]}"
