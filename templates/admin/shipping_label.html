@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shipping Label - Order #{{ order.id }}</title>
+    <style>
+        @media print {
+            @page {
+                size: 4in 6in;
+                margin: 0.2in;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 0;
+            padding: 10px;
+            max-width: 4in;
+        }
+        
+        .label-header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .label-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .order-info {
+            margin-bottom: 12px;
+        }
+        
+        .order-info strong {
+            font-size: 14px;
+        }
+        
+        .shipping-address {
+            background: #f5f5f5;
+            border: 1px solid #000;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        
+        .shipping-address h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            text-decoration: underline;
+        }
+        
+        .shipping-address p {
+            margin: 4px 0;
+            font-size: 12px;
+        }
+        
+        .items-list {
+            margin-top: 10px;
+            border-top: 1px solid #000;
+            padding-top: 8px;
+        }
+        
+        .items-list h4 {
+            margin: 0 0 6px 0;
+            font-size: 13px;
+        }
+        
+        .items-list ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 11px;
+        }
+        
+        .items-list li {
+            margin: 3px 0;
+        }
+        
+        .print-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        
+        .print-button:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button class="print-button" onclick="window.print()">🖨️ Print Label</button>
+        <a href="{% url 'admin:ecommerce_order_changelist' %}" style="display: inline-block; margin-left: 10px; color: #667eea; text-decoration: none;">← Back to Orders</a>
+    </div>
+    
+    <div class="label-header">
+        <h2>SHIPPING LABEL</h2>
+    </div>
+    
+    <div class="order-info">
+        <strong>Order #{{ order.id }}</strong><br>
+        Date: {{ order.created_at|date:"d.m.Y H:i" }}
+    </div>
+    
+    <div class="shipping-address">
+        <h3>SHIP TO:</h3>
+        <p><strong>{{ order.full_name }}</strong></p>
+        <p>{{ order.address }}</p>
+        <p>{{ order.city }}{% if order.postal_code %}, {{ order.postal_code }}{% endif %}</p>
+        {% if order.country %}<p>{{ order.country }}</p>{% endif %}
+        <p>Phone: {{ order.phone }}</p>
+    </div>
+    
+    {% if order.shipping_option %}
+    <div style="margin: 10px 0;">
+        <strong>Shipping Method:</strong> {{ order.shipping_option.name }}<br>
+        <strong>Delivery Time:</strong> {{ order.shipping_option.delivery_time }}
+    </div>
+    {% endif %}
+    
+    <div class="items-list">
+        <h4>Items ({{ order.items.count }}):</h4>
+        <ul>
+            {% for item in order.items.all %}
+            <li>{{ item.product.name }}{% if item.variant %} - Size: {{ item.variant.size }}{% endif %} × {{ item.quantity }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+    <div style="margin-top: 15px; font-size: 11px; border-top: 1px solid #000; padding-top: 8px;">
+        <strong>From:</strong> Marbaras<br>
+        <strong>Total:</strong> €{{ order.get_total_with_shipping|floatformat:2 }}
+    </div>
+    
+    <script>
+        // Auto-print when page loads (only if opened in new window)
+        if (window.opener) {
+            window.onload = function() {
+                setTimeout(function() {
+                    window.print();
+                }, 500);
+            };
+        }
+    </script>
+</body>
+</html>
+

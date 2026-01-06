@@ -4,6 +4,7 @@ from django.db.models import Count, Sum, Case, When, Value
 from django.http import HttpResponse
 from django.contrib import messages
 from django.utils.html import format_html
+from django.shortcuts import redirect
 from django import forms
 import csv
 
@@ -245,6 +246,7 @@ class OrderAdmin(admin.ModelAdmin):
         "shipping_option",
         "coupon_code",
         "items_count",
+        "print_label_link",
     )
 
     search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code")
@@ -252,7 +254,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_select_related = ("shipping_option", "coupon", "user")
     readonly_fields = ()
 
-    actions = ["export_orders_csv", "send_shipped_email"]
+    actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels"]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -328,6 +330,69 @@ class OrderAdmin(admin.ModelAdmin):
         return response
 
     export_orders_csv.short_description = "Export selected orders to CSV"
+    
+    @admin.display(description="Label")
+    def print_label_link(self, obj):
+        """Add a link to print shipping label for this order."""
+        from django.urls import reverse
+        url = reverse('admin:print_shipping_label', args=[obj.pk])
+        return format_html('<a href="{}" target="_blank" style="color: #667eea; font-weight: bold;">🖨️ Print</a>', url)
+    print_label_link.short_description = "Label"
+    
+    def print_shipping_labels(self, request, queryset):
+        """Admin action to print shipping labels for selected orders."""
+        from django.urls import reverse
+        from django.contrib import messages
+        
+        if queryset.count() == 1:
+            # Single order - redirect to print page
+            order = queryset.first()
+            url = reverse('admin:print_shipping_label', args=[order.pk])
+            return redirect(url)
+        else:
+            # Multiple orders - open each in new window
+            messages.info(request, f"Opening {queryset.count()} shipping labels in new windows...")
+            # Return a response that opens multiple windows
+            from django.http import HttpResponse
+            from django.urls import reverse
+            html = '<html><head><title>Printing Labels</title></head><body><h2>Opening labels...</h2><script>'
+            for order in queryset:
+                url = reverse('admin:print_shipping_label', args=[order.pk])
+                html += f'window.open("{url}", "_blank");'
+            html += 'setTimeout(function() { window.close(); }, 1000);</script></body></html>'
+            return HttpResponse(html)
+    
+    print_shipping_labels.short_description = "🖨️ Print shipping labels"
+    
+    def get_urls(self):
+        """Add custom URL for printing shipping labels."""
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:order_id>/print-label/',
+                self.admin_site.admin_view(self.print_shipping_label_view),
+                name='print_shipping_label',
+            ),
+        ]
+        return custom_urls + urls
+    
+    def print_shipping_label_view(self, request, order_id):
+        """View to render shipping label for printing."""
+        from django.shortcuts import get_object_or_404
+        from django.template.loader import render_to_string
+        from django.http import HttpResponse
+        
+        order = get_object_or_404(Order, pk=order_id)
+        
+        # Prefetch related items for better performance
+        order.items.select_related('product', 'variant').all()
+        
+        html = render_to_string('admin/shipping_label.html', {
+            'order': order,
+        }, request=request)
+        
+        return HttpResponse(html)
 
 
 # ---------- Coupons ----------
