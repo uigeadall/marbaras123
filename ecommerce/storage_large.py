@@ -38,12 +38,20 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
                 import os
                 public_id = os.path.splitext(public_id)[0]
             
-            # Generate video URL
-            video_url = cloudinary.CloudinaryImage(public_id).build_url(
-                resource_type="video",
-                secure=True
-            )
-            return video_url
+            # Generate video URL using CloudinaryVideo
+            try:
+                video_url = cloudinary.CloudinaryVideo(public_id).build_url(
+                    secure=True
+                )
+                return video_url
+            except Exception as e:
+                logger.warning(f"Failed to generate video URL for {name}, using parent method: {e}")
+                # Fallback to parent method
+                url = super().url(name)
+                # Try to replace /image/upload/ with /video/upload/ if it's in the URL
+                if '/image/upload/' in url:
+                    url = url.replace('/image/upload/', '/video/upload/')
+                return url
         else:
             # For images and other files, use parent method
             return super().url(name)
