@@ -168,7 +168,7 @@ class FedExShipping(ShippingCarrierBase):
                         'streetLines': [order.address],
                         'city': order.city,
                         'postalCode': order.postal_code,
-                        'countryCode': order.country or 'BG',
+                        'countryCode': self._normalize_country_code(order.country),
                     }
                 }],
                 'shipDatestamp': order.created_at.strftime('%Y-%m-%d'),
