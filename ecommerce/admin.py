@@ -251,10 +251,22 @@ class OrderAdmin(admin.ModelAdmin):
         "print_label_link",
     )
 
-    search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code")
-    list_filter = ("shipping_option", "coupon", "created_at")
+    search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number")
+    list_filter = ("shipping_option", "shipping_carrier", "coupon", "created_at")
     list_select_related = ("shipping_option", "coupon", "user")
-    readonly_fields = ()
+    readonly_fields = ("tracking_number", "shipment_id", "shipping_label_url")
+    
+    fieldsets = (
+        ("Order Information", {
+            "fields": ("user", "email", "created_at", "total_price", "coupon")
+        }),
+        ("Shipping", {
+            "fields": ("shipping_option", "shipping_carrier", "tracking_number", "shipment_id", "shipping_label_url")
+        }),
+        ("Customer Details", {
+            "fields": ("full_name", "phone", "address", "city", "postal_code", "country")
+        }),
+    )
 
     actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels", "create_shipping_labels"]
 

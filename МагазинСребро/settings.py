@@ -527,6 +527,36 @@ if RESEND_API_KEY:
     EMAIL_BACKEND = "ecommerce.utils.resend_backend.ResendBackend"
 elif SENDGRID_API_KEY:
     EMAIL_BACKEND = "ecommerce.utils.sendgrid_backend.SendGridBackend"
+
+# Shipping Carrier API Configuration
+# FedEx
+FEDEX_API_KEY = env("FEDEX_API_KEY", "")
+FEDEX_API_SECRET = env("FEDEX_API_SECRET", "")
+FEDEX_ACCOUNT_NUMBER = env("FEDEX_ACCOUNT_NUMBER", "")
+FEDEX_METER_NUMBER = env("FEDEX_METER_NUMBER", "")
+FEDEX_API_URL = env("FEDEX_API_URL", "https://apis.fedex.com/ship/v1/shipments")
+
+# DHL
+DHL_API_KEY = env("DHL_API_KEY", "")
+DHL_API_SECRET = env("DHL_API_SECRET", "")
+DHL_ACCOUNT_NUMBER = env("DHL_ACCOUNT_NUMBER", "")
+DHL_API_URL = env("DHL_API_URL", "https://api-eu.dhl.com/shipment/shipments")
+
+# Deutsche Post
+DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")
+DEUTSCHE_POST_API_SECRET = env("DEUTSCHE_POST_API_SECRET", "")
+DEUTSCHE_POST_ACCOUNT_NUMBER = env("DEUTSCHE_POST_ACCOUNT_NUMBER", "")
+DEUTSCHE_POST_API_URL = env("DEUTSCHE_POST_API_URL", "https://api-sandbox.dhl.com/parcel/de/shipping/v2/orders")
+
+# Shop Information (for shipping labels)
+SHOP_NAME = env("SHOP_NAME", "Marbaras")
+SHOP_ADDRESS = env("SHOP_ADDRESS", "")
+SHOP_CITY = env("SHOP_CITY", "Sofia")
+SHOP_POSTAL_CODE = env("SHOP_POSTAL_CODE", "")
+SHOP_STATE = env("SHOP_STATE", "")
+SHOP_COUNTRY = env("SHOP_COUNTRY", "BG")
+SHOP_PHONE = env("SHOP_PHONE", "")
+SHOP_EMAIL = env("SHOP_EMAIL", DEFAULT_FROM_EMAIL)
 else:
     # Fallback to SMTP (will fail on Railway Hobby plan)
     EMAIL_BACKEND = env("EMAIL_BACKEND", "ecommerce.utils.smtp_backend.SMTPSBackend")
