@@ -29,9 +29,18 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
             from django.conf import settings
             
             # Get public_id from name - remove any folder prefixes and extensions
+            # The name format from Django is usually: "banners/videos/filename.mp4"
+            # But Cloudinary might store it as: "media/banners/videos/filename" or "banners/videos/filename"
             public_id = name
-            # Remove upload_to folder prefix (banners/videos/ or banners/)
-            if public_id.startswith('banners/videos/'):
+            
+            # Remove all folder prefixes (media/, banners/videos/, banners/)
+            if public_id.startswith('media/banners/videos/'):
+                public_id = public_id.replace('media/banners/videos/', '')
+            elif public_id.startswith('media/banners/'):
+                public_id = public_id.replace('media/banners/', '')
+            elif public_id.startswith('media/'):
+                public_id = public_id.replace('media/', '')
+            elif public_id.startswith('banners/videos/'):
                 public_id = public_id.replace('banners/videos/', '')
             elif public_id.startswith('banners/'):
                 public_id = public_id.replace('banners/', '')
@@ -41,8 +50,9 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
             if public_id.endswith(('.mp4', '.webm', '.ogg', '.mov', '.avi')):
                 public_id = os.path.splitext(public_id)[0]
             
-            # If public_id is just the filename without extension, that's correct
-            # Cloudinary will use this as the public_id
+            # If public_id still contains slashes, it means it has folder structure
+            # We need to keep the folder structure but remove 'media/' prefix
+            # Cloudinary public_id format: "folder/subfolder/filename" (without extension)
             logger.info(f"Extracted public_id '{public_id}' from name '{name}'")
             
             # Generate video URL using CloudinaryVideo
