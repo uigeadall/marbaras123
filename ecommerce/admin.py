@@ -331,6 +331,21 @@ class OrderAdmin(admin.ModelAdmin):
 
     export_orders_csv.short_description = "Export selected orders to CSV"
     
+    def save_model(self, request, obj, form, change):
+        """Override save to auto-print label for new orders."""
+        is_new = not change  # change=False means it's a new object
+        super().save_model(request, obj, form, change)
+        
+        # Auto-print label for new orders
+        if is_new:
+            from django.urls import reverse
+            url = reverse('admin:print_shipping_label', args=[obj.pk])
+            # Show message with link to print label
+            messages.info(request, format_html(
+                '✅ Order created! <a href="{}" target="_blank" style="color: #667eea; font-weight: bold;">🖨️ Print Shipping Label</a>',
+                url
+            ))
+    
     @admin.display(description="Label")
     def print_label_link(self, obj):
         """Add a link to print shipping label for this order."""
