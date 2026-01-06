@@ -84,18 +84,19 @@ class Product(models.Model):
     )
 
     # Get storage dynamically to ensure Cloudinary is used if configured
+    # Use HybridMediaStorage to support both old local files and new Cloudinary files
     @staticmethod
     def _get_storage():
         from django.conf import settings
-        # Always try to use Cloudinary if credentials are available
+        # Always try to use HybridMediaStorage if Cloudinary credentials are available
         if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
             try:
-                from cloudinary_storage.storage import MediaCloudinaryStorage
-                return MediaCloudinaryStorage()
+                from ecommerce.storage import HybridMediaStorage
+                return HybridMediaStorage()
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Failed to initialize Cloudinary storage: {e}")
+                logger.error(f"Failed to initialize HybridMediaStorage: {e}")
         # Fallback to default storage if Cloudinary is not available
         from django.core.files.storage import default_storage
         return default_storage
@@ -308,18 +309,19 @@ class ProductImage(models.Model):
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
     
     # Get storage dynamically to ensure Cloudinary is used if configured
+    # Use HybridMediaStorage to support both old local files and new Cloudinary files
     @staticmethod
     def _get_storage():
         from django.conf import settings
-        # Always try to use Cloudinary if credentials are available
+        # Always try to use HybridMediaStorage if Cloudinary credentials are available
         if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
             try:
-                from cloudinary_storage.storage import MediaCloudinaryStorage
-                return MediaCloudinaryStorage()
+                from ecommerce.storage import HybridMediaStorage
+                return HybridMediaStorage()
             except Exception as e:
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.error(f"Failed to initialize Cloudinary storage: {e}")
+                logger.error(f"Failed to initialize HybridMediaStorage: {e}")
         # Fallback to default storage if Cloudinary is not available
         from django.core.files.storage import default_storage
         return default_storage
