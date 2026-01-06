@@ -312,7 +312,7 @@ class FedExShipping(ShippingCarrierBase):
         
         # Add customs clearance detail for international shipments (REQUIRED)
         if is_international:
-            requested_shipment['customsClearanceDetail'] = {
+            customs_detail = {
                 'dutiesPayment': {
                     'paymentType': 'SENDER'
                 },
@@ -325,7 +325,9 @@ class FedExShipping(ShippingCarrierBase):
                     'currency': 'USD'
                 }
             }
-            logger.info(f"Added customs clearance detail with customsValue and totalCustomsValue: {order.total_price} USD")
+            requested_shipment['customsClearanceDetail'] = customs_detail
+            import json
+            logger.info(f"Added customs clearance detail: {json.dumps(customs_detail, indent=2)}")
         
         # Build shipment data structure
         shipment_data = {
