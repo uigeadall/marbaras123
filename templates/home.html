@@ -308,8 +308,10 @@
                       preload="auto"
                       class="w-full h-full object-cover"
                       style="pointer-events: none; background-color: #000; display: block;"
-                      onerror="if(this.nextElementSibling) { this.style.display='none'; this.nextElementSibling.style.display='block'; }"
+                      onerror="console.error('Video load error:', this.src); if(this.nextElementSibling) { this.style.display='none'; this.nextElementSibling.style.display='block'; }"
                       onloadstart="this.style.opacity='1';"
+                      oncanplay="this.style.opacity='1'; this.play().catch(e => console.log('Autoplay prevented:', e));"
+                      onloadeddata="this.style.opacity='1';"
                     >
                       <source src="{{ banner.video_file.url }}" type="video/mp4">
                       <source src="{{ banner.video_file.url }}" type="video/webm">
