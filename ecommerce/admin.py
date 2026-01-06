@@ -366,14 +366,28 @@ class BannerImageAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         """Override save to handle validation errors gracefully."""
         try:
+            # Check file size before validation if it's a new upload
+            if 'video_file' in form.changed_data and obj.video_file:
+                max_size = 524288000  # 500MB
+                if hasattr(obj.video_file, 'size') and obj.video_file.size > max_size:
+                    from django.contrib import messages
+                    messages.error(request, f"Video file is too large ({obj.video_file.size / 1024 / 1024:.2f}MB). Maximum size is 500MB.")
+                    return
+            
             obj.full_clean()
             super().save_model(request, obj, form, change)
+            from django.contrib import messages
+            messages.success(request, "Banner saved successfully!")
         except Exception as e:
             from django.contrib import messages
             error_msg = str(e)
             # Check if it's a storage space error
             if "No space left on device" in error_msg or "Errno 28" in error_msg:
                 messages.error(request, f"Storage space error: {error_msg}. Please check Cloudinary credentials in Railway environment variables (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET).")
+            elif "too large" in error_msg.lower() or "file size" in error_msg.lower():
+                messages.error(request, f"File size error: {error_msg}")
+            elif "Invalid video file format" in error_msg:
+                messages.error(request, f"File format error: {error_msg}")
             else:
                 messages.error(request, f"Error saving banner: {error_msg}")
             raise
