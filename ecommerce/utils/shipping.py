@@ -290,18 +290,19 @@ class FedExShipping(ShippingCarrierBase):
                     'countryCode': getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG'),
                 }
             },
-            'recipients': [{
-                'contact': {
-                    'personName': order.full_name,
-                    'phoneNumber': order.phone,
-                },
-                'address': {
-                    'streetLines': [order.address],
-                    'city': order.city,
-                    'postalCode': order.postal_code,
-                    'countryCode': self._normalize_country_code(order.country),
-                }
-            }],
+                'recipients': [{
+                    'contact': {
+                        'personName': order.full_name,
+                        'phoneNumber': order.phone,
+                    },
+                    'address': {
+                        'streetLines': [order.address],
+                        'city': order.city,
+                        # Validate and format postal code based on country
+                        'postalCode': self._normalize_postal_code(order.postal_code, self._normalize_country_code(order.country)),
+                        'countryCode': self._normalize_country_code(order.country),
+                    }
+                }],
             'shipDatestamp': order.created_at.strftime('%Y-%m-%d'),
             # Determine service type based on destination
             # For international shipments, use INTERNATIONAL_ECONOMY or INTERNATIONAL_PRIORITY
