@@ -778,20 +778,37 @@
         <div class="content-wrapper">
           <div class="flex">
             <div class="image-section">
-              {% if product_images %}
+              {% if product_images or has_gold_plated %}
                 <div class="thumbs-col" id="thumbsCol">
-                  {% for img in product_images|slice:":5" %}
+                  {% for img in normal_images|slice:":5" %}
                     <img
                       src="{{ img.image.url }}"
                       alt="{{ product.name }} - Image {{ forloop.counter }}"
                       data-image-url="{{ img.image.url }}"
+                      data-is-gold-plated="false"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
                       aria-label="View {{ product.name }} image {{ forloop.counter }}"
-                      class="thumbnail-img"
+                      class="thumbnail-img normal-image"
                     >
                   {% endfor %}
+                  {% if has_gold_plated %}
+                    {% for img in gold_plated_images|slice:":5" %}
+                      <img
+                        src="{{ img.image.url }}"
+                        alt="{{ product.name }} - Gold Plated Image {{ forloop.counter }}"
+                        data-image-url="{{ img.image.url }}"
+                        data-is-gold-plated="true"
+                        onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
+                        role="button"
+                        tabindex="0"
+                        aria-label="View {{ product.name }} gold plated image {{ forloop.counter }}"
+                        class="thumbnail-img gold-plated-image"
+                        style="display: none;"
+                      >
+                    {% endfor %}
+                  {% endif %}
                 </div>
               {% endif %}
               <div class="main-preview-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
@@ -804,29 +821,56 @@
                     <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image">
                   {% endif %}
                 </div>
-                {% if product_images|length > 5 %}
-                <div class="additional-thumbs" style="display: flex; flex-wrap: wrap; gap: 10px; padding-top: 10px; width: 100%;">
-                  {% for img in product_images|slice:"5:" %}
+                {% if normal_images|length > 5 or gold_plated_images|length > 5 %}
+                <div class="additional-thumbs" id="additionalThumbs" style="display: flex; flex-wrap: wrap; gap: 10px; padding-top: 10px; width: 100%;">
+                  {% for img in normal_images|slice:"5:" %}
                     <img
                       src="{{ img.image.url }}"
                       alt="{{ product.name }} - Image {{ forloop.counter|add:5 }}"
                       data-image-url="{{ img.image.url }}"
+                      data-is-gold-plated="false"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
                       aria-label="View {{ product.name }} image {{ forloop.counter|add:5 }}"
-                      class="thumbnail-img"
+                      class="thumbnail-img normal-image"
                       style="width: 70px; height: 70px; object-fit: cover; border: none; cursor: pointer; transition: opacity .2s, outline-color .2s; outline: 2px solid transparent;"
                       onmouseover="this.style.opacity='0.85'"
                       onmouseout="this.style.opacity='1'"
                     >
                   {% endfor %}
+                  {% if has_gold_plated %}
+                    {% for img in gold_plated_images|slice:"5:" %}
+                      <img
+                        src="{{ img.image.url }}"
+                        alt="{{ product.name }} - Gold Plated Image {{ forloop.counter|add:5 }}"
+                        data-image-url="{{ img.image.url }}"
+                        data-is-gold-plated="true"
+                        onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
+                        role="button"
+                        tabindex="0"
+                        aria-label="View {{ product.name }} gold plated image {{ forloop.counter|add:5 }}"
+                        class="thumbnail-img gold-plated-image"
+                        style="display: none; width: 70px; height: 70px; object-fit: cover; border: none; cursor: pointer; transition: opacity .2s, outline-color .2s; outline: 2px solid transparent;"
+                        onmouseover="this.style.opacity='0.85'"
+                        onmouseout="this.style.opacity='1'"
+                      >
+                    {% endfor %}
+                  {% endif %}
                 </div>
                 {% endif %}
               </div>
             </div>
 
             <div class="info-section">
+              {% if has_gold_plated %}
+              <div class="gold-plated-toggle" style="margin-bottom: 20px; padding: 12px; background: #f5f5f5; border-radius: 8px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;">
+                  <input type="checkbox" id="goldPlatedToggle" style="width: 20px; height: 20px; cursor: pointer;">
+                  <span>Show Gold Plated Version</span>
+                </label>
+              </div>
+              {% endif %}
               <h1>{{ product.name }}</h1>
               
               {% if is_sale and sale_expires_at %}
@@ -2221,6 +2265,55 @@
       }
     }
   });
+
+  // Gold Plated Toggle Functionality
+  (function() {
+    const toggle = document.getElementById('goldPlatedToggle');
+    if (!toggle) return;
+    
+    const normalImages = document.querySelectorAll('.normal-image');
+    const goldPlatedImages = document.querySelectorAll('.gold-plated-image');
+    const mainImage = document.getElementById('mainImage');
+    
+    function switchImages(showGoldPlated) {
+      // Show/hide thumbnails
+      normalImages.forEach(img => {
+        img.style.display = showGoldPlated ? 'none' : '';
+      });
+      goldPlatedImages.forEach(img => {
+        img.style.display = showGoldPlated ? '' : 'none';
+      });
+      
+      // Update main image
+      const visibleThumbs = showGoldPlated ? goldPlatedImages : normalImages;
+      if (visibleThumbs.length > 0) {
+        const firstVisible = Array.from(visibleThumbs).find(img => img.style.display !== 'none');
+        if (firstVisible && mainImage) {
+          mainImage.src = firstVisible.getAttribute('data-image-url') || firstVisible.src;
+        }
+      }
+      
+      // Update active thumbnail
+      const allThumbs = document.querySelectorAll('#thumbsCol .thumbnail-img');
+      allThumbs.forEach((thumb, index) => {
+        const isGoldPlated = thumb.getAttribute('data-is-gold-plated') === 'true';
+        if ((showGoldPlated && isGoldPlated) || (!showGoldPlated && !isGoldPlated)) {
+          if (index === 0) {
+            thumb.setAttribute('aria-current', 'true');
+          }
+        } else {
+          thumb.removeAttribute('aria-current');
+        }
+      });
+    }
+    
+    toggle.addEventListener('change', function() {
+      switchImages(this.checked);
+    });
+    
+    // Initialize: show normal images by default
+    switchImages(false);
+  })();
 
 </script>
 {% endblock %}

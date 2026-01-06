@@ -649,39 +649,39 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     comments = Comment.objects.filter(product=product).order_by("-created_at")
 
 
-    # Filter images based on product's gold plated status
-    # If product is gold plated, show only gold plated images
-    # If product is not gold plated, show only normal images
-    product_images = list(
-        ProductImage.objects.filter(
-            product=product,
-            is_gold_plated=product.is_gold_plated
-        ).order_by('id')
-    )
+    # Get all images (both normal and gold plated)
+    # We'll filter them on the frontend with JavaScript based on user selection
+    product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
+    
+    # Separate normal and gold plated images for frontend filtering
+    normal_images = [img for img in product_images if not img.is_gold_plated]
+    gold_plated_images = [img for img in product_images if img.is_gold_plated]
 
 
-    logger.debug(f"Product {product.pk} ({product.name}): Found {len(product_images)} ProductImage records")
-    for idx, img in enumerate(product_images):
-        logger.debug(f"  Image {idx}: {img.image.name if hasattr(img, 'image') else 'NO IMAGE ATTR'}")
-
-
+    logger.debug(f"Product {product.pk} ({product.name}): Found {len(all_product_images)} ProductImage records")
+    
+    # Handle main product image
     if product.image:
-
         main_image_path = product.image.name
+        # Check if main image exists in normal images
         image_exists = any(
             hasattr(img, 'image') and img.image.name == main_image_path
-            for img in product_images
+            for img in normal_images
         )
         if not image_exists:
+            # Add main image to normal images if it doesn't exist
+            main_img_obj = SimpleNamespace(image=product.image, is_gold_plated=False)
+            normal_images.insert(0, main_img_obj)
+            logger.debug(f"Added main image {main_image_path} to normal_images list")
 
-            main_img_obj = SimpleNamespace(image=product.image)
-            product_images.insert(0, main_img_obj)
-            logger.debug(f"Added main image {main_image_path} to product_images list")
+    # Filter out images without valid image attribute
+    normal_images = [img for img in normal_images if hasattr(img, 'image') and img.image]
+    gold_plated_images = [img for img in gold_plated_images if hasattr(img, 'image') and img.image]
+    
+    # Set default product_images to normal_images (will be shown by default)
+    product_images = normal_images
 
-
-    product_images = [img for img in product_images if hasattr(img, 'image') and img.image]
-
-    logger.debug(f"Total images for product {product.pk} after filtering: {len(product_images)}")
+    logger.debug(f"Total images for product {product.pk}: normal={len(normal_images)}, gold_plated={len(gold_plated_images)}")
     rating_form = None
     categories = _get_categories()
 
@@ -816,6 +816,9 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     context = {
         "product": product,
         "product_images": product_images,
+        "normal_images": normal_images,
+        "gold_plated_images": gold_plated_images,
+        "has_gold_plated": len(gold_plated_images) > 0,
         "comments": comments,
         "favorite_ids": (
             list(Favorite.objects.filter(user=request.user).values_list("product_id", flat=True))
