@@ -358,26 +358,25 @@ class FedExShipping(ShippingCarrierBase):
             # Build commodities list from order items (REQUIRED by FedEx)
             commodities = []
             for item in order.items.all():
-                # Get item price - try different possible field names
+                # Get item price from product (OrderItem doesn't have price field)
                 item_price = 0.0
-                if hasattr(item, 'price'):
-                    item_price = float(item.price)
-                elif hasattr(item, 'unit_price'):
-                    item_price = float(item.unit_price)
-                elif hasattr(item, 'product') and item.product:
-                    if hasattr(item.product, 'price'):
+                if item.product:
+                    # Use discounted price if available, otherwise use regular price
+                    if hasattr(item.product, 'get_discounted_price'):
+                        item_price = float(item.product.get_discounted_price())
+                    elif hasattr(item.product, 'price'):
                         item_price = float(item.product.price)
-                    elif hasattr(item.product, 'sale_price') and item.product.sale_price:
-                        item_price = float(item.product.sale_price)
-                    elif hasattr(item.product, 'regular_price'):
-                        item_price = float(item.product.regular_price)
+                    elif hasattr(item.product, 'discount_price') and item.product.discount_price:
+                        item_price = float(item.product.discount_price)
                 
                 # Ensure minimum price of 0.01 USD
                 item_price = max(item_price, 0.01)
                 total_item_value = item_price * item.quantity
                 
+                product_name = item.product.name[:50] if item.product and hasattr(item.product, 'name') else 'Product'
+                
                 commodities.append({
-                    'description': (item.product.name[:50] if item.product and hasattr(item.product, 'name') else 'Product'),  # Max 50 chars
+                    'description': product_name,  # Max 50 chars
                     'quantity': item.quantity,
                     'quantityUnits': 'PCS',  # Pieces
                     'unitPrice': {
