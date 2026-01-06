@@ -28,34 +28,24 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
             import cloudinary
             from django.conf import settings
             
-            # Get public_id from name - remove any folder prefixes and extensions
-            # The name format from Django is usually: "banners/videos/filename.mp4"
-            # But Cloudinary might store it as: "media/banners/videos/filename" or "banners/videos/filename"
+            # For video files, we need to use the name as stored in Cloudinary
+            # Cloudinary stores files with folder path as part of public_id
+            # When we upload with folder="banners/videos/", the public_id becomes "banners/videos/filename"
+            # So we should use the name directly (without extension) as public_id
+            
+            # Get public_id from name - keep folder structure but remove extension
             public_id = name
             
-            # Remove all folder prefixes (media/, banners/videos/, banners/)
-            if public_id.startswith('media/banners/videos/'):
-                public_id = public_id.replace('media/banners/videos/', '')
-            elif public_id.startswith('media/banners/'):
-                public_id = public_id.replace('media/banners/', '')
-            elif public_id.startswith('media/'):
-                public_id = public_id.replace('media/', '')
-            elif public_id.startswith('banners/videos/'):
-                public_id = public_id.replace('banners/videos/', '')
-            elif public_id.startswith('banners/'):
-                public_id = public_id.replace('banners/', '')
-            
-            # Remove file extension for public_id
+            # Remove file extension for public_id (Cloudinary stores without extension)
             import os
             if public_id.endswith(('.mp4', '.webm', '.ogg', '.mov', '.avi')):
                 public_id = os.path.splitext(public_id)[0]
             
-            # If public_id still contains slashes, it means it has folder structure
-            # We need to keep the folder structure but remove 'media/' prefix
-            # Cloudinary public_id format: "folder/subfolder/filename" (without extension)
-            logger.info(f"Extracted public_id '{public_id}' from name '{name}'")
+            # Cloudinary public_id format: "banners/videos/filename" (with folder, without extension)
+            # Don't remove folder prefixes - Cloudinary needs them!
+            logger.info(f"Using public_id '{public_id}' from name '{name}'")
             
-            # Generate video URL using CloudinaryVideo
+            # Generate video URL using CloudinaryVideo with the full public_id including folder
             try:
                 video_url = cloudinary.CloudinaryVideo(public_id).build_url(secure=True)
                 logger.info(f"Generated video URL for {name} (public_id: {public_id}): {video_url}")
