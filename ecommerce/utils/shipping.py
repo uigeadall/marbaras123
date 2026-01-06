@@ -223,10 +223,10 @@ class FedExShipping(ShippingCarrierBase):
             return 'FEDEX_GROUND'  # or 'STANDARD_OVERNIGHT' for express
         
         # For international shipments, use international service types
-        # INTERNATIONAL_ECONOMY - slower but cheaper
-        # INTERNATIONAL_PRIORITY - faster but more expensive
-        logger.info(f"International shipment detected: {origin_country} -> {dest_country}, using INTERNATIONAL_ECONOMY")
-        return 'INTERNATIONAL_ECONOMY'
+        # INTERNATIONAL_PRIORITY - faster, more widely supported
+        # INTERNATIONAL_ECONOMY - slower but cheaper (may not be available for all routes)
+        logger.info(f"International shipment detected: {origin_country} -> {dest_country}, using INTERNATIONAL_PRIORITY")
+        return 'INTERNATIONAL_PRIORITY'
     
     def _prepare_shipment_data(self, order) -> Dict[str, Any]:
         """Prepare shipment data for FedEx API."""
