@@ -312,7 +312,11 @@ class FedExShipping(ShippingCarrierBase):
                     'streetLines': [getattr(settings, 'SHOP_ADDRESS', '')],
                     'city': getattr(settings, 'SHOP_CITY', 'Sofia'),
                     'stateOrProvinceCode': getattr(settings, 'SHOP_STATE', ''),
-                    'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                    # Normalize shipper postal code based on shipping location
+                    'postalCode': self._normalize_postal_code(
+                        getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                        getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG')
+                    ),
                     # Use FEDEX_SHIPPING_LOCATION for shipper country (where FedEx account is registered)
                     # This must match the shipping location in Developer Portal
                     'countryCode': getattr(settings, 'FEDEX_SHIPPING_LOCATION', None) or getattr(settings, 'SHOP_COUNTRY', 'BG'),
@@ -375,10 +379,17 @@ class FedExShipping(ShippingCarrierBase):
                 
                 product_name = item.product.name[:50] if item.product and hasattr(item.product, 'name') else 'Product'
                 
+                # Calculate weight per item (distribute total weight proportionally)
+                item_weight = max(0.1, total_weight / max(len(order.items.all()), 1))  # Minimum 0.1kg per item
+                
                 commodities.append({
                     'description': product_name,  # Max 50 chars
                     'quantity': item.quantity,
                     'quantityUnits': 'PCS',  # Pieces
+                    'weight': {
+                        'units': 'KG',
+                        'value': round(item_weight * item.quantity, 2)  # Weight must be numeric
+                    },
                     'unitPrice': {
                         'amount': f"{item_price:.2f}",
                         'currency': 'USD'
