@@ -2200,56 +2200,70 @@
       
       console.log('✅ Product Detail - Country validated for payment:', shippingCountry);
       
-      // Complete payment first (before redirect)
-      ev.complete('success');
-      
-      // Store payment data in sessionStorage (same format as cart page)
-      if (ev.payerName || ev.payerEmail || ev.payerPhone || shippingAddr) {
-        const paymentData = {
-          payerName: ev.payerName,
-          payerEmail: ev.payerEmail,
-          payerPhone: ev.payerPhone,
-          shippingAddress: shippingAddr ? {
-            addressLine: shippingAddr.addressLine,
-            city: shippingAddr.city,
-            postalCode: shippingAddr.postalCode,
-            country: shippingAddr.country,
-            region: shippingAddr.region,
-          } : null
-        };
-        sessionStorage.setItem('applePayData', JSON.stringify(paymentData));
-        console.log('✅ Product Detail - Payment data stored, redirecting to checkout...');
+      // Calculate shipping cost based on country
+      let shippingCost = 0;
+      if (['CA', 'AU', 'NZ', 'NO'].includes(shippingCountry)) {
+        shippingCost = 5.99; // Standard shipping for these countries
+      } else {
+        shippingCost = 0; // Free shipping for other countries
       }
       
-      // Add product to cart, then redirect to checkout
-      // Checkout page will automatically fill form and submit if applePayData exists
+      const subtotal = productPrice * quantity;
+      const total = subtotal + shippingCost;
+      
+      // Create PaymentIntent with total amount (including shipping)
       try {
-        const formData = new FormData();
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-        formData.append('quantity', quantity);
-        if (variantId) {
-          formData.append('variant_id', variantId);
+        // First, confirm payment with Stripe PaymentIntent
+        const confirmParams = {
+          payment_method: ev.paymentMethod.id,
+        };
+        
+        if (ev.payerEmail) {
+          confirmParams.receipt_email = ev.payerEmail;
         }
         
-        const addToCartResponse = await fetch('{% url "add_to_cart" product.pk %}', {
+        // Create new PaymentIntent with correct total amount
+        const response = await fetch('{% url "create_order_from_product" %}', {
           method: 'POST',
-          body: formData,
-          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+          },
+          body: JSON.stringify({
+            product_id: {{ product.pk }},
+            variant_id: variantId || null,
+            quantity: quantity,
+            payment_method_id: ev.paymentMethod.id,
+            payer_name: ev.payerName,
+            payer_email: ev.payerEmail,
+            payer_phone: ev.payerPhone,
+            shipping_address: shippingAddr ? {
+              addressLine: shippingAddr.addressLine,
+              city: shippingAddr.city,
+              postalCode: shippingAddr.postalCode,
+              country: shippingAddr.country,
+              region: shippingAddr.region,
+            } : null
+          }),
+          credentials: 'same-origin'
         });
         
-        if (addToCartResponse.ok || addToCartResponse.redirected) {
-          console.log('✅ Product added to cart, redirecting to checkout...');
-          // Small delay before redirect to ensure ev.complete is processed
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('✅ Order created successfully:', result.order_id);
+          ev.complete('success');
+          // Redirect to success page
           setTimeout(function() {
-            window.location.href = '{% url "checkout" %}';
-          }, 100);
+            window.location.href = result.redirect_url || '/order-success/';
+          }, 500);
         } else {
-          console.error('❌ Failed to add product to cart');
+          console.error('❌ Failed to create order:', result.error);
           ev.complete('fail');
-          alert('Failed to add product to cart. Please try again.');
+          alert(result.error || 'Failed to create order. Please try again.');
         }
       } catch (error) {
-        console.error('Error adding product to cart:', error);
+        console.error('Error creating order:', error);
         ev.complete('fail');
         alert('An error occurred. Please try again.');
       }

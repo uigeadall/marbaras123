@@ -39,6 +39,7 @@ path('checkout/guest/', views.guest_checkout_view, name='guest_checkout'),
     path("blog/<slug:slug>/", views.blog_detail, name="blog_detail"),
     path("health/", views.health_check, name="health_check"),
     path("test-emails/", views.test_emails_view, name="test_emails"),
+    path("create-order-from-product/", views.create_order_from_product, name="create_order_from_product"),
 ]
 
 

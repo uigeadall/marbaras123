@@ -834,6 +834,13 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
 
     stripe_public_key = getattr(settings, 'STRIPE_PUBLISHABLE_KEY', None) or ""
     
+    # Create PaymentIntent for Apple Pay (using product price as base, shipping will be calculated on frontend)
+    product_price = product.get_discounted_price()
+    # Use base price for PaymentIntent, shipping will be added dynamically in Apple Pay
+    _ensure_session(request)
+    intent = _create_stripe_intent(product_price, request.session.session_key, is_guest=not request.user.is_authenticated)
+    client_secret = intent.client_secret if intent else None
+    
     context = {
         "product": product,
         "product_images": product_images,
@@ -860,6 +867,7 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "is_sale": is_sale,
         "sale_expires_at": sale_expires_at,
         "stripe_public_key": stripe_public_key,
+        "client_secret": client_secret,
     }
     return render(request, "product_detail.html", context)
 
@@ -1760,6 +1768,141 @@ def stripe_webhook(request: HttpRequest) -> HttpResponse:
 
 def payment_success(request: HttpRequest) -> HttpResponse:
     return render(request, "payment_success.html")
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_order_from_product(request: HttpRequest) -> HttpResponse:
+    """Create order directly from product detail page with Apple Pay."""
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        product_id = data.get('product_id')
+        variant_id = data.get('variant_id')
+        quantity = int(data.get('quantity', 1))
+        payment_method_id = data.get('payment_method_id')
+        
+        # Customer data from Apple Pay
+        payer_name = data.get('payer_name', '').strip()
+        payer_email = data.get('payer_email', '').strip()
+        payer_phone = data.get('payer_phone', '').strip()
+        shipping_address = data.get('shipping_address', {})
+        
+        # Validate required fields
+        if not all([product_id, payment_method_id, payer_name, payer_email, payer_phone]):
+            return JsonResponse({'success': False, 'error': 'Missing required fields'}, status=400)
+        
+        # Get product
+        product = get_object_or_404(Product, pk=product_id)
+        
+        # Get variant if specified
+        variant = None
+        if variant_id:
+            try:
+                variant = ProductVariant.objects.get(id=variant_id, product=product)
+            except ProductVariant.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Invalid variant'}, status=400)
+        
+        # Validate stock
+        available = _available_stock(product, variant_id=variant_id if variant else None)
+        if available != UNLIMITED_STOCK and quantity > available:
+            return JsonResponse({'success': False, 'error': f'Only {available} available'}, status=400)
+        
+        # Calculate prices
+        product_price = product.get_discounted_price()
+        subtotal = product_price * quantity
+        
+        # Calculate shipping
+        country = shipping_address.get('country', '')
+        ALLOWED_COUNTRIES = {
+            "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
+            "Iceland", "Liechtenstein", "Monaco", "Montenegro", "Norway", "San Marino",
+            "Serbia", "Switzerland", "Bahrain", "Japan", "Qatar", "Saudi Arabia",
+            "United Arab Emirates", "South Africa", "Canada", "Costa Rica", "United States",
+            "Australia", "New Zealand"
+        }
+        
+        if country not in ALLOWED_COUNTRIES:
+            return JsonResponse({'success': False, 'error': 'We do not ship to this country'}, status=400)
+        
+        # Determine shipping cost
+        shipping_cost = Decimal("0.00")
+        shipping_option = None
+        if country in ["Canada", "Australia", "New Zealand", "Norway"]:
+            standard_shipping = ShippingOption.objects.filter(price=Decimal("5.99")).first()
+            if standard_shipping:
+                shipping_option = standard_shipping
+                shipping_cost = standard_shipping.price
+            else:
+                shipping_cost = Decimal("5.99")
+        
+        total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
+        
+        # Create PaymentIntent
+        _ensure_session(request)
+        intent = _create_stripe_intent(total, request.session.session_key, is_guest=not request.user.is_authenticated)
+        if not intent:
+            return JsonResponse({'success': False, 'error': 'Failed to create payment intent'}, status=500)
+        
+        # Confirm payment with PaymentIntent
+        try:
+            confirm_params = {
+                'payment_method': payment_method_id,
+            }
+            if payer_email:
+                confirm_params['receipt_email'] = payer_email
+            
+            confirmed_intent = stripe.PaymentIntent.confirm(
+                intent.id,
+                **confirm_params
+            )
+            
+            if confirmed_intent.status != 'succeeded':
+                return JsonResponse({'success': False, 'error': 'Payment not completed'}, status=400)
+        except stripe_error.StripeError as e:
+            logger.error(f"Stripe payment confirmation error: {e}")
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        
+        # Create order
+        with transaction.atomic():
+            order = Order.objects.create(
+                user=request.user if request.user.is_authenticated else None,
+                email=payer_email,
+                full_name=payer_name,
+                address=', '.join(shipping_address.get('addressLine', [])) if shipping_address.get('addressLine') else '',
+                city=shipping_address.get('city', ''),
+                postal_code=shipping_address.get('postalCode', ''),
+                phone=payer_phone,
+                country=country,
+                shipping_option=shipping_option,
+                total_price=total,
+            )
+            
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                variant=variant,
+                quantity=quantity
+            )
+            
+            # Clear cart items for this product (if any)
+            owner = _owner_filter(request)
+            CartItem.objects.filter(**owner, product=product, variant=variant).delete()
+            
+            transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
+        
+        return JsonResponse({
+            'success': True,
+            'order_id': order.id,
+            'redirect_url': '/order-success/'
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"Error creating order from product: {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 def notify(request: HttpRequest, level: int, msg: str) -> HttpResponse:
