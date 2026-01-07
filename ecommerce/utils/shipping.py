@@ -606,9 +606,13 @@ class DHLShipping(ShippingCarrierBase):
         """Create DHL shipment and return tracking info."""
         logger.info(f"DHL create_shipment called for Order #{order.id}")
         
-        if not all([self.api_key, self.api_secret, self.account_number]):
-            logger.error("DHL credentials not configured - missing API key, secret, or account number")
+        if not all([self.api_key, self.api_secret]):
+            logger.error("DHL credentials not configured - missing API key or secret")
             return None
+        
+        # Account number is optional - can be derived from API or set later
+        if not self.account_number:
+            logger.warning("DHL account number not provided - will attempt to use userId or skip")
         
         try:
             # Get OAuth token
@@ -754,10 +758,10 @@ class DHLShipping(ShippingCarrierBase):
                 'isRequested': False
             },
             'productCode': product_code,
-            'accounts': [{
+            'accounts': ([{
                 'typeCode': 'shipper',
                 'number': self.account_number
-            }],
+            }] if self.account_number else []),
             'outputImageProperties': {
                 'printerDPI': 300,
                 'encodingFormat': 'PDF',
