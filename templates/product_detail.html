@@ -2203,7 +2203,7 @@
       // Complete payment first (before redirect)
       ev.complete('success');
       
-      // Store data in sessionStorage
+      // Store payment data in sessionStorage (same format as cart page)
       if (ev.payerName || ev.payerEmail || ev.payerPhone || shippingAddr) {
         const paymentData = {
           payerName: ev.payerName,
@@ -2218,10 +2218,11 @@
           } : null
         };
         sessionStorage.setItem('applePayData', JSON.stringify(paymentData));
-        console.log('✅ Product Detail - Payment data stored');
+        console.log('✅ Product Detail - Payment data stored, redirecting to checkout...');
       }
       
-      // First, add product to cart
+      // Add product to cart, then redirect to checkout
+      // Checkout page will automatically fill form and submit if applePayData exists
       try {
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
@@ -2244,10 +2245,12 @@
           }, 100);
         } else {
           console.error('❌ Failed to add product to cart');
+          ev.complete('fail');
           alert('Failed to add product to cart. Please try again.');
         }
       } catch (error) {
         console.error('Error adding product to cart:', error);
+        ev.complete('fail');
         alert('An error occurred. Please try again.');
       }
     });
