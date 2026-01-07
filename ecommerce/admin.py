@@ -401,9 +401,10 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.display(description="Create Label")
     def create_label_button(self, obj):
         """Add a button to create shipping label via API."""
+        from django.urls import reverse
+        
         if obj.shipping_label_url:
             # Label already exists
-            from django.urls import reverse
             print_url = reverse('admin:print_shipping_label', args=[obj.pk])
             return format_html(
                 '<div style="margin: 10px 0;">'
@@ -414,20 +415,15 @@ class OrderAdmin(admin.ModelAdmin):
             )
         elif obj.shipping_carrier:
             # Carrier selected, show create button
-            from django.urls import reverse
-            create_url = reverse('admin:ecommerce_order_changelist')
+            create_url = reverse('admin:create_shipping_label', args=[obj.pk])
             return format_html(
                 '<div style="margin: 10px 0;">'
-                '<a href="{}" onclick="createLabelForOrder({}); return false;" '
+                '<a href="{}" '
                 'style="background: #667eea; color: white; padding: 8px 16px; text-decoration: none; '
                 'border-radius: 4px; display: inline-block; font-weight: bold;">'
                 '📦 Create Label via {} API</a>'
-                '<script>function createLabelForOrder(orderId) {{'
-                'if(confirm("Create shipping label for Order #" + orderId + "?")) {{'
-                'window.location.href = "{}?action=create_shipping_labels&_selected_action=" + orderId;'
-                '}}}}</script>'
                 '</div>',
-                create_url, obj.id, obj.shipping_carrier.upper(), create_url
+                create_url, obj.shipping_carrier.upper()
             )
         else:
             return format_html(
