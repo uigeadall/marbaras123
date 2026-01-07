@@ -1839,29 +1839,43 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         
         total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
         
-        # Create PaymentIntent
+        # Create PaymentIntent with payment method attached
         _ensure_session(request)
-        intent = _create_stripe_intent(total, request.session.session_key, is_guest=not request.user.is_authenticated)
-        if not intent:
-            return JsonResponse({'success': False, 'error': 'Failed to create payment intent'}, status=500)
-        
-        # Confirm payment with PaymentIntent
         try:
-            confirm_params = {
+            # Create PaymentIntent with payment method
+            intent_params = {
+                'amount': int(_to_cents(total)),
+                'currency': 'eur',
                 'payment_method': payment_method_id,
+                'confirmation_method': 'manual',
+                'confirm': True,
             }
             if payer_email:
-                confirm_params['receipt_email'] = payer_email
+                intent_params['receipt_email'] = payer_email
             
-            confirmed_intent = stripe.PaymentIntent.confirm(
-                intent.id,
-                **confirm_params
+            # Create idempotency key
+            session_hash = hashlib.md5(request.session.session_key.encode('utf-8')).hexdigest() if request.session.session_key else 'nouser'
+            idempotency_key = f"pi-product-{product_id}-{variant_id or 'none'}-{session_hash}-{uuid.uuid4().hex}"
+            
+            intent = stripe.PaymentIntent.create(
+                **intent_params,
+                idempotency_key=idempotency_key
             )
             
-            if confirmed_intent.status != 'succeeded':
-                return JsonResponse({'success': False, 'error': 'Payment not completed'}, status=400)
+            # Handle 3D Secure if needed
+            if intent.status == 'requires_action':
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Payment requires authentication',
+                    'requires_action': True,
+                    'client_secret': intent.client_secret
+                }, status=400)
+            
+            if intent.status != 'succeeded':
+                return JsonResponse({'success': False, 'error': f'Payment status: {intent.status}'}, status=400)
+                
         except stripe_error.StripeError as e:
-            logger.error(f"Stripe payment confirmation error: {e}")
+            logger.error(f"Stripe payment error: {e}")
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
         
         # Create order
