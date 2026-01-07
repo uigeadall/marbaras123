@@ -707,41 +707,76 @@ class DHLShipping(ShippingCarrierBase):
                 ]
             
             # Try Basic Auth first (most common for DHL)
+            # DHL Express API uses Site ID (consumerKey) as username and Password (consumerSecret) as password
             for token_url in token_urls:
                 logger.info(f"Trying DHL OAuth token from {token_url}")
+                logger.info(f"Using API Key (first 10 chars): {self.api_key[:10] if self.api_key else 'None'}...")
+                logger.info(f"Using API Secret (first 10 chars): {self.api_secret[:10] if self.api_secret else 'None'}...")
+                
                 try:
-                    # Method 1: Basic Auth
+                    # Method 1: Basic Auth with Site ID and Password
+                    # DHL Express API expects: Authorization: Basic base64(SiteID:Password)
                     auth = (self.api_key, self.api_secret)
-                    response = requests.post(token_url, auth=auth, timeout=10)
+                    headers = {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    }
+                    response = requests.post(token_url, auth=auth, headers=headers, timeout=10)
                     
+                    logger.info(f"Response status: {response.status_code}")
                     if response.status_code == 200:
                         token = response.json().get('access_token') or response.json().get('accessToken') or response.json().get('token')
                         if token:
                             logger.info(f"✅ DHL OAuth token obtained successfully from {token_url}")
                             return token
                     
-                    # Method 2: Form data with client credentials
+                    # Method 2: Form data with client credentials (OAuth 2.0 standard)
                     if response.status_code == 401:
-                        logger.info(f"Basic auth failed, trying form data method...")
+                        logger.info(f"Basic auth failed, trying OAuth 2.0 form data method...")
                         data = {
                             'grant_type': 'client_credentials',
                             'client_id': self.api_key,
                             'client_secret': self.api_secret
                         }
-                        response = requests.post(token_url, data=data, timeout=10)
+                        headers = {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        }
+                        response = requests.post(token_url, data=data, headers=headers, timeout=10)
                         
+                        logger.info(f"Form data response status: {response.status_code}")
                         if response.status_code == 200:
                             token = response.json().get('access_token') or response.json().get('accessToken') or response.json().get('token')
                             if token:
                                 logger.info(f"✅ DHL OAuth token obtained successfully (form data) from {token_url}")
                                 return token
                     
+                    # Method 3: Try with JSON body (some APIs use this)
+                    if response.status_code == 401:
+                        logger.info(f"Trying JSON body method...")
+                        json_data = {
+                            'grant_type': 'client_credentials',
+                            'client_id': self.api_key,
+                            'client_secret': self.api_secret
+                        }
+                        headers = {
+                            'Content-Type': 'application/json',
+                        }
+                        response = requests.post(token_url, json=json_data, headers=headers, timeout=10)
+                        
+                        logger.info(f"JSON body response status: {response.status_code}")
+                        if response.status_code == 200:
+                            token = response.json().get('access_token') or response.json().get('accessToken') or response.json().get('token')
+                            if token:
+                                logger.info(f"✅ DHL OAuth token obtained successfully (JSON) from {token_url}")
+                                return token
+                    
                     # Log error for this endpoint
                     if response.status_code != 200:
-                        logger.warning(f"DHL token request failed for {token_url}: {response.status_code} - {response.text[:500]}")
+                        logger.warning(f"DHL token request failed for {token_url}: {response.status_code}")
+                        logger.warning(f"Response text: {response.text[:500]}")
+                        logger.warning(f"Response headers: {dict(response.headers)}")
                         
                 except Exception as e:
-                    logger.warning(f"Exception trying {token_url}: {e}")
+                    logger.warning(f"Exception trying {token_url}: {e}", exc_info=True)
                     continue
             
             # If all endpoints failed
