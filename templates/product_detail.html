@@ -865,6 +865,22 @@
             <div class="info-section">
               <h1>{{ product.name }}</h1>
               
+              <!-- Silver / Gold Plated Version Buttons -->
+              {% if has_gold_plated %}
+              <div class="version-buttons" style="display: flex; gap: 8px; margin-top: 16px; margin-bottom: 20px; width: 100%;">
+                <button type="button" id="silverVersionBtn" class="version-btn active" 
+                        style="flex: 1; padding: 10px 16px; background: #000; color: #fff; border: 2px solid #000; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; min-height: 44px;"
+                        onclick="switchVersion('silver')">
+                  Silver
+                </button>
+                <button type="button" id="goldPlatedVersionBtn" class="version-btn" 
+                        style="flex: 1; padding: 10px 16px; background: #fff; color: #000; border: 2px solid #e5e7eb; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; min-height: 44px;"
+                        onclick="switchVersion('gold')">
+                  Gold Plated
+                </button>
+              </div>
+              {% endif %}
+              
               {% if is_sale and sale_expires_at %}
               <div id="sale-timer" class="sale-timer-container" data-expires-at="{{ sale_expires_at|date:'c' }}" data-product-id="{{ product.id }}">
                 <div class="sale-timer-label">⏰ Sale ends in:</div>
@@ -1004,22 +1020,6 @@
                       </button>
                     </form>
                   </div>
-
-                  <!-- Silver / Gold Plated Version Buttons -->
-                  {% if has_gold_plated %}
-                  <div class="version-buttons" style="display: flex; gap: 8px; margin-bottom: 16px; width: 100%;">
-                    <button type="button" id="silverVersionBtn" class="version-btn active" 
-                            style="flex: 1; padding: 10px 16px; background: #000; color: #fff; border: 2px solid #000; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; min-height: 44px;"
-                            onclick="switchVersion('silver')">
-                      Silver
-                    </button>
-                    <button type="button" id="goldPlatedVersionBtn" class="version-btn" 
-                            style="flex: 1; padding: 10px 16px; background: #fff; color: #000; border: 2px solid #e5e7eb; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; min-height: 44px;"
-                            onclick="switchVersion('gold')">
-                      Gold Plated
-                    </button>
-                  </div>
-                  {% endif %}
 
                   <form id="addToCartForm" method="post" action="{% url 'add_to_cart' product.pk %}">
                     {% csrf_token %}
