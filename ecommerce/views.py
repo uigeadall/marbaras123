@@ -1604,6 +1604,17 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
     total = None
     coupon_code = ""
 
+    # Map ISO codes to full country names
+    COUNTRY_CODE_MAP = {
+        'AL': 'Albania', 'AD': 'Andorra', 'BA': 'Bosnia and Herzegovina', 'VA': 'Vatican',
+        'GB': 'United Kingdom', 'IS': 'Iceland', 'LI': 'Liechtenstein', 'MC': 'Monaco',
+        'ME': 'Montenegro', 'NO': 'Norway', 'SM': 'San Marino', 'RS': 'Serbia',
+        'CH': 'Switzerland', 'BH': 'Bahrain', 'JP': 'Japan', 'QA': 'Qatar',
+        'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'ZA': 'South Africa',
+        'CA': 'Canada', 'CR': 'Costa Rica', 'US': 'United States', 'AU': 'Australia',
+        'NZ': 'New Zealand'
+    }
+    
     # Allowed shipping countries
     ALLOWED_COUNTRIES = {
         "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
@@ -1627,6 +1638,10 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
         if not all([full_name, email, address, city, postal_code, phone, country]):
             messages.error(request, "All fields are required.")
             return redirect("guest_checkout")
+        
+        # Convert ISO code to full name if needed
+        if country in COUNTRY_CODE_MAP:
+            country = COUNTRY_CODE_MAP[country]
         
         if country not in ALLOWED_COUNTRIES:
             messages.error(request, "Sorry, we don't ship to this country. Please select a country from the list.")
