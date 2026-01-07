@@ -682,16 +682,16 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     # Handle main product image
     if product.image:
         main_image_path = product.image.name
-        # Check if main image exists in normal images
+        # Check if main image exists in silver images
         image_exists = any(
             hasattr(img, 'image') and img.image.name == main_image_path
-            for img in normal_images
+            for img in silver_images
         )
         if not image_exists:
-            # Add main image to normal images if it doesn't exist
-            main_img_obj = SimpleNamespace(image=product.image, is_gold_plated=False)
-            normal_images.insert(0, main_img_obj)
-            logger.debug(f"Added main image {main_image_path} to normal_images list")
+            # Add main image to silver images if it doesn't exist
+            main_img_obj = SimpleNamespace(image=product.image, version_type='silver', is_gold_plated=False)
+            silver_images.insert(0, main_img_obj)
+            logger.debug(f"Added main image {main_image_path} to silver_images list")
 
     # Filter out images without valid image attribute
     silver_images = [img for img in silver_images if hasattr(img, 'image') and img.image]
