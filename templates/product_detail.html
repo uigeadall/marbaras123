@@ -2275,53 +2275,76 @@
     }
   });
 
-  // Gold Plated Toggle Functionality
-  (function() {
-    const toggle = document.getElementById('goldPlatedToggle');
-    if (!toggle) return;
-    
+  // Silver / Gold Plated Version Switch Functionality
+  window.switchVersion = function(version) {
+    const silverBtn = document.getElementById('silverVersionBtn');
+    const goldBtn = document.getElementById('goldPlatedVersionBtn');
     const normalImages = document.querySelectorAll('.normal-image');
     const goldPlatedImages = document.querySelectorAll('.gold-plated-image');
     const mainImage = document.getElementById('mainImage');
     
-    function switchImages(showGoldPlated) {
-      // Show/hide thumbnails
-      normalImages.forEach(img => {
-        img.style.display = showGoldPlated ? 'none' : '';
-      });
-      goldPlatedImages.forEach(img => {
-        img.style.display = showGoldPlated ? '' : 'none';
-      });
-      
-      // Update main image
-      const visibleThumbs = showGoldPlated ? goldPlatedImages : normalImages;
-      if (visibleThumbs.length > 0) {
-        const firstVisible = Array.from(visibleThumbs).find(img => img.style.display !== 'none');
-        if (firstVisible && mainImage) {
-          mainImage.src = firstVisible.getAttribute('data-image-url') || firstVisible.src;
-        }
-      }
-      
-      // Update active thumbnail
-      const allThumbs = document.querySelectorAll('#thumbsCol .thumbnail-img');
-      allThumbs.forEach((thumb, index) => {
-        const isGoldPlated = thumb.getAttribute('data-is-gold-plated') === 'true';
-        if ((showGoldPlated && isGoldPlated) || (!showGoldPlated && !isGoldPlated)) {
-          if (index === 0) {
-            thumb.setAttribute('aria-current', 'true');
-          }
-        } else {
-          thumb.removeAttribute('aria-current');
-        }
-      });
+    if (!silverBtn || !goldBtn) return;
+    
+    const showGoldPlated = version === 'gold';
+    
+    // Update button styles
+    if (showGoldPlated) {
+      silverBtn.classList.remove('active');
+      silverBtn.style.background = '#fff';
+      silverBtn.style.color = '#000';
+      silverBtn.style.borderColor = '#e5e7eb';
+      goldBtn.classList.add('active');
+      goldBtn.style.background = '#000';
+      goldBtn.style.color = '#fff';
+      goldBtn.style.borderColor = '#000';
+    } else {
+      silverBtn.classList.add('active');
+      silverBtn.style.background = '#000';
+      silverBtn.style.color = '#fff';
+      silverBtn.style.borderColor = '#000';
+      goldBtn.classList.remove('active');
+      goldBtn.style.background = '#fff';
+      goldBtn.style.color = '#000';
+      goldBtn.style.borderColor = '#e5e7eb';
     }
     
-    toggle.addEventListener('change', function() {
-      switchImages(this.checked);
+    // Show/hide thumbnails
+    normalImages.forEach(img => {
+      img.style.display = showGoldPlated ? 'none' : '';
+    });
+    goldPlatedImages.forEach(img => {
+      img.style.display = showGoldPlated ? '' : 'none';
     });
     
-    // Initialize: show normal images by default
-    switchImages(false);
+    // Update main image
+    const visibleThumbs = showGoldPlated ? goldPlatedImages : normalImages;
+    if (visibleThumbs.length > 0) {
+      const firstVisible = Array.from(visibleThumbs).find(img => img.style.display !== 'none');
+      if (firstVisible && mainImage) {
+        mainImage.src = firstVisible.getAttribute('data-image-url') || firstVisible.src;
+      }
+    }
+    
+    // Update active thumbnail
+    const allThumbs = document.querySelectorAll('#thumbsCol .thumbnail-img');
+    allThumbs.forEach((thumb, index) => {
+      const isGoldPlated = thumb.getAttribute('data-is-gold-plated') === 'true';
+      if ((showGoldPlated && isGoldPlated) || (!showGoldPlated && !isGoldPlated)) {
+        if (index === 0) {
+          thumb.setAttribute('aria-current', 'true');
+        }
+      } else {
+        thumb.removeAttribute('aria-current');
+      }
+    });
+  };
+  
+  // Initialize: show silver images by default
+  (function() {
+    const silverBtn = document.getElementById('silverVersionBtn');
+    if (silverBtn) {
+      switchVersion('silver');
+    }
   })();
 
 </script>
