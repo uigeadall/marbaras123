@@ -690,23 +690,64 @@ class DHLShipping(ShippingCarrierBase):
     def _get_access_token(self) -> Optional[str]:
         """Get OAuth access token from DHL."""
         try:
-            # Determine token URL based on API URL
+            # DHL Express API uses different endpoints for authentication
+            # Try multiple possible endpoints
             if 'sandbox' in self.api_url.lower():
-                token_url = 'https://api-sandbox.dhl.com/shipment/shipments/auth'
+                # Try DHL Express API authentication endpoint
+                token_urls = [
+                    'https://api-sandbox.dhl.com/account/auth/v1/accesstoken',
+                    'https://api-sandbox.dhl.com/shipment/shipments/auth',
+                    'https://api-sandbox.dhl.com/auth/accesstoken',
+                ]
             else:
-                token_url = 'https://api-eu.dhl.com/shipment/shipments/auth'
+                token_urls = [
+                    'https://api-eu.dhl.com/account/auth/v1/accesstoken',
+                    'https://api-eu.dhl.com/shipment/shipments/auth',
+                    'https://api-eu.dhl.com/auth/accesstoken',
+                ]
             
-            logger.info(f"Requesting DHL OAuth token from {token_url}")
-            auth = (self.api_key, self.api_secret)
-            response = requests.post(token_url, auth=auth, timeout=10)
+            # Try Basic Auth first (most common for DHL)
+            for token_url in token_urls:
+                logger.info(f"Trying DHL OAuth token from {token_url}")
+                try:
+                    # Method 1: Basic Auth
+                    auth = (self.api_key, self.api_secret)
+                    response = requests.post(token_url, auth=auth, timeout=10)
+                    
+                    if response.status_code == 200:
+                        token = response.json().get('access_token') or response.json().get('accessToken') or response.json().get('token')
+                        if token:
+                            logger.info(f"✅ DHL OAuth token obtained successfully from {token_url}")
+                            return token
+                    
+                    # Method 2: Form data with client credentials
+                    if response.status_code == 401:
+                        logger.info(f"Basic auth failed, trying form data method...")
+                        data = {
+                            'grant_type': 'client_credentials',
+                            'client_id': self.api_key,
+                            'client_secret': self.api_secret
+                        }
+                        response = requests.post(token_url, data=data, timeout=10)
+                        
+                        if response.status_code == 200:
+                            token = response.json().get('access_token') or response.json().get('accessToken') or response.json().get('token')
+                            if token:
+                                logger.info(f"✅ DHL OAuth token obtained successfully (form data) from {token_url}")
+                                return token
+                    
+                    # Log error for this endpoint
+                    if response.status_code != 200:
+                        logger.warning(f"DHL token request failed for {token_url}: {response.status_code} - {response.text[:500]}")
+                        
+                except Exception as e:
+                    logger.warning(f"Exception trying {token_url}: {e}")
+                    continue
             
-            if response.status_code == 200:
-                token = response.json().get('access_token') or response.json().get('accessToken')
-                logger.info("✅ DHL OAuth token obtained successfully")
-                return token
-            else:
-                logger.error(f"DHL token request failed: {response.status_code} - {response.text}")
-                return None
+            # If all endpoints failed
+            logger.error(f"All DHL token endpoints failed. Last error: {response.status_code} - {response.text[:500]}")
+            return None
+            
         except Exception as e:
             logger.error(f"DHL token request exception: {e}", exc_info=True)
             return None
