@@ -597,15 +597,16 @@ class DHLShipping(ShippingCarrierBase):
         self.api_secret = getattr(settings, 'DHL_API_SECRET', '')
         self.account_number = getattr(settings, 'DHL_ACCOUNT_NUMBER', '')
         # MyDHL API (DHL Express) endpoint
-        # MyDHL API uses: https://api-mydhl.dhl.com/ for production
-        # Sandbox: https://api-sandbox.dhl.com/
+        # According to DHL documentation:
+        # Test: https://express.api.dhl.com/mydhlapi/test
+        # Production: https://express.api.dhl.com/mydhlapi
         api_url = getattr(settings, 'DHL_API_URL', '')
-        if not api_url or 'sandbox' in api_url.lower():
-            # MyDHL API sandbox endpoint for shipments
-            api_url = 'https://api-sandbox.dhl.com/mydhlapi/shipments'
-        elif 'mydhl' not in api_url.lower():
+        if not api_url or 'test' in api_url.lower() or 'sandbox' in api_url.lower():
+            # MyDHL API test environment endpoint for shipments
+            api_url = 'https://express.api.dhl.com/mydhlapi/test/shipments'
+        elif 'express.api.dhl.com' not in api_url.lower():
             # Production MyDHL API endpoint
-            api_url = 'https://api-mydhl.dhl.com/mydhlapi/shipments'
+            api_url = 'https://express.api.dhl.com/mydhlapi/shipments'
         self.api_url = api_url
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
@@ -698,17 +699,19 @@ class DHLShipping(ShippingCarrierBase):
         try:
             # MyDHL API (DHL Express) authentication endpoint
             # MyDHL API uses Site ID (consumerKey) and Password (consumerSecret) for Basic Auth
-            if 'sandbox' in self.api_url.lower():
-                # MyDHL API sandbox authentication endpoint
+            # According to DHL documentation, authentication is done via Basic Auth on the API endpoints
+            # The token endpoint should be part of the MyDHL API base URL
+            if 'test' in self.api_url.lower() or 'sandbox' in self.api_url.lower():
+                # MyDHL API test environment authentication endpoint
                 token_urls = [
-                    'https://api-sandbox.dhl.com/auth/accesstoken',  # MyDHL API standard endpoint
-                    'https://api-sandbox.dhl.com/mydhlapi/auth/accesstoken',  # Alternative format
+                    'https://express.api.dhl.com/mydhlapi/test/auth/accesstoken',  # MyDHL API test endpoint
+                    'https://express.api.dhl.com/mydhlapi/test/accesstoken',  # Alternative format
                 ]
             else:
                 # MyDHL API production authentication endpoint
                 token_urls = [
-                    'https://api-mydhl.dhl.com/auth/accesstoken',  # MyDHL API standard endpoint
-                    'https://api-mydhl.dhl.com/mydhlapi/auth/accesstoken',  # Alternative format
+                    'https://express.api.dhl.com/mydhlapi/auth/accesstoken',  # MyDHL API production endpoint
+                    'https://express.api.dhl.com/mydhlapi/accesstoken',  # Alternative format
                 ]
             
             # Try Basic Auth first (most common for DHL)
