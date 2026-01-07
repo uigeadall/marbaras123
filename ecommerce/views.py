@@ -1376,6 +1376,17 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
     total = None
     coupon_code = ""
 
+    # Map ISO codes to full country names
+    COUNTRY_CODE_MAP = {
+        'AL': 'Albania', 'AD': 'Andorra', 'BA': 'Bosnia and Herzegovina', 'VA': 'Vatican',
+        'GB': 'United Kingdom', 'IS': 'Iceland', 'LI': 'Liechtenstein', 'MC': 'Monaco',
+        'ME': 'Montenegro', 'NO': 'Norway', 'SM': 'San Marino', 'RS': 'Serbia',
+        'CH': 'Switzerland', 'BH': 'Bahrain', 'JP': 'Japan', 'QA': 'Qatar',
+        'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'ZA': 'South Africa',
+        'CA': 'Canada', 'CR': 'Costa Rica', 'US': 'United States', 'AU': 'Australia',
+        'NZ': 'New Zealand'
+    }
+    
     # Allowed shipping countries
     ALLOWED_COUNTRIES = {
         "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
@@ -1399,6 +1410,10 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
         if not all([full_name, address, city, postal_code, phone, country]):
             messages.error(request, "All fields are required.")
             return redirect("checkout")
+        
+        # Convert ISO code to full name if needed
+        if country in COUNTRY_CODE_MAP:
+            country = COUNTRY_CODE_MAP[country]
         
         if country not in ALLOWED_COUNTRIES:
             messages.error(request, "Sorry, we don't ship to this country. Please select a country from the list.")
@@ -1815,6 +1830,21 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         
         # Calculate shipping
         country = shipping_address.get('country', '')
+        # Map ISO codes to full country names
+        COUNTRY_CODE_MAP = {
+            'AL': 'Albania', 'AD': 'Andorra', 'BA': 'Bosnia and Herzegovina', 'VA': 'Vatican',
+            'GB': 'United Kingdom', 'IS': 'Iceland', 'LI': 'Liechtenstein', 'MC': 'Monaco',
+            'ME': 'Montenegro', 'NO': 'Norway', 'SM': 'San Marino', 'RS': 'Serbia',
+            'CH': 'Switzerland', 'BH': 'Bahrain', 'JP': 'Japan', 'QA': 'Qatar',
+            'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'ZA': 'South Africa',
+            'CA': 'Canada', 'CR': 'Costa Rica', 'US': 'United States', 'AU': 'Australia',
+            'NZ': 'New Zealand'
+        }
+        
+        # Convert ISO code to full name if needed
+        if country in COUNTRY_CODE_MAP:
+            country = COUNTRY_CODE_MAP[country]
+        
         ALLOWED_COUNTRIES = {
             "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
             "Iceland", "Liechtenstein", "Monaco", "Montenegro", "Norway", "San Marino",
@@ -1824,7 +1854,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         }
         
         if country not in ALLOWED_COUNTRIES:
-            return JsonResponse({'success': False, 'error': 'We do not ship to this country'}, status=400)
+            return JsonResponse({'success': False, 'error': f'We do not ship to {country}'}, status=400)
         
         # Determine shipping cost
         shipping_cost = Decimal("0.00")
@@ -1880,6 +1910,11 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         
         # Create order
         with transaction.atomic():
+            # Ensure country is stored as full name (not ISO code)
+            country_name = country
+            if country in COUNTRY_CODE_MAP:
+                country_name = COUNTRY_CODE_MAP[country]
+            
             order = Order.objects.create(
                 user=request.user if request.user.is_authenticated else None,
                 email=payer_email,
@@ -1888,7 +1923,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 city=shipping_address.get('city', ''),
                 postal_code=shipping_address.get('postalCode', ''),
                 phone=payer_phone,
-                country=country,
+                country=country_name,
                 shipping_option=shipping_option,
                 total_price=total,
             )
