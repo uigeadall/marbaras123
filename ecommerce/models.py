@@ -561,6 +561,7 @@ class Order(models.Model):
             ('fedex', 'FedEx'),
             ('dhl', 'DHL'),
             ('deutsche_post', 'Deutsche Post'),
+            ('global_mail', 'Global Mail'),
         ],
         help_text="Shipping carrier for this order"
     )

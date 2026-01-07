@@ -740,6 +740,45 @@ LOGGING = {
 }
 
 # -------------------------
+# Shipping Carrier APIs
+# -------------------------
+# FedEx API Configuration
+FEDEX_API_KEY = env("FEDEX_API_KEY", "")
+FEDEX_API_SECRET = env("FEDEX_API_SECRET", "")
+FEDEX_ACCOUNT_NUMBER = env("FEDEX_ACCOUNT_NUMBER", "")
+FEDEX_METER_NUMBER = env("FEDEX_METER_NUMBER", "")
+FEDEX_API_URL = env("FEDEX_API_URL", "https://apis-sandbox.fedex.com/ship/v1/shipments")
+FEDEX_SHIPPING_LOCATION = env("FEDEX_SHIPPING_LOCATION", "GB")  # Country code where FedEx account is registered
+
+# DHL API Configuration
+DHL_API_KEY = env("DHL_API_KEY", "")
+DHL_API_SECRET = env("DHL_API_SECRET", "")
+DHL_ACCOUNT_NUMBER = env("DHL_ACCOUNT_NUMBER", "")
+DHL_API_URL = env("DHL_API_URL", "https://api-sandbox.dhl.com/shipment/shipments")
+
+# Global Mail API Configuration
+GLOBAL_MAIL_API_KEY = env("GLOBAL_MAIL_API_KEY", "")
+GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")
+GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")
+GLOBAL_MAIL_API_URL = env("GLOBAL_MAIL_API_URL", "https://api-sandbox.globalmail.com/v1/shipments")
+
+# Deutsche Post API Configuration
+DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")
+DEUTSCHE_POST_API_SECRET = env("DEUTSCHE_POST_API_SECRET", "")
+DEUTSCHE_POST_ACCOUNT_NUMBER = env("DEUTSCHE_POST_ACCOUNT_NUMBER", "")
+DEUTSCHE_POST_API_URL = env("DEUTSCHE_POST_API_URL", "https://api-sandbox.dhl.com/parcel/de/shipping/v2/orders")
+
+# Shop Information (used for shipping labels)
+SHOP_NAME = env("SHOP_NAME", "Marbaras")
+SHOP_ADDRESS = env("SHOP_ADDRESS", "")
+SHOP_CITY = env("SHOP_CITY", "Sofia")
+SHOP_POSTAL_CODE = env("SHOP_POSTAL_CODE", "")
+SHOP_COUNTRY = env("SHOP_COUNTRY", "BG")
+SHOP_STATE = env("SHOP_STATE", "")
+SHOP_PHONE = env("SHOP_PHONE", "")
+SHOP_EMAIL = env("SHOP_EMAIL", "")
+
+# -------------------------
 # Defaults
 # -------------------------
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
