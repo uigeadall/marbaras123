@@ -1360,6 +1360,97 @@
       }
     });
   });
+
+  // Swipe functionality for mobile devices
+  (function() {
+    const mainPreview = document.querySelector('.main-preview');
+    const mainImage = document.getElementById('mainImage');
+    if (!mainPreview || !mainImage) return;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchEndX = 0;
+    let touchEndY = 0;
+    const minSwipeDistance = 50; // Minimum distance in pixels to trigger swipe
+
+    function getVisibleThumbnails() {
+      // Get all thumbnails that are currently visible (not display:none)
+      const allThumbs = Array.from(document.querySelectorAll('.thumbnail-img'));
+      return allThumbs.filter(thumb => {
+        const style = window.getComputedStyle(thumb);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
+    }
+
+    function getCurrentImageIndex() {
+      const visibleThumbs = getVisibleThumbnails();
+      const currentSrc = mainImage.currentSrc || mainImage.src;
+      
+      // Find the index of the current image
+      for (let i = 0; i < visibleThumbs.length; i++) {
+        const thumbSrc = visibleThumbs[i].getAttribute('data-image-url') || visibleThumbs[i].src;
+        if (thumbSrc === currentSrc || visibleThumbs[i].getAttribute('aria-current') === 'true') {
+          return i;
+        }
+      }
+      return 0;
+    }
+
+    function showNextImage() {
+      const visibleThumbs = getVisibleThumbnails();
+      if (visibleThumbs.length <= 1) return;
+
+      const currentIndex = getCurrentImageIndex();
+      const nextIndex = (currentIndex + 1) % visibleThumbs.length;
+      const nextThumb = visibleThumbs[nextIndex];
+      
+      if (nextThumb) {
+        const nextUrl = nextThumb.getAttribute('data-image-url') || nextThumb.src;
+        updateMainImage(nextUrl, nextThumb);
+      }
+    }
+
+    function showPreviousImage() {
+      const visibleThumbs = getVisibleThumbnails();
+      if (visibleThumbs.length <= 1) return;
+
+      const currentIndex = getCurrentImageIndex();
+      const prevIndex = (currentIndex - 1 + visibleThumbs.length) % visibleThumbs.length;
+      const prevThumb = visibleThumbs[prevIndex];
+      
+      if (prevThumb) {
+        const prevUrl = prevThumb.getAttribute('data-image-url') || prevThumb.src;
+        updateMainImage(prevUrl, prevThumb);
+      }
+    }
+
+    mainPreview.addEventListener('touchstart', function(e) {
+      touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+
+    mainPreview.addEventListener('touchend', function(e) {
+      touchEndX = e.changedTouches[0].screenX;
+      touchEndY = e.changedTouches[0].screenY;
+      
+      const deltaX = touchEndX - touchStartX;
+      const deltaY = touchEndY - touchStartY;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+
+      // Only trigger swipe if horizontal movement is greater than vertical (horizontal swipe)
+      // and if the swipe distance is greater than the minimum threshold
+      if (absDeltaX > absDeltaY && absDeltaX > minSwipeDistance) {
+        if (deltaX > 0) {
+          // Swipe right - show previous image
+          showPreviousImage();
+        } else {
+          // Swipe left - show next image
+          showNextImage();
+        }
+      }
+    }, { passive: true });
+  })();
   (function () {
     const firstThumb = document.querySelector('#thumbsCol img');
     if (firstThumb && document.getElementById('mainImage')) firstThumb.setAttribute('aria-current','true');
