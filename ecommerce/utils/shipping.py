@@ -222,12 +222,26 @@ class FedExShipping(ShippingCarrierBase):
             logger.info(f"FedEx API Key length: {len(self.api_key) if self.api_key else 0}")
             logger.info(f"FedEx API Secret length: {len(self.api_secret) if self.api_secret else 0}")
             
+            # FedEx OAuth requires Basic Auth with API Key as username and Secret as password
+            auth = (self.api_key, self.api_secret)
             data = {
                 'grant_type': 'client_credentials',
-                'client_id': self.api_key,
-                'client_secret': self.api_secret
             }
-            response = requests.post(token_url, data=data, timeout=10)
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            logger.info(f"Trying Basic Auth for OAuth token...")
+            response = requests.post(token_url, auth=auth, data=data, headers=headers, timeout=10)
+            
+            # If Basic Auth fails, try form data method
+            if response.status_code != 200:
+                logger.info(f"Basic Auth failed ({response.status_code}), trying form data method...")
+                data = {
+                    'grant_type': 'client_credentials',
+                    'client_id': self.api_key,
+                    'client_secret': self.api_secret
+                }
+                response = requests.post(token_url, data=data, headers=headers, timeout=10)
             
             if response.status_code == 200:
                 token = response.json().get('access_token')
