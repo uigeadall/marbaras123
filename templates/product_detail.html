@@ -2326,28 +2326,37 @@
     
     if (!silverBtn || !goldBtn) return;
     
-    // Update button styles - active button has black border, inactive has gray border
+    // Update button styles - active button has black border and scale effect, inactive has gray border
     const buttons = [silverBtn, goldBtn];
     if (roseGoldBtn) buttons.push(roseGoldBtn);
     
     buttons.forEach(btn => {
+      if (!btn) return;
       btn.classList.remove('active');
       btn.style.borderColor = '#e5e7eb';
+      btn.style.borderWidth = '3px';
       btn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+      btn.style.transform = 'scale(1)';
     });
     
     if (version === 'silver' && silverBtn) {
       silverBtn.classList.add('active');
       silverBtn.style.borderColor = '#000';
-      silverBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+      silverBtn.style.borderWidth = '3px';
+      silverBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+      silverBtn.style.transform = 'scale(1.05)';
     } else if (version === 'gold' && goldBtn) {
       goldBtn.classList.add('active');
       goldBtn.style.borderColor = '#000';
-      goldBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+      goldBtn.style.borderWidth = '3px';
+      goldBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+      goldBtn.style.transform = 'scale(1.05)';
     } else if (version === 'rose_gold' && roseGoldBtn) {
       roseGoldBtn.classList.add('active');
       roseGoldBtn.style.borderColor = '#000';
-      roseGoldBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+      roseGoldBtn.style.borderWidth = '3px';
+      roseGoldBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+      roseGoldBtn.style.transform = 'scale(1.05)';
     }
     
     // Show/hide thumbnails
