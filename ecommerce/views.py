@@ -649,13 +649,33 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     comments = Comment.objects.filter(product=product).order_by("-created_at")
 
 
-    # Get all images (both normal and gold plated)
+    # Get all images (silver, gold plated, rose gold plated)
     # We'll filter them on the frontend with JavaScript based on user selection
     all_product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
     
-    # Separate normal and gold plated images for frontend filtering
-    normal_images = [img for img in all_product_images if not img.is_gold_plated]
-    gold_plated_images = [img for img in all_product_images if img.is_gold_plated]
+    # Separate images by version type
+    # Support both new version_type field and old is_gold_plated field for backward compatibility
+    silver_images = []
+    gold_plated_images = []
+    rose_gold_plated_images = []
+    
+    for img in all_product_images:
+        # Use version_type if available, otherwise fall back to is_gold_plated
+        if hasattr(img, 'version_type') and img.version_type:
+            if img.version_type == 'silver':
+                silver_images.append(img)
+            elif img.version_type == 'gold_plated':
+                gold_plated_images.append(img)
+            elif img.version_type == 'rose_gold_plated':
+                rose_gold_plated_images.append(img)
+        else:
+            # Backward compatibility: use is_gold_plated
+            if img.is_gold_plated:
+                gold_plated_images.append(img)
+            else:
+                silver_images.append(img)
+    
+    normal_images = silver_images  # Keep for backward compatibility
 
     logger.debug(f"Product {product.pk} ({product.name}): Found {len(all_product_images)} ProductImage records")
     
@@ -674,13 +694,15 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
             logger.debug(f"Added main image {main_image_path} to normal_images list")
 
     # Filter out images without valid image attribute
-    normal_images = [img for img in normal_images if hasattr(img, 'image') and img.image]
+    silver_images = [img for img in silver_images if hasattr(img, 'image') and img.image]
     gold_plated_images = [img for img in gold_plated_images if hasattr(img, 'image') and img.image]
+    rose_gold_plated_images = [img for img in rose_gold_plated_images if hasattr(img, 'image') and img.image]
+    normal_images = silver_images  # Keep for backward compatibility
     
-    # Set default product_images to normal_images (will be shown by default)
-    product_images = normal_images
+    # Set default product_images to silver_images (will be shown by default)
+    product_images = silver_images
 
-    logger.debug(f"Total images for product {product.pk}: normal={len(normal_images)}, gold_plated={len(gold_plated_images)}")
+    logger.debug(f"Total images for product {product.pk}: silver={len(silver_images)}, gold_plated={len(gold_plated_images)}, rose_gold_plated={len(rose_gold_plated_images)}")
     rating_form = None
     categories = _get_categories()
 
@@ -816,8 +838,10 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "product": product,
         "product_images": product_images,
         "normal_images": normal_images,
+        "silver_images": silver_images,
         "gold_plated_images": gold_plated_images,
-        "has_gold_plated": len(gold_plated_images) > 0,
+        "rose_gold_plated_images": rose_gold_plated_images,
+        "has_gold_plated": len(gold_plated_images) > 0 or len(rose_gold_plated_images) > 0,
         "comments": comments,
         "favorite_ids": (
             list(Favorite.objects.filter(user=request.user).values_list("product_id", flat=True))

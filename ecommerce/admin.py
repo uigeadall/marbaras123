@@ -20,7 +20,7 @@ class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
     max_num = 10
-    fields = ("image", "is_gold_plated")
+    fields = ("image", "version_type", "is_gold_plated")
     verbose_name = "Product Image"
     verbose_name_plural = "Product Images"
 

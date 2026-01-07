@@ -780,17 +780,17 @@
             <div class="image-section">
               {% if product_images or has_gold_plated %}
                 <div class="thumbs-col" id="thumbsCol">
-                  {% for img in normal_images|slice:":5" %}
+                  {% for img in silver_images|slice:":5" %}
                     <img
                       src="{{ img.image.url }}"
-                      alt="{{ product.name }} - Image {{ forloop.counter }}"
+                      alt="{{ product.name }} - Silver Image {{ forloop.counter }}"
                       data-image-url="{{ img.image.url }}"
-                      data-is-gold-plated="false"
+                      data-version-type="silver"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
-                      aria-label="View {{ product.name }} image {{ forloop.counter }}"
-                      class="thumbnail-img normal-image"
+                      aria-label="View {{ product.name }} silver image {{ forloop.counter }}"
+                      class="thumbnail-img silver-image"
                     >
                   {% endfor %}
                   {% if has_gold_plated %}
@@ -799,12 +799,26 @@
                         src="{{ img.image.url }}"
                         alt="{{ product.name }} - Gold Plated Image {{ forloop.counter }}"
                         data-image-url="{{ img.image.url }}"
-                        data-is-gold-plated="true"
+                        data-version-type="gold_plated"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"
                         aria-label="View {{ product.name }} gold plated image {{ forloop.counter }}"
                         class="thumbnail-img gold-plated-image"
+                        style="display: none;"
+                      >
+                    {% endfor %}
+                    {% for img in rose_gold_plated_images|slice:":5" %}
+                      <img
+                        src="{{ img.image.url }}"
+                        alt="{{ product.name }} - Rose Gold Plated Image {{ forloop.counter }}"
+                        data-image-url="{{ img.image.url }}"
+                        data-version-type="rose_gold_plated"
+                        onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
+                        role="button"
+                        tabindex="0"
+                        aria-label="View {{ product.name }} rose gold plated image {{ forloop.counter }}"
+                        class="thumbnail-img rose-gold-plated-image"
                         style="display: none;"
                       >
                     {% endfor %}
@@ -815,8 +829,8 @@
                 <div class="main-preview" style="width: 100%;">
                   {% if product.main_image %}
                     <img id="mainImage" src="{{ product.main_image.url }}" alt="{{ product.name }}">
-                  {% elif product_images %}
-                    <img id="mainImage" src="{{ product_images.0.image.url }}" alt="{{ product.name }}">
+                  {% elif silver_images %}
+                    <img id="mainImage" src="{{ silver_images.0.image.url }}" alt="{{ product.name }}">
                   {% else %}
                     <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image">
                   {% endif %}
@@ -865,18 +879,26 @@
             <div class="info-section">
               <h1>{{ product.name }}</h1>
               
-              <!-- Silver / Gold Plated Version Buttons -->
+              <!-- Silver / Gold Plated / Rose Gold Plated Version Buttons -->
               {% if has_gold_plated %}
-              <div class="version-buttons" style="display: flex; gap: 8px; margin-top: 16px; margin-bottom: 20px; width: 100%;">
+              <div class="version-buttons" style="display: flex; gap: 12px; align-items: center; margin-top: 16px; margin-bottom: 20px; width: 100%;">
                 <button type="button" id="silverVersionBtn" class="version-btn active" 
-                        style="flex: 1; padding: 10px 16px; background: #000; color: #fff; border: 2px solid #000; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; min-height: 44px;"
-                        onclick="switchVersion('silver')">
-                  Silver
+                        style="width: 40px; height: 40px; border-radius: 50%; background: #c0c0c0; border: 3px solid #000; cursor: pointer; transition: all 0.15s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                        onclick="switchVersion('silver')"
+                        title="Silver"
+                        aria-label="Silver version">
                 </button>
                 <button type="button" id="goldPlatedVersionBtn" class="version-btn" 
-                        style="flex: 1; padding: 10px 16px; background: #fff; color: #000; border: 2px solid #e5e7eb; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.15s; min-height: 44px;"
-                        onclick="switchVersion('gold')">
-                  Gold Plated
+                        style="width: 40px; height: 40px; border-radius: 50%; background: #ffd700; border: 3px solid #e5e7eb; cursor: pointer; transition: all 0.15s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                        onclick="switchVersion('gold')"
+                        title="Gold Plated"
+                        aria-label="Gold Plated version">
+                </button>
+                <button type="button" id="roseGoldPlatedVersionBtn" class="version-btn" 
+                        style="width: 40px; height: 40px; border-radius: 50%; background: #e8b4b8; border: 3px solid #e5e7eb; cursor: pointer; transition: all 0.15s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                        onclick="switchVersion('rose_gold')"
+                        title="Rose Gold Plated"
+                        aria-label="Rose Gold Plated version">
                 </button>
               </div>
               {% endif %}
@@ -2275,51 +2297,67 @@
     }
   });
 
-  // Silver / Gold Plated Version Switch Functionality
+  // Silver / Gold Plated / Rose Gold Plated Version Switch Functionality
   window.switchVersion = function(version) {
     const silverBtn = document.getElementById('silverVersionBtn');
     const goldBtn = document.getElementById('goldPlatedVersionBtn');
-    const normalImages = document.querySelectorAll('.normal-image');
+    const roseGoldBtn = document.getElementById('roseGoldPlatedVersionBtn');
+    const silverImages = document.querySelectorAll('.silver-image');
     const goldPlatedImages = document.querySelectorAll('.gold-plated-image');
+    const roseGoldPlatedImages = document.querySelectorAll('.rose-gold-plated-image');
     const mainImage = document.getElementById('mainImage');
     
     if (!silverBtn || !goldBtn) return;
     
-    const showGoldPlated = version === 'gold';
+    // Update button styles - active button has black border, inactive has gray border
+    const buttons = [silverBtn, goldBtn];
+    if (roseGoldBtn) buttons.push(roseGoldBtn);
     
-    // Update button styles
-    if (showGoldPlated) {
-      silverBtn.classList.remove('active');
-      silverBtn.style.background = '#fff';
-      silverBtn.style.color = '#000';
-      silverBtn.style.borderColor = '#e5e7eb';
-      goldBtn.classList.add('active');
-      goldBtn.style.background = '#000';
-      goldBtn.style.color = '#fff';
-      goldBtn.style.borderColor = '#000';
-    } else {
+    buttons.forEach(btn => {
+      btn.classList.remove('active');
+      btn.style.borderColor = '#e5e7eb';
+      btn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    });
+    
+    if (version === 'silver' && silverBtn) {
       silverBtn.classList.add('active');
-      silverBtn.style.background = '#000';
-      silverBtn.style.color = '#fff';
       silverBtn.style.borderColor = '#000';
-      goldBtn.classList.remove('active');
-      goldBtn.style.background = '#fff';
-      goldBtn.style.color = '#000';
-      goldBtn.style.borderColor = '#e5e7eb';
+      silverBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    } else if (version === 'gold' && goldBtn) {
+      goldBtn.classList.add('active');
+      goldBtn.style.borderColor = '#000';
+      goldBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    } else if (version === 'rose_gold' && roseGoldBtn) {
+      roseGoldBtn.classList.add('active');
+      roseGoldBtn.style.borderColor = '#000';
+      roseGoldBtn.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
     }
     
     // Show/hide thumbnails
-    normalImages.forEach(img => {
-      img.style.display = showGoldPlated ? 'none' : '';
+    silverImages.forEach(img => {
+      img.style.display = version === 'silver' ? '' : 'none';
     });
     goldPlatedImages.forEach(img => {
-      img.style.display = showGoldPlated ? '' : 'none';
+      img.style.display = version === 'gold' ? '' : 'none';
     });
+    if (roseGoldPlatedImages.length > 0) {
+      roseGoldPlatedImages.forEach(img => {
+        img.style.display = version === 'rose_gold' ? '' : 'none';
+      });
+    }
     
     // Update main image
-    const visibleThumbs = showGoldPlated ? goldPlatedImages : normalImages;
+    let visibleThumbs = [];
+    if (version === 'silver') {
+      visibleThumbs = Array.from(silverImages);
+    } else if (version === 'gold') {
+      visibleThumbs = Array.from(goldPlatedImages);
+    } else if (version === 'rose_gold') {
+      visibleThumbs = Array.from(roseGoldPlatedImages);
+    }
+    
     if (visibleThumbs.length > 0) {
-      const firstVisible = Array.from(visibleThumbs).find(img => img.style.display !== 'none');
+      const firstVisible = visibleThumbs.find(img => img.style.display !== 'none');
       if (firstVisible && mainImage) {
         mainImage.src = firstVisible.getAttribute('data-image-url') || firstVisible.src;
       }
@@ -2328,9 +2366,9 @@
     // Update active thumbnail
     const allThumbs = document.querySelectorAll('#thumbsCol .thumbnail-img');
     allThumbs.forEach((thumb, index) => {
-      const isGoldPlated = thumb.getAttribute('data-is-gold-plated') === 'true';
-      if ((showGoldPlated && isGoldPlated) || (!showGoldPlated && !isGoldPlated)) {
-        if (index === 0) {
+      const versionType = thumb.getAttribute('data-version-type');
+      if (versionType === version) {
+        if (index === 0 || thumb.style.display !== 'none') {
           thumb.setAttribute('aria-current', 'true');
         }
       } else {

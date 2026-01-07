@@ -306,6 +306,12 @@ class ProductVariant(models.Model):
 
 
 class ProductImage(models.Model):
+    VERSION_CHOICES = [
+        ('silver', 'Silver'),
+        ('gold_plated', 'Gold Plated'),
+        ('rose_gold_plated', 'Rose Gold Plated'),
+    ]
+    
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
     
     # Get storage dynamically to ensure Cloudinary is used if configured
@@ -330,9 +336,16 @@ class ProductImage(models.Model):
         upload_to='products/multiple/',
         storage=_get_storage()
     )
+    version_type = models.CharField(
+        max_length=20,
+        choices=VERSION_CHOICES,
+        default='silver',
+        help_text="Select the version type for this image: Silver, Gold Plated, or Rose Gold Plated"
+    )
+    # Keep is_gold_plated for backward compatibility (will be migrated)
     is_gold_plated = models.BooleanField(
         default=False,
-        help_text="Check if this image is for the gold plated version of the product. Leave unchecked for normal version images."
+        help_text="[DEPRECATED] Use version_type instead. Check if this image is for the gold plated version."
     )
 
     class Meta:
@@ -340,7 +353,7 @@ class ProductImage(models.Model):
         verbose_name_plural = "Product Images"
 
     def __str__(self) -> str:
-        version = "Gold Plated" if self.is_gold_plated else "Normal"
+        version = self.get_version_type_display()
         return f"{self.product.name} image ({version})"
 
 
