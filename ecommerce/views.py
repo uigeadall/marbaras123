@@ -1892,12 +1892,11 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 'amount': int(_to_cents(total)),
                 'currency': 'eur',
                 'payment_method': payment_method_id,
-                'confirmation_method': 'manual',
-                'confirm': True,
                 'automatic_payment_methods': {
                     'enabled': True,
                     'allow_redirects': 'never'
-                }
+                },
+                'confirm': True,
             }
             if payer_email:
                 intent_params['receipt_email'] = payer_email
