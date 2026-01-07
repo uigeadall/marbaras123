@@ -1,11 +1,16 @@
 """
-Shipping carrier integrations for FedEx, DHL, and Deutsche Post.
+Shipping carrier integrations for FedEx, DHL, Deutsche Post, and EasyPost.
 """
 import logging
 import requests
 from typing import Optional, Dict, Any
 from decimal import Decimal
 from django.conf import settings
+
+try:
+    import easypost
+except ImportError:
+    easypost = None
 
 logger = logging.getLogger(__name__)
 
@@ -1126,6 +1131,120 @@ class GlobalMailShipping(ShippingCarrierBase):
         }
 
 
+class EasyPostShipping(ShippingCarrierBase):
+    """EasyPost shipping integration - unified API for multiple carriers."""
+    
+    def __init__(self):
+        super().__init__()
+        self.api_key = getattr(settings, 'EASYPOST_API_KEY', '')
+        if not easypost:
+            logger.error("easypost library not installed. Install with: pip install easypost")
+        elif self.api_key:
+            easypost.api_key = self.api_key
+    
+    def create_shipment(self, order) -> Optional[Dict[str, Any]]:
+        """Create EasyPost shipment and return tracking info."""
+        logger.info(f"EasyPost create_shipment called for Order #{order.id}")
+        
+        if not easypost:
+            logger.error("easypost library not installed")
+            return None
+        
+        if not self.api_key:
+            logger.error("EasyPost API key not configured")
+            return None
+        
+        try:
+            # Set API key
+            easypost.api_key = self.api_key
+            
+            # Determine carrier from shipping_option or use default
+            carrier = 'FedEx'  # Default carrier
+            if order.shipping_option:
+                option_name = order.shipping_option.name.lower()
+                if 'dhl' in option_name:
+                    carrier = 'DHLExpress'
+                elif 'ups' in option_name:
+                    carrier = 'UPS'
+                elif 'usps' in option_name:
+                    carrier = 'USPS'
+                elif 'fedex' in option_name:
+                    carrier = 'FedEx'
+            
+            # Create from address (shop address)
+            shop_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+            shop_state = getattr(settings, 'SHOP_STATE', '')
+            
+            from_address = easypost.Address.create(
+                name=getattr(settings, 'SHOP_NAME', 'Marbaras'),
+                street1=getattr(settings, 'SHOP_ADDRESS', ''),
+                city=getattr(settings, 'SHOP_CITY', 'Sofia'),
+                state=shop_state if shop_state else None,
+                zip=getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                country=shop_country,
+                phone=getattr(settings, 'SHOP_PHONE', ''),
+            )
+            
+            # Create to address (customer address)
+            to_address = easypost.Address.create(
+                name=order.full_name,
+                street1=order.address,
+                city=order.city,
+                state=None,  # EasyPost will handle this if needed
+                zip=order.postal_code,
+                country=order.country or 'BG',
+                phone=order.phone,
+            )
+            
+            # Calculate package weight and dimensions
+            total_weight = Decimal('0.5')  # Default 0.5 kg
+            for item in order.items.all():
+                product_weight = getattr(item.product, 'weight', Decimal('0.1'))
+                total_weight += product_weight * Decimal(str(item.quantity))
+            
+            # Create parcel
+            parcel = easypost.Parcel.create(
+                length=20,  # cm
+                width=15,   # cm
+                height=10,   # cm
+                weight=float(total_weight),
+            )
+            
+            # Create shipment
+            logger.info(f"Creating EasyPost shipment with carrier: {carrier}")
+            shipment = easypost.Shipment.create(
+                to_address=to_address,
+                from_address=from_address,
+                parcel=parcel,
+                carrier=carrier,
+                service=None,  # Let EasyPost choose best service
+            )
+            
+            # Buy the shipment (purchase label)
+            logger.info("Purchasing EasyPost label...")
+            shipment.buy(rate=shipment.lowest_rate())
+            
+            # Extract tracking and label info
+            tracking_number = shipment.tracking_code
+            label_url = shipment.postage_label.label_url if shipment.postage_label else None
+            shipment_id = shipment.id
+            
+            logger.info(f"✅ EasyPost shipment created: tracking={tracking_number}, label_url={label_url}")
+            
+            return {
+                'tracking_number': tracking_number,
+                'label_url': label_url,
+                'shipment_id': shipment_id,
+            }
+            
+        except easypost.Error as e:
+            logger.error(f"EasyPost API error: {e}", exc_info=True)
+            return None
+        except Exception as e:
+            logger.error(f"EasyPost shipment creation exception: {e}", exc_info=True)
+            return None
+
+
 def get_shipping_carrier(carrier_name: str) -> Optional[ShippingCarrierBase]:
     """Factory function to get shipping carrier instance."""
     carriers = {
@@ -1133,6 +1252,7 @@ def get_shipping_carrier(carrier_name: str) -> Optional[ShippingCarrierBase]:
         'dhl': DHLShipping,
         'deutsche_post': DeutschePostShipping,
         'global_mail': GlobalMailShipping,
+        'easypost': EasyPostShipping,
     }
     
     carrier_class = carriers.get(carrier_name.lower())
@@ -1150,7 +1270,9 @@ def create_shipping_label(order, carrier_name: Optional[str] = None) -> Optional
     if not carrier_name and order.shipping_option:
         # Map shipping option names to carriers
         option_name = order.shipping_option.name.lower()
-        if 'fedex' in option_name:
+        if 'easypost' in option_name:
+            carrier_name = 'easypost'
+        elif 'fedex' in option_name:
             carrier_name = 'fedex'
         elif 'dhl' in option_name:
             carrier_name = 'dhl'

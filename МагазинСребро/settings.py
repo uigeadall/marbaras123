@@ -768,6 +768,9 @@ DEUTSCHE_POST_API_SECRET = env("DEUTSCHE_POST_API_SECRET", "")
 DEUTSCHE_POST_ACCOUNT_NUMBER = env("DEUTSCHE_POST_ACCOUNT_NUMBER", "")
 DEUTSCHE_POST_API_URL = env("DEUTSCHE_POST_API_URL", "https://api-sandbox.dhl.com/parcel/de/shipping/v2/orders")
 
+# EasyPost API Configuration (unified shipping API)
+EASYPOST_API_KEY = env("EASYPOST_API_KEY", "")
+
 # Shop Information (used for shipping labels)
 SHOP_NAME = env("SHOP_NAME", "Marbaras")
 SHOP_ADDRESS = env("SHOP_ADDRESS", "")

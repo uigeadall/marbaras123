@@ -36,3 +36,6 @@ django-ratelimit==4.1.0
 # Cloud storage for media files (Cloudinary)
 cloudinary==1.44.1
 django-cloudinary-storage==0.3.0
+
+# Shipping API (EasyPost)
+easypost==7.0.0
