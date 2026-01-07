@@ -633,6 +633,7 @@ class DHLShipping(ShippingCarrierBase):
             
             # Create shipment via MyDHL API using Basic Auth
             # MyDHL API uses Basic Auth: Authorization: Basic base64(username:password)
+            # Username = Site ID (consumerKey), Password = Password (consumerSecret)
             auth = (self.api_key, self.api_secret)  # Username = Site ID, Password = Password
             headers = {
                 'Content-Type': 'application/json',
@@ -640,6 +641,9 @@ class DHLShipping(ShippingCarrierBase):
             }
             
             logger.info(f"Posting to MyDHL API: {self.api_url}")
+            logger.info(f"Using Basic Auth with Username (Site ID): {self.api_key[:10]}...")
+            logger.info(f"Account number in shipment: {shipment_data.get('accounts', [{}])[0].get('number', 'N/A')}")
+            
             response = requests.post(
                 self.api_url,
                 json=shipment_data,
@@ -649,6 +653,7 @@ class DHLShipping(ShippingCarrierBase):
             )
             
             logger.info(f"DHL API response status: {response.status_code}")
+            logger.info(f"Response headers: {dict(response.headers)}")
             
             if response.status_code in [200, 201]:
                 data = response.json()
@@ -731,24 +736,29 @@ class DHLShipping(ShippingCarrierBase):
         return 'BG'
     
     def _prepare_shipment_data(self, order) -> Dict[str, Any]:
-        """Prepare shipment data for DHL API."""
+        """Prepare shipment data for MyDHL API."""
         total_weight = sum(item.quantity for item in order.items.all()) * 0.5
         recipient_country = self._normalize_country_code(order.country)
         
+        # MyDHL API requires account number in the shipment data
+        # If not provided, use userId or try without it
+        account_number = self.account_number or getattr(settings, 'DHL_ACCOUNT_NUMBER', '')
+        
         # Determine product code based on destination
-        # 'N' = Express Domestic, 'P' = Express Worldwide, 'U' = Express 12:00
+        # MyDHL API product codes: 'N' = Express Domestic, 'P' = Express Worldwide, 'U' = Express 12:00
         product_code = 'P'  # Express Worldwide for international
         
-        return {
+        # MyDHL API shipment data structure
+        shipment_data = {
             'plannedShippingDateAndTime': order.created_at.strftime('%Y-%m-%dT%H:%M:%S'),
             'pickup': {
                 'isRequested': False
             },
             'productCode': product_code,
-            'accounts': ([{
+            'accounts': [{
                 'typeCode': 'shipper',
-                'number': self.account_number
-            }] if self.account_number else []),
+                'number': account_number if account_number else '123456789'  # Default test account if not provided
+            }],
             'outputImageProperties': {
                 'printerDPI': 300,
                 'encodingFormat': 'PDF',
@@ -796,6 +806,11 @@ class DHLShipping(ShippingCarrierBase):
                 }]
             }
         }
+        
+        logger.info(f"Prepared shipment data with account number: {account_number or 'default'}")
+        logger.debug(f"Shipment data structure: {shipment_data}")
+        
+        return shipment_data
 
 
 class DeutschePostShipping(ShippingCarrierBase):
