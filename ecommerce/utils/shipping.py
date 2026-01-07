@@ -217,6 +217,11 @@ class FedExShipping(ShippingCarrierBase):
                 token_url = 'https://apis.fedex.com/oauth/token'
             
             logger.info(f"Requesting FedEx OAuth token from {token_url}")
+            logger.info(f"FedEx API Key (first 10 chars): {self.api_key[:10] if self.api_key else 'EMPTY'}...")
+            logger.info(f"FedEx API Secret (first 10 chars): {self.api_secret[:10] if self.api_secret else 'EMPTY'}...")
+            logger.info(f"FedEx API Key length: {len(self.api_key) if self.api_key else 0}")
+            logger.info(f"FedEx API Secret length: {len(self.api_secret) if self.api_secret else 0}")
+            
             data = {
                 'grant_type': 'client_credentials',
                 'client_id': self.api_key,
@@ -230,6 +235,7 @@ class FedExShipping(ShippingCarrierBase):
                 return token
             else:
                 logger.error(f"FedEx token request failed: {response.status_code} - {response.text}")
+                logger.error(f"FedEx API Key used: {self.api_key[:20]}... (first 20 chars)")
                 return None
         except Exception as e:
             logger.error(f"FedEx token request exception: {e}", exc_info=True)
