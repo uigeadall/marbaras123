@@ -40,6 +40,7 @@ class FedExShipping(ShippingCarrierBase):
         self.account_number = getattr(settings, 'FEDEX_ACCOUNT_NUMBER', '')
         self.meter_number = getattr(settings, 'FEDEX_METER_NUMBER', '')
         # Ensure API URL includes the full path
+        # Default to PRODUCTION URL (not sandbox) for real orders
         api_url = getattr(settings, 'FEDEX_API_URL', 'https://apis.fedex.com/ship/v1/shipments')
         # If URL doesn't end with /ship/v1/shipments, add it
         if api_url and not api_url.endswith('/ship/v1/shipments'):
@@ -48,8 +49,10 @@ class FedExShipping(ShippingCarrierBase):
             if 'sandbox' in api_url.lower():
                 api_url = 'https://apis-sandbox.fedex.com/ship/v1/shipments'
             else:
+                # Use PRODUCTION URL for real orders
                 api_url = 'https://apis.fedex.com/ship/v1/shipments'
         self.api_url = api_url
+        logger.info(f"FedEx API URL configured: {self.api_url} ({'PRODUCTION' if 'sandbox' not in self.api_url.lower() else 'SANDBOX'})")
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
         """Create FedEx shipment and return tracking info."""

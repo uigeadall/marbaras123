@@ -261,14 +261,14 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number")
     list_filter = ("shipping_option", "shipping_carrier", "coupon", "created_at")
     list_select_related = ("shipping_option", "coupon", "user")
-    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url")
+    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url", "create_label_button")
     
     fieldsets = (
         ("Order Information", {
             "fields": ("user", "email", "created_at", "total_price", "coupon")
         }),
         ("Shipping", {
-            "fields": ("shipping_option", "shipping_carrier", "tracking_number", "shipment_id", "shipping_label_url")
+            "fields": ("shipping_option", "shipping_carrier", "create_label_button", "tracking_number", "shipment_id", "shipping_label_url")
         }),
         ("Customer Details", {
             "fields": ("full_name", "phone", "address", "city", "postal_code", "country")
@@ -398,6 +398,45 @@ class OrderAdmin(admin.ModelAdmin):
         return format_html('<a href="{}" target="_blank" style="color: #667eea; font-weight: bold;">🖨️ Print</a>', url)
     print_label_link.short_description = "Label"
     
+    @admin.display(description="Create Label")
+    def create_label_button(self, obj):
+        """Add a button to create shipping label via API."""
+        if obj.shipping_label_url:
+            # Label already exists
+            from django.urls import reverse
+            print_url = reverse('admin:print_shipping_label', args=[obj.pk])
+            return format_html(
+                '<div style="margin: 10px 0;">'
+                '<span style="color: green; font-weight: bold;">✅ Label Created</span><br>'
+                '<a href="{}" target="_blank" style="color: #667eea; font-weight: bold; margin-top: 5px; display: inline-block;">🖨️ Print Label</a>'
+                '</div>',
+                print_url
+            )
+        elif obj.shipping_carrier:
+            # Carrier selected, show create button
+            from django.urls import reverse
+            create_url = reverse('admin:ecommerce_order_changelist')
+            return format_html(
+                '<div style="margin: 10px 0;">'
+                '<a href="{}" onclick="createLabelForOrder({}); return false;" '
+                'style="background: #667eea; color: white; padding: 8px 16px; text-decoration: none; '
+                'border-radius: 4px; display: inline-block; font-weight: bold;">'
+                '📦 Create Label via {} API</a>'
+                '<script>function createLabelForOrder(orderId) {{'
+                'if(confirm("Create shipping label for Order #" + orderId + "?")) {{'
+                'window.location.href = "{}?action=create_shipping_labels&_selected_action=" + orderId;'
+                '}}}}</script>'
+                '</div>',
+                create_url, obj.id, obj.shipping_carrier.upper(), create_url
+            )
+        else:
+            return format_html(
+                '<div style="margin: 10px 0; color: #999;">'
+                '⚠️ Select shipping carrier first'
+                '</div>'
+            )
+    create_label_button.short_description = "Create Label"
+    
     def print_shipping_labels(self, request, queryset):
         """Admin action to print shipping labels for selected orders."""
         from django.urls import reverse
@@ -473,7 +512,7 @@ class OrderAdmin(admin.ModelAdmin):
     create_shipping_labels.short_description = "📦 Create shipping labels via carrier API"
     
     def get_urls(self):
-        """Add custom URL for printing shipping labels."""
+        """Add custom URLs for printing shipping labels and barcode scanner."""
         from django.urls import path
         urls = super().get_urls()
         custom_urls = [
@@ -481,6 +520,16 @@ class OrderAdmin(admin.ModelAdmin):
                 '<int:order_id>/print-label/',
                 self.admin_site.admin_view(self.print_shipping_label_view),
                 name='print_shipping_label',
+            ),
+            path(
+                '<int:order_id>/create-label/',
+                self.admin_site.admin_view(self.create_label_view),
+                name='create_shipping_label',
+            ),
+            path(
+                'barcode-scanner/',
+                self.admin_site.admin_view(self.barcode_scanner_view),
+                name='barcode_scanner',
             ),
         ]
         return custom_urls + urls
@@ -501,6 +550,76 @@ class OrderAdmin(admin.ModelAdmin):
         }, request=request)
         
         return HttpResponse(html)
+    
+    def create_label_view(self, request, order_id):
+        """View to create shipping label for a single order."""
+        from django.shortcuts import get_object_or_404, redirect
+        from django.urls import reverse
+        from ecommerce.utils.shipping import create_shipping_label
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        order = get_object_or_404(Order, pk=order_id)
+        
+        if not order.shipping_carrier:
+            messages.error(request, f"Order #{order.id}: No carrier selected. Please select a shipping carrier first.")
+            return redirect('admin:ecommerce_order_change', order_id)
+        
+        logger.info(f"Creating shipping label for Order #{order.id} with carrier {order.shipping_carrier}")
+        label_data = create_shipping_label(order, order.shipping_carrier)
+        
+        if label_data:
+            order.tracking_number = label_data.get('tracking_number')
+            order.shipping_label_url = label_data.get('label_url')
+            order.shipment_id = label_data.get('shipment_id')
+            order.save(update_fields=['tracking_number', 'shipping_label_url', 'shipment_id'])
+            messages.success(request, f"✅ Successfully created shipping label for Order #{order.id}. Tracking: {order.tracking_number}")
+            logger.info(f"✅ Successfully created label for Order #{order.id}: tracking={order.tracking_number}")
+        else:
+            messages.error(request, f"❌ Failed to create shipping label for Order #{order.id}. Check Railway logs for details.")
+            logger.error(f"❌ Failed to create label for Order #{order.id} with carrier {order.shipping_carrier}")
+        
+        return redirect('admin:ecommerce_order_change', order_id)
+    
+    def barcode_scanner_view(self, request):
+        """View for barcode scanner to find orders."""
+        from django.shortcuts import render
+        from django.http import JsonResponse
+        from .models import Order
+        
+        if request.method == 'POST':
+            # Handle barcode scan
+            barcode = request.POST.get('barcode', '').strip()
+            
+            if not barcode:
+                return JsonResponse({'error': 'No barcode provided'}, status=400)
+            
+            # Try to find order by ID or tracking number
+            try:
+                order_id = int(barcode)
+                order = Order.objects.get(pk=order_id)
+            except (ValueError, Order.DoesNotExist):
+                # Try tracking number
+                try:
+                    order = Order.objects.get(tracking_number=barcode)
+                except Order.DoesNotExist:
+                    return JsonResponse({'error': f'Order not found for barcode: {barcode}'}, status=404)
+            
+            from django.urls import reverse
+            order_url = reverse('admin:ecommerce_order_change', args=[order.id])
+            return JsonResponse({
+                'success': True,
+                'order_id': order.id,
+                'order_url': order_url,
+                'full_name': order.full_name,
+                'tracking_number': order.tracking_number or 'Not created',
+                'has_label': bool(order.shipping_label_url)
+            })
+        
+        # GET request - show scanner page
+        return render(request, 'admin/barcode_scanner.html', {
+            'title': 'Barcode Scanner - Find Order'
+        })
 
 
 # ---------- Coupons ----------
