@@ -1294,26 +1294,33 @@ class ShippoShipping(ShippingCarrierBase):
             shop_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
             shop_state = getattr(settings, 'SHOP_STATE', '')
             
-            from_address = shippo.Address.create(
-                name=getattr(settings, 'SHOP_NAME', 'Marbaras'),
-                street1=getattr(settings, 'SHOP_ADDRESS', ''),
-                city=getattr(settings, 'SHOP_CITY', 'Sofia'),
-                state=shop_state if shop_state else None,
-                zip=getattr(settings, 'SHOP_POSTAL_CODE', ''),
-                country=shop_country,
-                phone=getattr(settings, 'SHOP_PHONE', ''),
-            )
+            from_address_data = {
+                'name': getattr(settings, 'SHOP_NAME', 'Marbaras'),
+                'street1': getattr(settings, 'SHOP_ADDRESS', ''),
+                'city': getattr(settings, 'SHOP_CITY', 'Sofia'),
+                'zip': getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                'country': shop_country,
+            }
+            if shop_state:
+                from_address_data['state'] = shop_state
+            shop_phone = getattr(settings, 'SHOP_PHONE', '')
+            if shop_phone:
+                from_address_data['phone'] = shop_phone
+            
+            from_address = shippo.Address.create(**from_address_data)
             
             # Create to address (customer address)
-            to_address = shippo.Address.create(
-                name=order.full_name,
-                street1=order.address,
-                city=order.city,
-                state=None,  # Shippo will handle this if needed
-                zip=order.postal_code,
-                country=order.country or 'BG',
-                phone=order.phone,
-            )
+            to_address_data = {
+                'name': order.full_name,
+                'street1': order.address,
+                'city': order.city,
+                'zip': order.postal_code,
+                'country': order.country or 'BG',
+            }
+            if order.phone:
+                to_address_data['phone'] = order.phone
+            
+            to_address = shippo.Address.create(**to_address_data)
             
             # Calculate package weight and dimensions
             total_weight = Decimal('0.5')  # Default 0.5 kg
