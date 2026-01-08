@@ -1035,9 +1035,16 @@ class GlobalMailShipping(ShippingCarrierBase):
     def _get_access_token(self) -> Optional[str]:
         """Get OAuth access token from Global Mail."""
         try:
-            # Global Mail uses same endpoint for sandbox and production
-            # Environment is determined by credentials (sandbox vs production keys)
-            token_url = 'https://api.globalmail.com/oauth/token'
+            # Determine OAuth token endpoint based on API URL
+            # If using DHL API endpoint, use DHL OAuth endpoint
+            if 'dhl.com' in self.api_url.lower():
+                if 'sandbox' in self.api_url.lower():
+                    token_url = 'https://api-sandbox.dhl.com/account/auth/v1/accesstoken'
+                else:
+                    token_url = 'https://api.dhl.com/account/auth/v1/accesstoken'
+            else:
+                # Try Global Mail specific endpoint (if it exists)
+                token_url = 'https://api.globalmail.com/oauth/token'
             
             logger.info(f"Requesting Global Mail OAuth token from {token_url}")
             logger.info(f"Using API Key (consumerKey): {self.api_key[:10]}... (length: {len(self.api_key)})")
