@@ -831,7 +831,8 @@ class OrderAdmin(admin.ModelAdmin):
         
         if not order.shipping_carrier:
             messages.error(request, f"Order #{order.id}: No carrier selected. Please select a shipping carrier first.")
-            return redirect('admin:ecommerce_order_change', order_id)
+            from django.urls import reverse
+        return redirect(reverse('admin:ecommerce_order_change', args=[order_id]))
         
         logger.info(f"Creating shipping label for Order #{order.id} with carrier {order.shipping_carrier}")
         label_data = create_shipping_label(order, order.shipping_carrier)
@@ -847,7 +848,8 @@ class OrderAdmin(admin.ModelAdmin):
             messages.error(request, f"❌ Failed to create shipping label for Order #{order.id}. Check Railway logs for details.")
             logger.error(f"❌ Failed to create label for Order #{order.id} with carrier {order.shipping_carrier}")
         
-        return redirect('admin:ecommerce_order_change', order_id)
+        from django.urls import reverse
+        return redirect(reverse('admin:ecommerce_order_change', args=[order_id]))
     
     def barcode_scanner_view(self, request):
         """View for barcode scanner to find orders."""
