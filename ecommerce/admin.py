@@ -358,8 +358,7 @@ class OrderAdmin(admin.ModelAdmin):
         shop_address = getattr(settings, 'SHOP_ADDRESS', '')
         ship_from = f"{shop_address}, {shop_city}, {shop_country}".strip(", ")
         
-        # Default currency (assuming BGN/Bulgarian Lev)
-        currency = "BGN"
+        # Get currency from order (default to EUR if not set)
         
         # Get item counts and SKUs per order
         order_items_data = {}
@@ -381,12 +380,14 @@ class OrderAdmin(admin.ModelAdmin):
                     sku = f"{sku} (x{item.quantity})"
                 skus.append(sku)
             
-            order_items_data[order.id] = {
+                order_items_data[order.id] = {
                 'count': total_items,
                 'skus': "; ".join(skus) if skus else "N/A"
             }
 
         for o in queryset.select_related("shipping_option", "coupon"):
+            # Get currency from order (default to EUR if not set)
+            currency = getattr(o, 'currency', 'EUR') or 'EUR'
             # Calculate shipping cost
             shipping_cost = o.shipping_option.price if o.shipping_option else Decimal("0.00")
             

@@ -1456,6 +1456,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 shipping_cost = Decimal("0.00")
 
         total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
+        currency = _get_currency_from_request(request)
 
         with transaction.atomic():
             order = Order.objects.create(
@@ -1468,6 +1469,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 phone=phone,
                 shipping_option=shipping_option,
                 total_price=total,
+                currency=currency,
             )
 
             order_items = []
@@ -1663,6 +1665,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             return redirect("guest_checkout")
 
         total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
+        currency = _get_currency_from_request(request)
 
         with transaction.atomic():
             order = Order.objects.create(
@@ -1676,6 +1679,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
                 country=country,
                 shipping_option=shipping_option,
                 total_price=total,
+                currency=currency,
             )
 
             order_items = []
@@ -1933,6 +1937,9 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             if country in COUNTRY_CODE_MAP:
                 country_name = COUNTRY_CODE_MAP[country]
             
+            # Get currency from intent or request (default to EUR)
+            currency = getattr(intent, 'currency', '').upper() or data.get('currency', '').upper() or _get_currency_from_request(request)
+            
             order = Order.objects.create(
                 user=request.user if request.user.is_authenticated else None,
                 email=payer_email,
@@ -1944,6 +1951,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 country=country_name,
                 shipping_option=shipping_option,
                 total_price=total,
+                currency=currency,
             )
             
             OrderItem.objects.create(
