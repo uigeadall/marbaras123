@@ -1106,7 +1106,19 @@ class GlobalMailShipping(ShippingCarrierBase):
                 except Exception as e:
                     logger.debug(f"Basic Auth + Form data failed for {token_url}: {e}")
             
-            logger.error(f"All OAuth endpoints failed. Last response: {response.status_code if 'response' in locals() else 'N/A'}")
+            # Log last error response for debugging
+            if 'response' in locals():
+                logger.error(f"All OAuth endpoints failed. Last response: {response.status_code}")
+                logger.error(f"Last response text: {response.text[:500] if hasattr(response, 'text') else 'N/A'}")
+            else:
+                logger.error("All OAuth endpoints failed - no response received")
+            
+            logger.error("⚠️ Global Mail OAuth authentication failed. Please check:")
+            logger.error("1. Are the credentials (consumerKey/consumerSecret) correct?")
+            logger.error("2. Is the API endpoint URL correct?")
+            logger.error("3. Do you have API documentation from Global Mail with the correct endpoint?")
+            logger.error("4. Contact Global Mail support for the correct API endpoint and authentication method")
+            
             return None
         except Exception as e:
             logger.error(f"Global Mail token request exception: {e}", exc_info=True)
