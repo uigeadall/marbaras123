@@ -1259,7 +1259,7 @@ class ShippoShipping(ShippingCarrierBase):
         if not shippo:
             logger.error("shippo library not installed. Install with: pip install shippo")
         elif self.api_key:
-            shippo.api_key = self.api_key
+            shippo.config.api_key = self.api_key
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
         """Create Shippo shipment and return tracking info."""
@@ -1275,7 +1275,7 @@ class ShippoShipping(ShippingCarrierBase):
         
         try:
             # Set API key
-            shippo.api_key = self.api_key
+            shippo.config.api_key = self.api_key
             
             # Determine carrier from shipping_option or use default
             carrier = 'usps'  # Default carrier

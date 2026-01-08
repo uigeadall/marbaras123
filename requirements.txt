@@ -5,10 +5,10 @@ Django==5.2.7
 django-allauth==65.12.1
 PyJWT==2.9.0
 cryptography==43.0.3
-idna>=2.5
+idna>=2.5,<2.9
 pillow==12.0.0
 python-dotenv==1.1.1
-requests>=2.32.5
+requests==2.21.0
 sqlparse==0.5.3
 stripe==13.0.1
 typing_extensions==4.15.0
@@ -40,5 +40,5 @@ django-cloudinary-storage==0.3.0
 # Shipping API (EasyPost)
 easypost==7.0.0
 
-# Shipping API (Shippo)
-shippo>=3.9.0
+# Shipping API (Shippo) - using 2.0.0 for stable API
+shippo==2.0.0
