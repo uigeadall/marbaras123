@@ -322,35 +322,111 @@ class OrderAdmin(admin.ModelAdmin):
     send_shipped_email.short_description = "Send 'Order Shipped' email"
 
     def export_orders_csv(self, request, queryset):
+        """Export orders to CSV with all fields needed for accounting."""
         response = HttpResponse(content_type="text/csv")
-        response["Content-Disposition"] = 'attachment; filename="orders.csv"'
+        response["Content-Disposition"] = 'attachment; filename="orders_accounting.csv"'
         writer = csv.writer(response)
+        
+        # CSV headers as requested by accountant
         writer.writerow([
-            "id", "created_at", "full_name", "email", "phone",
-            "address", "city", "postal_code",
-            "shipping_option", "coupon", "total_price", "items_count"
+            "Order ID",
+            "Date",
+            "Number of Items",
+            "Country",
+            "SKU",
+            "Currency",
+            "Order Value",
+            "Shipping",
+            "Shipping Discount",
+            "Discount Amount",
+            "Ship From",
+            "Ship To",
+            "Customer Name",
+            "Customer Email",
+            "Customer Phone",
+            "City",
+            "Postal Code",
+            "Coupon Code",
+            "Tracking Number"
         ])
 
-        counts = (
-            OrderItem.objects
-            .filter(order__in=queryset)
-            .values("order_id")
-            .annotate(c=Sum("quantity"))
-        )
-        counts_map = {row["order_id"]: row["c"] for row in counts}
+        # Get shop information for "Ship From"
+        shop_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+        shop_city = getattr(settings, 'SHOP_CITY', 'Sofia')
+        shop_address = getattr(settings, 'SHOP_ADDRESS', '')
+        ship_from = f"{shop_address}, {shop_city}, {shop_country}".strip(", ")
+        
+        # Default currency (assuming BGN/Bulgarian Lev)
+        currency = "BGN"
+        
+        # Get item counts and SKUs per order
+        order_items_data = {}
+        for order in queryset:
+            items = order.items.select_related("product", "variant").all()
+            total_items = sum(item.quantity for item in items)
+            skus = []
+            for item in items:
+                # Get SKU from variant if available, otherwise from product serial_number
+                sku = ""
+                if item.variant and item.variant.sku:
+                    sku = item.variant.sku
+                elif item.product.serial_number:
+                    sku = item.product.serial_number
+                else:
+                    sku = f"PROD-{item.product.id}"
+                # Add quantity to SKU if multiple
+                if item.quantity > 1:
+                    sku = f"{sku} (x{item.quantity})"
+                skus.append(sku)
+            
+            order_items_data[order.id] = {
+                'count': total_items,
+                'skus': "; ".join(skus) if skus else "N/A"
+            }
 
         for o in queryset.select_related("shipping_option", "coupon"):
+            # Calculate shipping cost
+            shipping_cost = o.shipping_option.price if o.shipping_option else Decimal("0.00")
+            
+            # Calculate discount amount from coupon
+            discount_amount = Decimal("0.00")
+            shipping_discount = Decimal("0.00")
+            if o.coupon:
+                # Calculate discount based on coupon type
+                if o.coupon.percent_off:
+                    # Percentage discount
+                    discount_amount = (o.total_price * o.coupon.percent_off / 100).quantize(Decimal("0.01"))
+                elif o.coupon.amount_off:
+                    # Fixed amount discount
+                    discount_amount = o.coupon.amount_off
+            
+            # Ship To address
+            ship_to = f"{o.address}, {o.city}, {o.postal_code}, {o.country or ''}".strip(", ")
+            
             writer.writerow([
-                o.id, o.created_at, o.full_name, o.email, o.phone,
-                o.address, o.city, o.postal_code,
-                (o.shipping_option.name if o.shipping_option else ""),
-                (o.coupon.code if o.coupon else ""),
-                o.total_price,
-                counts_map.get(o.id, 0),
+                o.id,  # Order ID
+                o.created_at.strftime("%Y-%m-%d %H:%M:%S"),  # Date
+                order_items_data.get(o.id, {}).get('count', 0),  # Number of Items
+                o.country or "",  # Country
+                order_items_data.get(o.id, {}).get('skus', "N/A"),  # SKU
+                currency,  # Currency
+                str(o.total_price),  # Order Value
+                str(shipping_cost),  # Shipping
+                str(shipping_discount),  # Shipping Discount (currently not tracked separately)
+                str(discount_amount),  # Discount Amount
+                ship_from,  # Ship From
+                ship_to,  # Ship To
+                o.full_name,  # Customer Name
+                o.email or "",  # Customer Email
+                o.phone,  # Customer Phone
+                o.city,  # City
+                o.postal_code,  # Postal Code
+                o.coupon.code if o.coupon else "",  # Coupon Code
+                o.tracking_number or "",  # Tracking Number
             ])
         return response
 
-    export_orders_csv.short_description = "Export selected orders to CSV"
+    export_orders_csv.short_description = "Export selected orders to CSV (Accounting)"
     
     def save_model(self, request, obj, form, change):
         """Override save to auto-create shipping label for new orders."""
