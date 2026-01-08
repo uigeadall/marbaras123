@@ -759,10 +759,12 @@ DHL_API_URL = env("DHL_API_URL", "https://api-sandbox.dhl.com/shipment/shipments
 # Global Mail API Configuration
 # For sandbox: use T2Lnu62rspJ1wdaI3JOA1JpM7oECmfz2 / 4AIqPAggU2aIPvPE
 # For production: use HJtEFGAo07xkB6syf2p3CxoyIecW0gtd / NklmHiW3our5tHAF
+# Note: Global Mail uses same API endpoint for both sandbox and production
+# Environment is determined by credentials (sandbox vs production keys)
 GLOBAL_MAIL_API_KEY = env("GLOBAL_MAIL_API_KEY", "")  # consumerKey
 GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")  # consumerSecret
 GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")  # userId: l2006@abv.bg
-GLOBAL_MAIL_API_URL = env("GLOBAL_MAIL_API_URL", "https://api-sandbox.globalmail.com/v1/shipments")  # Use production URL for prod
+GLOBAL_MAIL_API_URL = env("GLOBAL_MAIL_API_URL", "https://api.globalmail.com/v1/shipments")
 
 # Deutsche Post API Configuration
 DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")

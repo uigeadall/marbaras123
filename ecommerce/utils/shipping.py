@@ -959,9 +959,11 @@ class GlobalMailShipping(ShippingCarrierBase):
         self.api_key = getattr(settings, 'GLOBAL_MAIL_API_KEY', '')
         self.api_secret = getattr(settings, 'GLOBAL_MAIL_API_SECRET', '')
         self.account_number = getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')
+        # Global Mail uses same endpoint for sandbox and production, credentials determine environment
         api_url = getattr(settings, 'GLOBAL_MAIL_API_URL', 'https://api.globalmail.com/v1/shipments')
-        if 'sandbox' in api_url.lower() or not api_url:
-            api_url = 'https://api-sandbox.globalmail.com/v1/shipments'
+        # Remove sandbox URL as it doesn't exist - use production URL with sandbox credentials
+        if 'sandbox' in api_url.lower():
+            api_url = 'https://api.globalmail.com/v1/shipments'
         self.api_url = api_url
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
@@ -1033,12 +1035,9 @@ class GlobalMailShipping(ShippingCarrierBase):
     def _get_access_token(self) -> Optional[str]:
         """Get OAuth access token from Global Mail."""
         try:
-            # Determine if sandbox or production
-            is_sandbox = 'sandbox' in self.api_url.lower() if self.api_url else True
-            
+            # Global Mail uses same endpoint for sandbox and production
+            # Environment is determined by credentials (sandbox vs production keys)
             token_url = 'https://api.globalmail.com/oauth/token'
-            if is_sandbox:
-                token_url = 'https://api-sandbox.globalmail.com/oauth/token'
             
             logger.info(f"Requesting Global Mail OAuth token from {token_url}")
             logger.info(f"Using API Key (consumerKey): {self.api_key[:10]}... (length: {len(self.api_key)})")
