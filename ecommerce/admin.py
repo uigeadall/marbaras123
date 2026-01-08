@@ -521,173 +521,121 @@ class OrderAdmin(admin.ModelAdmin):
         """Format order data for easy copy-paste into FedEx portal."""
         from django.conf import settings
         
-        # Get shop information
-        shop_name = getattr(settings, 'SHOP_NAME', 'Marbaras')
-        shop_address = getattr(settings, 'SHOP_ADDRESS', '')
-        shop_city = getattr(settings, 'SHOP_CITY', 'Sofia')
-        shop_postal = getattr(settings, 'SHOP_POSTAL_CODE', '')
-        shop_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
-        shop_phone = getattr(settings, 'SHOP_PHONE', '')
-        shop_email = getattr(settings, 'SHOP_EMAIL', '')
-        
         # Truncate full_name to 35 characters (FedEx limit)
         contact_name = obj.full_name[:35] if len(obj.full_name) > 35 else obj.full_name
         
-        # Format data for FedEx Ship Manager - one field per line, ready to paste
-        # Format: Field Label: Value (for manual copy-paste)
-        formatted_data = f"""=== RECIPIENT (ДОСТАВЯНЕ НА) ===
-Copy each value separately and paste into the corresponding field:
-
-ИМЕ ЗА КОНТАКТ (CONTACT NAME):
-{contact_name}
-
-ФИРМА (COMPANY):
-(leave empty)
-
-ТЕЛЕФОНЕН НОМЕР (PHONE NUMBER):
-{obj.phone}
-
-ИМЕЙЛ (EMAIL):
-{obj.email or ''}
-
-ДЪРЖАВА/ТЕРИТОРИЯ (COUNTRY):
-{obj.country or ''}
-
-ПОЛЕ 1 ЗА АДРЕС (ADDRESS FIELD 1):
-{obj.address[:35]}
-
-ПОЛЕ 2 ЗА АДРЕС (ADDRESS FIELD 2):
-{obj.address[35:70] if len(obj.address) > 35 else ''}
-
-ПОЩЕНСКИ КОД (POSTAL CODE):
-{obj.postal_code}
-
-ГРАД (CITY):
-{obj.city}
-
-=== SHIPPER (ИЗПРАЩАНЕ ОТ) ===
-(Already filled: {shop_name})
-
-=== NOTES ===
-Order ID: #{obj.id}
-Items: {', '.join([f"{item.product.name} x{item.quantity}" for item in obj.items.all()[:3]])}
-"""
+        # Split address into two fields (35 chars each)
+        address1 = obj.address[:35]
+        address2 = obj.address[35:70] if len(obj.address) > 35 else ''
         
-        # Create individual copy buttons for each field
+        # Format data as tab-separated values in the order FedEx expects
+        # This format should auto-fill fields when pasted in sequence
+        # Order: Contact Name, Company (empty), Phone, Email, Address1, Address2, Postal Code, City, Country
+        tab_separated_data = f"{contact_name}\t\t{obj.phone}\t{obj.email or ''}\t{address1}\t{address2}\t{obj.postal_code}\t{obj.city}\t{obj.country or ''}"
+        
+        # Also create a newline-separated version for manual field-by-field paste
+        newline_separated_data = f"""{contact_name}
+{obj.phone}
+{obj.email or ''}
+{address1}
+{address2}
+{obj.postal_code}
+{obj.city}
+{obj.country or ''}"""
+        
         return format_html(
             '''
             <div style="margin: 10px 0; font-family: Arial, sans-serif;">
-                <h3 style="color: #667eea; margin-bottom: 15px;">📋 Copy Individual Fields for FedEx Ship Manager</h3>
+                <h3 style="color: #667eea; margin-bottom: 15px;">📋 Copy All Data for FedEx Ship Manager</h3>
                 
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ИМЕ ЗА КОНТАКТ (CONTACT NAME):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="contact-name-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('contact-name-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
+                <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                    <strong>⚠️ Instructions:</strong>
+                    <ol style="margin: 10px 0; padding-left: 20px;">
+                        <li>Click "Copy All Data" button below</li>
+                        <li>Go to FedEx Ship Manager</li>
+                        <li>Click in the first field (ИМЕ ЗА КОНТАКТ / Contact Name)</li>
+                        <li>Press <strong>Tab</strong> key to move to next field</li>
+                        <li>Paste (Ctrl+V / Cmd+V) - data will fill current field</li>
+                        <li>Press <strong>Tab</strong> again and paste - repeat for each field</li>
+                    </ol>
+                    <p style="margin: 10px 0 0 0; font-size: 12px;">
+                        <strong>Alternative:</strong> If tab-separated doesn't work, use the "Copy Line-by-Line" option below.
+                    </p>
                 </div>
                 
                 <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ТЕЛЕФОНЕН НОМЕР (PHONE NUMBER):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="phone-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('phone-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
+                    <strong>Option 1: Tab-Separated (Auto-fill with Tab key):</strong><br>
+                    <textarea id="tab-data-{}" readonly style="width: 100%; height: 60px; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; background: white;">{}</textarea>
+                    <button onclick="copyTabData({})" style="background: #667eea; color: white; padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px;">
+                        📋 Copy All Data (Tab-Separated)
+                    </button>
+                    <span id="tab-status-{}" style="margin-left: 10px; color: green; font-weight: bold;"></span>
                 </div>
                 
                 <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ИМЕЙЛ (EMAIL):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="email-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('email-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
+                    <strong>Option 2: Line-by-Line (One field per line):</strong><br>
+                    <textarea id="line-data-{}" readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; background: white;">{}</textarea>
+                    <button onclick="copyLineData({})" style="background: #28a745; color: white; padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px;">
+                        📋 Copy All Data (Line-by-Line)
+                    </button>
+                    <span id="line-status-{}" style="margin-left: 10px; color: green; font-weight: bold;"></span>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
+                        Copy this, then paste line-by-line into each FedEx field in order.
+                    </p>
                 </div>
                 
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ПОЛЕ 1 ЗА АДРЕС (ADDRESS FIELD 1):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="address1-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('address1-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
-                </div>
-                
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ПОЛЕ 2 ЗА АДРЕС (ADDRESS FIELD 2):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="address2-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('address2-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
-                </div>
-                
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ПОЩЕНСКИ КОД (POSTAL CODE):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="postal-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('postal-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
-                </div>
-                
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ГРАД (CITY):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="city-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('city-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
-                </div>
-                
-                <div style="background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>ДЪРЖАВА/ТЕРИТОРИЯ (COUNTRY):</strong><br>
-                    <div style="background: white; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin: 5px 0; display: inline-block; min-width: 300px; font-family: monospace;">
-                        <span id="country-{}">{}</span>
-                    </div>
-                    <button onclick="copyField('country-{}')" style="background: #667eea; color: white; padding: 5px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Copy</button>
-                </div>
-                
-                <div style="margin-top: 20px; padding: 10px; background: #e8f4f8; border-radius: 4px; font-size: 12px;">
-                    <strong>💡 Tip:</strong> Click "Copy" next to each field, then paste (Ctrl+V / Cmd+V) into the corresponding field in FedEx Ship Manager.
+                <div style="background: #e8f4f8; padding: 15px; border-radius: 4px; margin-top: 15px;">
+                    <strong>📝 Field Order (for reference):</strong>
+                    <ol style="margin: 10px 0; padding-left: 20px; font-size: 12px;">
+                        <li>ИМЕ ЗА КОНТАКТ (Contact Name) - <code>{}</code></li>
+                        <li>ФИРМА (Company) - <em>leave empty</em></li>
+                        <li>ТЕЛЕФОНЕН НОМЕР (Phone) - <code>{}</code></li>
+                        <li>ИМЕЙЛ (Email) - <code>{}</code></li>
+                        <li>ПОЛЕ 1 ЗА АДРЕС (Address 1) - <code>{}</code></li>
+                        <li>ПОЛЕ 2 ЗА АДРЕС (Address 2) - <code>{}</code></li>
+                        <li>ПОЩЕНСКИ КОД (Postal Code) - <code>{}</code></li>
+                        <li>ГРАД (City) - <code>{}</code></li>
+                        <li>ДЪРЖАВА/ТЕРИТОРИЯ (Country) - <code>{}</code></li>
+                    </ol>
                 </div>
             </div>
             <script>
-                function copyField(fieldId) {{
-                    var element = document.getElementById(fieldId);
-                    var text = element.textContent;
-                    
-                    // Create temporary textarea
-                    var textarea = document.createElement('textarea');
-                    textarea.value = text;
-                    textarea.style.position = 'fixed';
-                    textarea.style.opacity = '0';
-                    document.body.appendChild(textarea);
+                function copyTabData(orderId) {{
+                    var textarea = document.getElementById('tab-data-' + orderId);
                     textarea.select();
                     textarea.setSelectionRange(0, 99999);
-                    
                     try {{
                         document.execCommand('copy');
-                        // Show feedback
-                        var button = event.target;
-                        var originalText = button.textContent;
-                        button.textContent = '✅ Copied!';
-                        button.style.background = '#28a745';
+                        var status = document.getElementById('tab-status-' + orderId);
+                        status.textContent = '✅ Copied! Now go to FedEx and paste with Tab key.';
                         setTimeout(function() {{
-                            button.textContent = originalText;
-                            button.style.background = '#667eea';
-                        }}, 1500);
+                            status.textContent = '';
+                        }}, 5000);
                     }} catch (err) {{
                         alert('Failed to copy. Please select and copy manually.');
                     }}
-                    
-                    document.body.removeChild(textarea);
+                }}
+                
+                function copyLineData(orderId) {{
+                    var textarea = document.getElementById('line-data-' + orderId);
+                    textarea.select();
+                    textarea.setSelectionRange(0, 99999);
+                    try {{
+                        document.execCommand('copy');
+                        var status = document.getElementById('line-status-' + orderId);
+                        status.textContent = '✅ Copied! Paste line-by-line into FedEx fields.';
+                        setTimeout(function() {{
+                            status.textContent = '';
+                        }}, 5000);
+                    }} catch (err) {{
+                        alert('Failed to copy. Please select and copy manually.');
+                    }}
                 }}
             </script>
             ''',
-            obj.id, contact_name, obj.id,
-            obj.id, obj.phone, obj.id,
-            obj.id, obj.email or '', obj.id,
-            obj.id, obj.address[:35], obj.id,
-            obj.id, obj.address[35:70] if len(obj.address) > 35 else '', obj.id,
-            obj.id, obj.postal_code, obj.id,
-            obj.id, obj.city, obj.id,
-            obj.id, obj.country or '', obj.id
+            obj.id, tab_separated_data, obj.id, obj.id,
+            obj.id, newline_separated_data, obj.id, obj.id,
+            contact_name, obj.phone, obj.email or '', address1, address2, obj.postal_code, obj.city, obj.country or ''
         )
     
     fedex_copy_paste.short_description = "FedEx Copy-Paste"
