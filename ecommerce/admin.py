@@ -6,6 +6,8 @@ from django.contrib import messages
 from django.utils.html import format_html
 from django.shortcuts import redirect
 from django import forms
+from django.conf import settings
+from decimal import Decimal
 import csv
 
 from .models import (
