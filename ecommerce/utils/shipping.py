@@ -963,13 +963,19 @@ class GlobalMailShipping(ShippingCarrierBase):
         # Test: https://express.api.dhl.com/mydhlapi/test/shipments
         # Production: https://express.api.dhl.com/mydhlapi/shipments
         api_url = getattr(settings, 'GLOBAL_MAIL_API_URL', '')
-        if not api_url or 'test' in api_url.lower() or 'sandbox' in api_url.lower():
+        # Default to PRODUCTION if not specified (Global Mail credentials might be for production)
+        if not api_url:
+            # Default to production MyDHL API endpoint
+            api_url = 'https://express.api.dhl.com/mydhlapi/shipments'
+            logger.info("GLOBAL_MAIL_API_URL not set, defaulting to PRODUCTION endpoint")
+        elif 'test' in api_url.lower() or 'sandbox' in api_url.lower():
             # MyDHL API test environment endpoint for shipments
             api_url = 'https://express.api.dhl.com/mydhlapi/test/shipments'
         elif 'express.api.dhl.com' not in api_url.lower():
             # Production MyDHL API endpoint
             api_url = 'https://express.api.dhl.com/mydhlapi/shipments'
         self.api_url = api_url
+        logger.info(f"Global Mail API URL: {self.api_url} ({'PRODUCTION' if 'test' not in self.api_url.lower() else 'TEST'})")
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
         """Create Global Mail shipment and return tracking info."""
