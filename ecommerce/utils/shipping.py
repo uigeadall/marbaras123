@@ -1033,38 +1033,81 @@ class GlobalMailShipping(ShippingCarrierBase):
         """Get OAuth access token from Global Mail."""
         try:
             # Determine OAuth token endpoint based on API URL
-            # If using DHL API endpoint, use DHL OAuth endpoint
+            # If using DHL API endpoint, try multiple DHL OAuth endpoints
             if 'dhl.com' in self.api_url.lower():
+                # Try different DHL OAuth endpoints
+                token_endpoints = []
                 if 'sandbox' in self.api_url.lower():
-                    token_url = 'https://api-sandbox.dhl.com/account/auth/v1/accesstoken'
+                    token_endpoints = [
+                        'https://api-sandbox.dhl.com/account/auth/v1/accesstoken',
+                        'https://api-sandbox.dhl.com/auth/accesstoken',
+                        'https://api-sandbox.dhl.com/parcel/de/account/auth/v1/accesstoken',
+                    ]
                 else:
-                    token_url = 'https://api.dhl.com/account/auth/v1/accesstoken'
+                    token_endpoints = [
+                        'https://api.dhl.com/account/auth/v1/accesstoken',
+                        'https://api.dhl.com/auth/accesstoken',
+                        'https://api.dhl.com/parcel/de/account/auth/v1/accesstoken',
+                    ]
             else:
                 # Try Global Mail specific endpoint (if it exists)
-                token_url = 'https://api.globalmail.com/oauth/token'
+                token_endpoints = ['https://api.globalmail.com/oauth/token']
             
-            logger.info(f"Requesting Global Mail OAuth token from {token_url}")
+            logger.info(f"Trying {len(token_endpoints)} OAuth endpoints for Global Mail")
             logger.info(f"Using API Key (consumerKey): {self.api_key[:10]}... (length: {len(self.api_key)})")
             logger.info(f"Using API Secret (consumerSecret): {self.api_secret[:5]}... (length: {len(self.api_secret)})")
             
-            # Global Mail uses consumerKey/consumerSecret as client_id/client_secret
-            data = {
-                'grant_type': 'client_credentials',
-                'client_id': self.api_key,  # This is the consumerKey
-                'client_secret': self.api_secret  # This is the consumerSecret
-            }
+            # Try each endpoint with different authentication methods
+            for token_url in token_endpoints:
+                logger.info(f"Trying OAuth endpoint: {token_url}")
+                
+                # Method 1: Basic Auth
+                try:
+                    auth = (self.api_key, self.api_secret)
+                    response = requests.post(token_url, auth=auth, timeout=10)
+                    if response.status_code == 200:
+                        token = response.json().get('access_token') or response.json().get('accessToken')
+                        if token:
+                            logger.info(f"✅ Global Mail OAuth token obtained from {token_url}")
+                            return token
+                except Exception as e:
+                    logger.debug(f"Basic Auth failed for {token_url}: {e}")
+                
+                # Method 2: Form data with client_credentials
+                try:
+                    data = {
+                        'grant_type': 'client_credentials',
+                        'client_id': self.api_key,
+                        'client_secret': self.api_secret
+                    }
+                    response = requests.post(token_url, data=data, timeout=10)
+                    if response.status_code == 200:
+                        token = response.json().get('access_token') or response.json().get('accessToken')
+                        if token:
+                            logger.info(f"✅ Global Mail OAuth token obtained from {token_url} (form data)")
+                            return token
+                except Exception as e:
+                    logger.debug(f"Form data failed for {token_url}: {e}")
+                
+                # Method 3: Basic Auth + Form data
+                try:
+                    auth = (self.api_key, self.api_secret)
+                    data = {
+                        'grant_type': 'client_credentials',
+                        'client_id': self.api_key,
+                        'client_secret': self.api_secret
+                    }
+                    response = requests.post(token_url, auth=auth, data=data, timeout=10)
+                    if response.status_code == 200:
+                        token = response.json().get('access_token') or response.json().get('accessToken')
+                        if token:
+                            logger.info(f"✅ Global Mail OAuth token obtained from {token_url} (Basic Auth + form data)")
+                            return token
+                except Exception as e:
+                    logger.debug(f"Basic Auth + Form data failed for {token_url}: {e}")
             
-            # Try Basic Auth first, then form data
-            auth = (self.api_key, self.api_secret)
-            response = requests.post(token_url, auth=auth, data=data, timeout=10)
-            
-            if response.status_code == 200:
-                token = response.json().get('access_token') or response.json().get('accessToken')
-                logger.info("✅ Global Mail OAuth token obtained successfully")
-                return token
-            else:
-                logger.error(f"Global Mail token request failed: {response.status_code} - {response.text}")
-                return None
+            logger.error(f"All OAuth endpoints failed. Last response: {response.status_code if 'response' in locals() else 'N/A'}")
+            return None
         except Exception as e:
             logger.error(f"Global Mail token request exception: {e}", exc_info=True)
             return None
