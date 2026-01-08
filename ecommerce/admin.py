@@ -598,6 +598,26 @@ class OrderAdmin(admin.ModelAdmin):
                         <li>ДЪРЖАВА/ТЕРИТОРИЯ (Country) - <code>{}</code></li>
                     </ol>
                 </div>
+                
+                <div style="background: #d4edda; padding: 15px; border-radius: 4px; margin-top: 15px; border-left: 4px solid #28a745;">
+                    <h4 style="margin-top: 0; color: #155724;">🚀 Option 3: Auto-Fill Bookmarklet (Recommended)</h4>
+                    <p style="margin: 10px 0;">This bookmarklet will automatically fill all fields in FedEx Ship Manager with one click!</p>
+                    
+                    <div style="background: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
+                        <strong>Step 1:</strong> Drag this button to your bookmarks bar, or right-click → "Bookmark this link":<br>
+                        <a id="bookmarklet-link-{}" href="javascript:(function(){{var data={{contactName:'{}',phone:'{}',email:'{}',address1:'{}',address2:'{}',postalCode:'{}',city:'{}',country:'{}'}};var findField=function(labelText){{var labels=Array.from(document.querySelectorAll('label')).filter(l=>l.textContent.includes(labelText));if(labels.length){{var input=document.querySelector('input[name=\"'+labels[0].getAttribute('for')+'\"]')||labels[0].nextElementSibling||labels[0].closest('div').querySelector('input,select');return input;}}var inputs=Array.from(document.querySelectorAll('input,select'));var field=inputs.find(inp=>{{var label=inp.closest('div,form').querySelector('label');return label&&label.textContent.includes(labelText);}});return field||inputs.find(inp=>inp.placeholder&&inp.placeholder.toLowerCase().includes(labelText.toLowerCase().substring(0,10)));}};var fillField=function(labelText,value){{if(!value)return;var field=findField(labelText);if(field){{field.value=value;field.dispatchEvent(new Event('input',{{bubbles:true}}));field.dispatchEvent(new Event('change',{{bubbles:true}}));return true;}}return false;}};var filled=0;if(fillField('ИМЕ ЗА КОНТАКТ',data.contactName)||fillField('CONTACT NAME',data.contactName))filled++;if(fillField('ТЕЛЕФОНЕН НОМЕР',data.phone)||fillField('PHONE',data.phone))filled++;if(fillField('ИМЕЙЛ',data.email)||fillField('EMAIL',data.email))filled++;if(fillField('ПОЛЕ 1 ЗА АДРЕС',data.address1)||fillField('ADDRESS FIELD 1',data.address1))filled++;if(fillField('ПОЛЕ 2 ЗА АДРЕС',data.address2)||fillField('ADDRESS FIELD 2',data.address2))filled++;if(fillField('ПОЩЕНСКИ КОД',data.postalCode)||fillField('POSTAL CODE',data.postalCode))filled++;if(fillField('ГРАД',data.city)||fillField('CITY',data.city))filled++;if(fillField('ДЪРЖАВА',data.country)||fillField('COUNTRY',data.country))filled++;alert('✅ Filled '+filled+' fields! Check the form.');}})();" style="display: inline-block; background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; margin: 10px 0; cursor: move;">📦 Auto-Fill FedEx Form</a>
+                    </div>
+                    
+                    <div style="background: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
+                        <strong>Step 2:</strong> Go to FedEx Ship Manager → Create Shipment page<br>
+                        <strong>Step 3:</strong> Click the bookmarklet from your bookmarks bar<br>
+                        <strong>Step 4:</strong> All fields will be filled automatically! ✅
+                    </div>
+                    
+                    <p style="margin: 10px 0 0 0; font-size: 11px; color: #666;">
+                        <strong>Note:</strong> If some fields don't fill, you can manually copy from the fields above. The bookmarklet works by finding fields by their labels.
+                    </p>
+                </div>
             </div>
             <script>
                 function copyTabData(orderId) {{
