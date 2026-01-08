@@ -3,12 +3,13 @@ from django.contrib import admin
 from django.db.models import Count, Sum, Case, When, Value
 from django.http import HttpResponse
 from django.contrib import messages
-from django.utils.html import format_html
+from django.utils.html import format_html, escape
 from django.shortcuts import redirect
 from django import forms
 from django.conf import settings
 from decimal import Decimal
 import csv
+import json
 
 from .models import (
     BlogPost, BannerImage,
@@ -528,6 +529,49 @@ class OrderAdmin(admin.ModelAdmin):
         address1 = obj.address[:35]
         address2 = obj.address[35:70] if len(obj.address) > 35 else ''
         
+        # Build bookmarklet JavaScript code with properly escaped values
+        bookmarklet_data = {
+            'c': contact_name.replace("'", "\\'"),
+            'p': obj.phone.replace("'", "\\'"),
+            'e': (obj.email or '').replace("'", "\\'"),
+            'a1': address1.replace("'", "\\'"),
+            'a2': address2.replace("'", "\\'"),
+            'pc': obj.postal_code.replace("'", "\\'"),
+            'ci': obj.city.replace("'", "\\'"),
+            'co': (obj.country or '').replace("'", "\\'")
+        }
+        
+        # Build bookmarklet URL
+        bookmarklet_js = (
+            "javascript:(function(){"
+            "var d={c:'" + bookmarklet_data['c'] + "',p:'" + bookmarklet_data['p'] + 
+            "',e:'" + bookmarklet_data['e'] + "',a1:'" + bookmarklet_data['a1'] + 
+            "',a2:'" + bookmarklet_data['a2'] + "',pc:'" + bookmarklet_data['pc'] + 
+            "',ci:'" + bookmarklet_data['ci'] + "',co:'" + bookmarklet_data['co'] + "'};"
+            "var f=function(t){"
+            "var ls=Array.from(document.querySelectorAll('label')).filter(function(l){return l.textContent.indexOf(t)!==-1;});"
+            "if(ls.length){"
+            "var inp=document.querySelector('input[name='+ls[0].getAttribute('for')+']')||ls[0].nextElementSibling||ls[0].closest('div').querySelector('input,select');"
+            "return inp;"
+            "}"
+            "var ins=Array.from(document.querySelectorAll('input,select'));"
+            "var fd=ins.find(function(inp){var lb=inp.closest('div,form').querySelector('label');return lb&&lb.textContent.indexOf(t)!==-1;});"
+            "return fd||ins.find(function(inp){return inp.placeholder&&inp.placeholder.toLowerCase().indexOf(t.toLowerCase().substring(0,10))!==-1;});"
+            "};"
+            "var fill=function(t,v){if(!v)return false;var fd=f(t);if(fd){fd.value=v;fd.dispatchEvent(new Event('input',{bubbles:true}));fd.dispatchEvent(new Event('change',{bubbles:true}));return true;}return false;};"
+            "var cnt=0;"
+            "if(fill('ИМЕ ЗА КОНТАКТ',d.c)||fill('CONTACT NAME',d.c))cnt++;"
+            "if(fill('ТЕЛЕФОНЕН НОМЕР',d.p)||fill('PHONE',d.p))cnt++;"
+            "if(fill('ИМЕЙЛ',d.e)||fill('EMAIL',d.e))cnt++;"
+            "if(fill('ПОЛЕ 1 ЗА АДРЕС',d.a1)||fill('ADDRESS FIELD 1',d.a1))cnt++;"
+            "if(fill('ПОЛЕ 2 ЗА АДРЕС',d.a2)||fill('ADDRESS FIELD 2',d.a2))cnt++;"
+            "if(fill('ПОЩЕНСКИ КОД',d.pc)||fill('POSTAL CODE',d.pc))cnt++;"
+            "if(fill('ГРАД',d.ci)||fill('CITY',d.ci))cnt++;"
+            "if(fill('ДЪРЖАВА',d.co)||fill('COUNTRY',d.co))cnt++;"
+            "alert('Filled '+cnt+' fields! Check the form.');"
+            "})();"
+        )
+        
         # Format data as tab-separated values in the order FedEx expects
         # This format should auto-fill fields when pasted in sequence
         # Order: Contact Name, Company (empty), Phone, Email, Address1, Address2, Postal Code, City, Country
@@ -605,7 +649,7 @@ class OrderAdmin(admin.ModelAdmin):
                     
                     <div style="background: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
                         <strong>Step 1:</strong> Drag this button to your bookmarks bar, or right-click → "Bookmark this link":<br>
-                        <a id="bookmarklet-link-{}" href="javascript:(function(){{var data={{contactName:'{}',phone:'{}',email:'{}',address1:'{}',address2:'{}',postalCode:'{}',city:'{}',country:'{}'}};var findField=function(labelText){{var labels=Array.from(document.querySelectorAll('label')).filter(l=>l.textContent.includes(labelText));if(labels.length){{var input=document.querySelector('input[name=\"'+labels[0].getAttribute('for')+'\"]')||labels[0].nextElementSibling||labels[0].closest('div').querySelector('input,select');return input;}}var inputs=Array.from(document.querySelectorAll('input,select'));var field=inputs.find(inp=>{{var label=inp.closest('div,form').querySelector('label');return label&&label.textContent.includes(labelText);}});return field||inputs.find(inp=>inp.placeholder&&inp.placeholder.toLowerCase().includes(labelText.toLowerCase().substring(0,10)));}};var fillField=function(labelText,value){{if(!value)return;var field=findField(labelText);if(field){{field.value=value;field.dispatchEvent(new Event('input',{{bubbles:true}}));field.dispatchEvent(new Event('change',{{bubbles:true}}));return true;}}return false;}};var filled=0;if(fillField('ИМЕ ЗА КОНТАКТ',data.contactName)||fillField('CONTACT NAME',data.contactName))filled++;if(fillField('ТЕЛЕФОНЕН НОМЕР',data.phone)||fillField('PHONE',data.phone))filled++;if(fillField('ИМЕЙЛ',data.email)||fillField('EMAIL',data.email))filled++;if(fillField('ПОЛЕ 1 ЗА АДРЕС',data.address1)||fillField('ADDRESS FIELD 1',data.address1))filled++;if(fillField('ПОЛЕ 2 ЗА АДРЕС',data.address2)||fillField('ADDRESS FIELD 2',data.address2))filled++;if(fillField('ПОЩЕНСКИ КОД',data.postalCode)||fillField('POSTAL CODE',data.postalCode))filled++;if(fillField('ГРАД',data.city)||fillField('CITY',data.city))filled++;if(fillField('ДЪРЖАВА',data.country)||fillField('COUNTRY',data.country))filled++;alert('✅ Filled '+filled+' fields! Check the form.');}})();" style="display: inline-block; background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; margin: 10px 0; cursor: move;">📦 Auto-Fill FedEx Form</a>
+                        <a id="bookmarklet-link-{}" href="{}" style="display: inline-block; background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; margin: 10px 0; cursor: move;">📦 Auto-Fill FedEx Form</a>
                     </div>
                     
                     <div style="background: white; padding: 10px; border-radius: 4px; margin: 10px 0;">
@@ -655,6 +699,7 @@ class OrderAdmin(admin.ModelAdmin):
             ''',
             obj.id, tab_separated_data, obj.id, obj.id,
             obj.id, newline_separated_data, obj.id, obj.id,
+            obj.id, bookmarklet_js,
             contact_name, obj.phone, obj.email or '', address1, address2, obj.postal_code, obj.city, obj.country or ''
         )
     
