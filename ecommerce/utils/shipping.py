@@ -985,36 +985,80 @@ class GlobalMailShipping(ShippingCarrierBase):
         
         try:
             # MyDHL API uses Basic Authentication (not OAuth)
-            # Username = Site ID (consumerKey), Password = Password (consumerSecret)
+            # For Global Mail: Username = userId (email), Password = consumerSecret
+            # Or: Username = consumerKey, Password = consumerSecret
             logger.info("Using Basic Auth for MyDHL API (Global Mail)")
-            logger.info(f"API Key (first 10 chars): {self.api_key[:10] if self.api_key else 'None'}...")
+            logger.info(f"API Key (consumerKey, first 10 chars): {self.api_key[:10] if self.api_key else 'None'}...")
+            logger.info(f"Account Number (userId): {self.account_number[:10] if self.account_number else 'None'}...")
             
             # Prepare shipment data
             logger.info("Preparing Global Mail shipment data...")
             shipment_data = self._prepare_shipment_data(order)
             
-            # Create shipment via MyDHL API using Basic Auth
-            # MyDHL API uses Basic Auth: Authorization: Basic base64(username:password)
-            # Username = Site ID (consumerKey), Password = Password (consumerSecret)
-            auth = (self.api_key, self.api_secret)  # Username = Site ID, Password = Password
+            # Try different Basic Auth combinations for Global Mail
+            # Option 1: Username = userId (email), Password = consumerSecret
+            # Option 2: Username = consumerKey, Password = consumerSecret (standard MyDHL)
+            auth_combinations = []
+            if self.account_number and '@' in str(self.account_number):
+                # If account_number is email (userId), try it as username
+                auth_combinations.append((self.account_number, self.api_secret, "userId + consumerSecret"))
+            # Always try standard MyDHL format
+            auth_combinations.append((self.api_key, self.api_secret, "consumerKey + consumerSecret"))
+            
             headers = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             }
             
             logger.info(f"Posting to MyDHL API: {self.api_url}")
-            logger.info(f"Using Basic Auth with Username (Site ID): {self.api_key[:10]}...")
             logger.info(f"Account number in shipment: {shipment_data.get('accounts', [{}])[0].get('number', 'N/A')}")
             
-            response = requests.post(
-                self.api_url,
-                json=shipment_data,
-                headers=headers,
-                auth=auth,  # Basic Auth with Site ID and Password
-                timeout=30
-            )
+            # Try each auth combination
+            last_error = None
+            for username, password, description in auth_combinations:
+                logger.info(f"Trying Basic Auth: {description}")
+                logger.info(f"Username (first 10 chars): {username[:10] if username else 'None'}...")
+                
+                auth = (username, password)
             
-            logger.info(f"Global Mail API response status: {response.status_code}")
+                response = requests.post(
+                    self.api_url,
+                    json=shipment_data,
+                    headers=headers,
+                    auth=auth,
+                    timeout=30
+                )
+                
+                logger.info(f"Global Mail API response status: {response.status_code}")
+                
+                if response.status_code in [200, 201]:
+                    logger.info(f"✅ Success with auth method: {description}")
+                    break
+                elif response.status_code == 401:
+                    logger.warning(f"401 Unauthorized with {description}, trying next method...")
+                    last_error = response
+                    continue
+                elif response.status_code == 400:
+                    # Check if it's "Invalid Credentials" - if so, try next method
+                    try:
+                        error_data = response.json()
+                        if 'Invalid Credentials' in str(error_data):
+                            logger.warning(f"400 Invalid Credentials with {description}, trying next method...")
+                            last_error = response
+                            continue
+                    except:
+                        pass
+                    # If not "Invalid Credentials", this might be a different error
+                    last_error = response
+                    break
+                else:
+                    last_error = response
+                    break
+            else:
+                # If we tried all combinations and none worked, use the last error
+                response = last_error if last_error else response
+            
+            logger.info(f"Final Global Mail API response status: {response.status_code}")
             logger.info(f"Response headers: {dict(response.headers)}")
             
             if response.status_code in [200, 201]:
