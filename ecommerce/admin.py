@@ -263,7 +263,7 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number")
     list_filter = ("shipping_option", "shipping_carrier", "coupon", "created_at")
     list_select_related = ("shipping_option", "coupon", "user")
-    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url", "create_label_button")
+    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste")
     
     fieldsets = (
         ("Order Information", {
@@ -274,6 +274,10 @@ class OrderAdmin(admin.ModelAdmin):
         }),
         ("Customer Details", {
             "fields": ("full_name", "phone", "address", "city", "postal_code", "country")
+        }),
+        ("FedEx Copy-Paste", {
+            "fields": ("fedex_copy_paste",),
+            "description": "Copy all order details formatted for FedEx portal with one click"
         }),
     )
 
@@ -511,6 +515,104 @@ class OrderAdmin(admin.ModelAdmin):
                 '</div>'
             )
     create_label_button.short_description = "Create Label"
+    
+    @admin.display(description="FedEx Copy-Paste Data")
+    def fedex_copy_paste(self, obj):
+        """Format order data for easy copy-paste into FedEx portal."""
+        from django.conf import settings
+        
+        # Get shop information
+        shop_name = getattr(settings, 'SHOP_NAME', 'Marbaras')
+        shop_address = getattr(settings, 'SHOP_ADDRESS', '')
+        shop_city = getattr(settings, 'SHOP_CITY', 'Sofia')
+        shop_postal = getattr(settings, 'SHOP_POSTAL_CODE', '')
+        shop_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+        shop_phone = getattr(settings, 'SHOP_PHONE', '')
+        shop_email = getattr(settings, 'SHOP_EMAIL', '')
+        
+        # Calculate weight (estimate)
+        total_weight = sum(item.quantity for item in obj.items.all()) * 0.5
+        weight = max(total_weight, 0.5)
+        
+        # Format data in tab-separated format (common for shipping portals)
+        # Format: Field Name\tValue
+        data_lines = [
+            "=== SHIPPER (FROM) ===",
+            f"Company Name\t{shop_name}",
+            f"Contact Name\t{shop_name}",
+            f"Address Line 1\t{shop_address}",
+            f"City\t{shop_city}",
+            f"Postal Code\t{shop_postal}",
+            f"Country\t{shop_country}",
+            f"Phone\t{shop_phone}",
+            f"Email\t{shop_email}",
+            "",
+            "=== RECIPIENT (TO) ===",
+            f"Contact Name\t{obj.full_name}",
+            f"Address Line 1\t{obj.address}",
+            f"City\t{obj.city}",
+            f"Postal Code\t{obj.postal_code}",
+            f"Country\t{obj.country or ''}",
+            f"Phone\t{obj.phone}",
+            f"Email\t{obj.email or ''}",
+            "",
+            "=== SHIPMENT DETAILS ===",
+            f"Order ID\t#{obj.id}",
+            f"Weight (kg)\t{weight:.2f}",
+            f"Package Count\t1",
+            f"Package Type\tYOUR_PACKAGING",
+            f"Service Type\tINTERNATIONAL_ECONOMY",
+            f"Ship Date\t{obj.created_at.strftime('%Y-%m-%d')}",
+            f"Total Value\t{obj.total_price} {getattr(obj, 'currency', 'EUR')}",
+        ]
+        
+        # Add items if available
+        if obj.items.exists():
+            data_lines.append("")
+            data_lines.append("=== ITEMS ===")
+            for item in obj.items.all():
+                item_name = item.product.name
+                if item.variant:
+                    item_name += f" (Size: {item.variant.size})"
+                data_lines.append(f"{item_name}\tQty: {item.quantity}")
+        
+        formatted_data = "\n".join(data_lines)
+        
+        # Create a textarea with copy button
+        return format_html(
+            '''
+            <div style="margin: 10px 0;">
+                <textarea id="fedex-data-{}" readonly style="width: 100%; height: 400px; font-family: monospace; font-size: 12px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f9f9f9;">{}</textarea>
+                <button onclick="copyFedExData({})" style="background: #667eea; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px;">
+                    📋 Copy All Data to Clipboard
+                </button>
+                <span id="copy-status-{}" style="margin-left: 10px; color: green; font-weight: bold;"></span>
+            </div>
+            <script>
+                function copyFedExData(orderId) {{
+                    var textarea = document.getElementById('fedex-data-' + orderId);
+                    textarea.select();
+                    textarea.setSelectionRange(0, 99999); // For mobile devices
+                    try {{
+                        document.execCommand('copy');
+                        var status = document.getElementById('copy-status-' + orderId);
+                        status.textContent = '✅ Copied!';
+                        setTimeout(function() {{
+                            status.textContent = '';
+                        }}, 2000);
+                    }} catch (err) {{
+                        alert('Failed to copy. Please select and copy manually.');
+                    }}
+                }}
+            </script>
+            ''',
+            obj.id,
+            formatted_data,
+            obj.id,
+            obj.id
+        )
+    
+    fedex_copy_paste.short_description = "FedEx Copy-Paste"
     
     def print_shipping_labels(self, request, queryset):
         """Admin action to print shipping labels for selected orders."""
