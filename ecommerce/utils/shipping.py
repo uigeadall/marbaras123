@@ -959,11 +959,8 @@ class GlobalMailShipping(ShippingCarrierBase):
         self.api_key = getattr(settings, 'GLOBAL_MAIL_API_KEY', '')
         self.api_secret = getattr(settings, 'GLOBAL_MAIL_API_SECRET', '')
         self.account_number = getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')
-        # Global Mail uses same endpoint for sandbox and production, credentials determine environment
-        api_url = getattr(settings, 'GLOBAL_MAIL_API_URL', 'https://api.globalmail.com/v1/shipments')
-        # Remove sandbox URL as it doesn't exist - use production URL with sandbox credentials
-        if 'sandbox' in api_url.lower():
-            api_url = 'https://api.globalmail.com/v1/shipments'
+        # Global Mail API URL - can be DHL API endpoint or custom Global Mail endpoint
+        api_url = getattr(settings, 'GLOBAL_MAIL_API_URL', 'https://api-sandbox.dhl.com')
         self.api_url = api_url
     
     def create_shipment(self, order) -> Optional[Dict[str, Any]]:
