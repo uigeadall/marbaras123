@@ -1020,53 +1020,75 @@ class GlobalMailShipping(ShippingCarrierBase):
                 'Accept': 'application/json',
             }
             
-            logger.info(f"Posting to MyDHL API: {self.api_url}")
             logger.info(f"Account number in shipment: {shipment_data.get('accounts', [{}])[0].get('number', 'N/A')}")
             
-            # Try each auth combination
-            last_error = None
-            for username, password, description in auth_combinations:
-                logger.info(f"Trying Basic Auth: {description}")
-                logger.info(f"Username (first 10 chars): {username[:10] if username else 'None'}...")
-                
-                auth = (username, password)
+            # Try each endpoint (test and production) with each auth combination
+            endpoints_to_try = [self.api_url]
+            # If current endpoint is test, also try production (and vice versa)
+            if 'test' in self.api_url.lower():
+                endpoints_to_try.append(self.prod_url)
+                logger.info(f"Will also try production endpoint if test fails")
+            elif 'test' not in self.api_url.lower():
+                endpoints_to_try.append(self.test_url)
+                logger.info(f"Will also try test endpoint if production fails")
             
-                response = requests.post(
-                    self.api_url,
-                    json=shipment_data,
-                    headers=headers,
-                    auth=auth,
-                    timeout=30
-                )
+            last_error = None
+            success = False
+            
+            for endpoint_url in endpoints_to_try:
+                logger.info(f"Posting to MyDHL API: {endpoint_url} ({'TEST' if 'test' in endpoint_url.lower() else 'PRODUCTION'})")
                 
-                logger.info(f"Global Mail API response status: {response.status_code}")
+                for username, password, description in auth_combinations:
+                    logger.info(f"Trying Basic Auth: {description}")
+                    logger.info(f"Username (first 10 chars): {username[:10] if username else 'None'}...")
+                    
+                    auth = (username, password)
+                    response = requests.post(
+                        endpoint_url,
+                        json=shipment_data,
+                        headers=headers,
+                        auth=auth,
+                        timeout=30
+                    )
+                    
+                    logger.info(f"Global Mail API response status: {response.status_code}")
+                    
+                    if response.status_code in [200, 201]:
+                        logger.info(f"✅ Success with endpoint {endpoint_url} and auth method: {description}")
+                        success = True
+                        break
+                    elif response.status_code == 401:
+                        logger.warning(f"401 Unauthorized with {endpoint_url} and {description}, trying next...")
+                        last_error = response
+                        continue
+                    elif response.status_code == 400:
+                        # Check if it's "Invalid Credentials" - if so, try next method
+                        try:
+                            error_data = response.json()
+                            if 'Invalid Credentials' in str(error_data):
+                                logger.warning(f"400 Invalid Credentials with {endpoint_url} and {description}, trying next...")
+                                last_error = response
+                                continue
+                        except:
+                            pass
+                        # If not "Invalid Credentials", this might be a different error
+                        last_error = response
+                        break
+                    else:
+                        last_error = response
+                        break
                 
-                if response.status_code in [200, 201]:
-                    logger.info(f"✅ Success with auth method: {description}")
+                if success:
                     break
-                elif response.status_code == 401:
-                    logger.warning(f"401 Unauthorized with {description}, trying next method...")
-                    last_error = response
-                    continue
-                elif response.status_code == 400:
-                    # Check if it's "Invalid Credentials" - if so, try next method
-                    try:
-                        error_data = response.json()
-                        if 'Invalid Credentials' in str(error_data):
-                            logger.warning(f"400 Invalid Credentials with {description}, trying next method...")
-                            last_error = response
-                            continue
-                    except:
-                        pass
-                    # If not "Invalid Credentials", this might be a different error
-                    last_error = response
-                    break
-                else:
-                    last_error = response
-                    break
-            else:
+            
+            if not success:
                 # If we tried all combinations and none worked, use the last error
                 response = last_error if last_error else response
+                logger.error("⚠️ All authentication methods and endpoints failed")
+                logger.error("Please verify:")
+                logger.error("1. Are the Global Mail credentials correct?")
+                logger.error("2. Are they for test or production environment?")
+                logger.error("3. Contact Global Mail support for the correct API endpoint and authentication method")
             
             logger.info(f"Final Global Mail API response status: {response.status_code}")
             logger.info(f"Response headers: {dict(response.headers)}")
