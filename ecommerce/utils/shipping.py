@@ -1048,27 +1048,48 @@ class GlobalMailShipping(ShippingCarrierBase):
     def _get_access_token(self) -> Optional[str]:
         """Get OAuth access token from DHL Parcel API."""
         try:
-            # Determine OAuth token endpoint based on API URL
-            if 'sandbox' in self.api_url.lower() or 'test' in self.api_url.lower():
-                token_url = 'https://api-sandbox.dhl.com/parcel/de/account/auth/v1/accesstoken'
-            else:
-                token_url = 'https://api.dhl.com/parcel/de/account/auth/v1/accesstoken'
+            # Try multiple OAuth token endpoints
+            token_endpoints = []
             
-            logger.info(f"Requesting Global Mail OAuth token from {token_url}")
+            # If using sandbox credentials, try sandbox endpoints first
+            if 'sandbox' in self.api_url.lower() or 'test' in self.api_url.lower():
+                token_endpoints = [
+                    'https://api-sandbox.dhl.com/parcel/de/account/auth/v1/accesstoken',
+                    'https://api.dhl.com/parcel/de/account/auth/v1/accesstoken',  # Try production too
+                ]
+            else:
+                token_endpoints = [
+                    'https://api.dhl.com/parcel/de/account/auth/v1/accesstoken',
+                    'https://api-sandbox.dhl.com/parcel/de/account/auth/v1/accesstoken',  # Try sandbox too
+                ]
+            
+            logger.info(f"Trying {len(token_endpoints)} OAuth token endpoints for Global Mail")
             logger.info(f"Using API Key (consumerKey): {self.api_key[:10]}... (length: {len(self.api_key)})")
             logger.info(f"Using API Secret (consumerSecret): {self.api_secret[:5]}... (length: {len(self.api_secret)})")
             
-            # DHL Parcel API uses Basic Auth for OAuth token request
-            auth = (self.api_key, self.api_secret)
-            response = requests.post(token_url, auth=auth, timeout=10)
+            # Try each endpoint
+            for token_url in token_endpoints:
+                logger.info(f"Trying OAuth token endpoint: {token_url}")
+                
+                # DHL Parcel API uses Basic Auth for OAuth token request
+                auth = (self.api_key, self.api_secret)
+                response = requests.post(token_url, auth=auth, timeout=10)
+                
+                if response.status_code == 200:
+                    token = response.json().get('accessToken') or response.json().get('access_token')
+                    if token:
+                        logger.info(f"✅ Global Mail OAuth token obtained from {token_url}")
+                        return token
+                else:
+                    logger.warning(f"Token request failed for {token_url}: {response.status_code} - {response.text[:200]}")
             
-            if response.status_code == 200:
-                token = response.json().get('accessToken') or response.json().get('access_token')
-                logger.info("✅ Global Mail OAuth token obtained successfully")
-                return token
-            else:
-                logger.error(f"Global Mail token request failed: {response.status_code} - {response.text}")
-                return None
+            logger.error(f"All OAuth token endpoints failed. Last response: {response.status_code if 'response' in locals() else 'N/A'}")
+            logger.error("⚠️ Global Mail credentials may not be valid for DHL Parcel API")
+            logger.error("Please verify:")
+            logger.error("1. Are the credentials (consumerKey/consumerSecret) correct?")
+            logger.error("2. Are they for DHL Parcel API or a different DHL API?")
+            logger.error("3. Contact Global Mail support for the correct API endpoint and authentication method")
+            return None
         except Exception as e:
             logger.error(f"Global Mail token request exception: {e}", exc_info=True)
             return None
