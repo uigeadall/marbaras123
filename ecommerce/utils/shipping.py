@@ -1102,6 +1102,12 @@ class GlobalMailShipping(ShippingCarrierBase):
         # If not provided, use userId or try without it
         account_number = self.account_number or getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')
         
+        # Check if account_number is email format (not a valid DHL account number)
+        # DHL account numbers are typically numeric
+        if account_number and '@' in str(account_number):
+            logger.warning(f"Account number appears to be an email ({account_number}), skipping account number")
+            account_number = None
+        
         # Determine product code based on destination
         # MyDHL API product codes: 'N' = Express Domestic, 'P' = Express Worldwide, 'U' = Express 12:00
         product_code = 'P'  # Express Worldwide for international
@@ -1113,10 +1119,21 @@ class GlobalMailShipping(ShippingCarrierBase):
                 'isRequested': False
             },
             'productCode': product_code,
-            'accounts': [{
+        }
+        
+        # Add accounts only if we have a valid account number
+        if account_number and account_number.strip():
+            shipment_data['accounts'] = [{
                 'typeCode': 'shipper',
-                'number': account_number if account_number else '123456789'  # Default test account if not provided
-            }],
+                'number': account_number.strip()
+            }]
+        else:
+            logger.warning("No valid account number provided - MyDHL API may require it")
+            # Try with a test account number (may not work, but worth trying)
+            shipment_data['accounts'] = [{
+                'typeCode': 'shipper',
+                'number': '123456789'  # Default test account
+            }]
             'outputImageProperties': {
                 'printerDPI': 300,
                 'encodingFormat': 'PDF',
