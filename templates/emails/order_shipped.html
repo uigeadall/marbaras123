@@ -10,7 +10,7 @@
   </div>
   
   <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px;">
-    <p style="font-size: 16px;">Hello, {{ order.full_name|default:order.user.username }},</p>
+    <p style="font-size: 16px;">Hello, {% if order.user %}{{ order.user.username|default:order.full_name }}{% else %}{{ order.full_name }}{% endif %},</p>
     
     <p>We're excited to inform you that your order <strong>#{{ order.id }}</strong> has been shipped!</p>
     
