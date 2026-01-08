@@ -558,7 +558,6 @@ class Order(models.Model):
         blank=True,
         null=True,
         choices=[
-            ('shippo', 'Shippo (FedEx/DHL/UPS/USPS)'),
             ('easypost', 'EasyPost (FedEx/DHL/UPS/USPS)'),
             ('fedex', 'FedEx'),
             ('dhl', 'DHL'),
