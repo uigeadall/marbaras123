@@ -756,15 +756,16 @@ DHL_API_SECRET = env("DHL_API_SECRET", "")
 DHL_ACCOUNT_NUMBER = env("DHL_ACCOUNT_NUMBER", "")
 DHL_API_URL = env("DHL_API_URL", "https://api-sandbox.dhl.com/shipment/shipments")
 
-# Global Mail API Configuration
+# Global Mail API Configuration (uses DHL MyDHL API)
 # For sandbox: use T2Lnu62rspJ1wdaI3JOA1JpM7oECmfz2 / 4AIqPAggU2aIPvPE
 # For production: use HJtEFGAo07xkB6syf2p3CxoyIecW0gtd / NklmHiW3our5tHAF
-# Note: Global Mail uses same API endpoint for both sandbox and production
-# Environment is determined by credentials (sandbox vs production keys)
-GLOBAL_MAIL_API_KEY = env("GLOBAL_MAIL_API_KEY", "")  # consumerKey
-GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")  # consumerSecret
+# Global Mail uses DHL MyDHL API with Basic Auth (same as DHL)
+# Test: https://express.api.dhl.com/mydhlapi/test/shipments
+# Production: https://express.api.dhl.com/mydhlapi/shipments
+GLOBAL_MAIL_API_KEY = env("GLOBAL_MAIL_API_KEY", "")  # consumerKey (Site ID)
+GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")  # consumerSecret (Password)
 GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")  # userId: l2006@abv.bg
-GLOBAL_MAIL_API_URL = env("GLOBAL_MAIL_API_URL", "https://api.globalmail.com/v1/shipments")
+GLOBAL_MAIL_API_URL = env("GLOBAL_MAIL_API_URL", "")  # Will default to test or production MyDHL API
 
 # Deutsche Post API Configuration
 DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")
