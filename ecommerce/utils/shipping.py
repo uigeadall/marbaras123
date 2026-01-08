@@ -1134,52 +1134,53 @@ class GlobalMailShipping(ShippingCarrierBase):
                 'typeCode': 'shipper',
                 'number': '123456789'  # Default test account
             }]
-            'outputImageProperties': {
-                'printerDPI': 300,
-                'encodingFormat': 'PDF',
-                'imageOptions': [{
-                    'typeCode': 'label',
-                    'templateName': 'ECOM26_84_001'
-                }]
-            },
-            'customerDetails': {
-                'shipperDetails': {
-                    'postalAddress': {
-                        'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
-                        'cityName': getattr(settings, 'SHOP_CITY', 'Sofia'),
-                        'countryCode': getattr(settings, 'SHOP_COUNTRY', 'BG'),
-                        'addressLine1': getattr(settings, 'SHOP_ADDRESS', ''),
-                    },
-                    'contactInformation': {
-                        'phone': getattr(settings, 'SHOP_PHONE', ''),
-                        'email': getattr(settings, 'SHOP_EMAIL', ''),
-                        'companyName': 'Marbaras'
-                    }
+        
+        # Add remaining shipment data fields
+        shipment_data['outputImageProperties'] = {
+            'printerDPI': 300,
+            'encodingFormat': 'PDF',
+            'imageOptions': [{
+                'typeCode': 'label',
+                'templateName': 'ECOM26_84_001'
+            }]
+        }
+        shipment_data['customerDetails'] = {
+            'shipperDetails': {
+                'postalAddress': {
+                    'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                    'cityName': getattr(settings, 'SHOP_CITY', 'Sofia'),
+                    'countryCode': getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                    'addressLine1': getattr(settings, 'SHOP_ADDRESS', ''),
                 },
-                'receiverDetails': {
-                    'postalAddress': {
-                        'postalCode': order.postal_code,
-                        'cityName': order.city,
-                        'countryCode': recipient_country,
-                        'addressLine1': order.address,
-                    },
-                    'contactInformation': {
-                        'phone': order.phone,
-                        'email': order.email or '',
-                        'fullName': order.full_name
-                    }
+                'contactInformation': {
+                    'phone': getattr(settings, 'SHOP_PHONE', ''),
+                    'email': getattr(settings, 'SHOP_EMAIL', ''),
+                    'companyName': 'Marbaras'
                 }
             },
-            'content': {
-                'packages': [{
-                    'weight': max(total_weight, 0.5),
-                    'dimensions': {
-                        'length': 20,
-                        'width': 15,
-                        'height': 10
-                    }
-                }]
+            'receiverDetails': {
+                'postalAddress': {
+                    'postalCode': order.postal_code,
+                    'cityName': order.city,
+                    'countryCode': recipient_country,
+                    'addressLine1': order.address,
+                },
+                'contactInformation': {
+                    'phone': order.phone,
+                    'email': order.email or '',
+                    'fullName': order.full_name
+                }
             }
+        }
+        shipment_data['content'] = {
+            'packages': [{
+                'weight': max(total_weight, 0.5),
+                'dimensions': {
+                    'length': 20,
+                    'width': 15,
+                    'height': 10
+                }
+            }]
         }
         
         logger.info(f"Prepared Global Mail shipment data with account number: {account_number or 'default'}")
