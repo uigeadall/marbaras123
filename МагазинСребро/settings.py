@@ -771,6 +771,9 @@ DEUTSCHE_POST_API_URL = env("DEUTSCHE_POST_API_URL", "https://api-sandbox.dhl.co
 # EasyPost API Configuration (unified shipping API)
 EASYPOST_API_KEY = env("EASYPOST_API_KEY", "")
 
+# Shippo API Configuration (unified shipping API)
+SHIPPO_API_KEY = env("SHIPPO_API_KEY", "")
+
 # Shop Information (used for shipping labels)
 SHOP_NAME = env("SHOP_NAME", "Marbaras")
 SHOP_ADDRESS = env("SHOP_ADDRESS", "")

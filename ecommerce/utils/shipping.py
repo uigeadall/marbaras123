@@ -1,5 +1,5 @@
 """
-Shipping carrier integrations for FedEx, DHL, Deutsche Post, and EasyPost.
+Shipping carrier integrations for FedEx, DHL, Deutsche Post, EasyPost, and Shippo.
 """
 import logging
 import requests
@@ -11,6 +11,11 @@ try:
     import easypost
 except ImportError:
     easypost = None
+
+try:
+    import shippo
+except ImportError:
+    shippo = None
 
 logger = logging.getLogger(__name__)
 
@@ -1245,6 +1250,146 @@ class EasyPostShipping(ShippingCarrierBase):
             return None
 
 
+class ShippoShipping(ShippingCarrierBase):
+    """Shippo shipping integration - unified API for multiple carriers."""
+    
+    def __init__(self):
+        super().__init__()
+        self.api_key = getattr(settings, 'SHIPPO_API_KEY', '')
+        if not shippo:
+            logger.error("shippo library not installed. Install with: pip install shippo")
+        elif self.api_key:
+            shippo.config.api_key = self.api_key
+    
+    def create_shipment(self, order) -> Optional[Dict[str, Any]]:
+        """Create Shippo shipment and return tracking info."""
+        logger.info(f"Shippo create_shipment called for Order #{order.id}")
+        
+        if not shippo:
+            logger.error("shippo library not installed")
+            return None
+        
+        if not self.api_key:
+            logger.error("Shippo API key not configured")
+            return None
+        
+        try:
+            # Set API key
+            shippo.config.api_key = self.api_key
+            
+            # Determine carrier from shipping_option or use default
+            carrier = 'usps'  # Default carrier
+            if order.shipping_option:
+                option_name = order.shipping_option.name.lower()
+                if 'fedex' in option_name:
+                    carrier = 'fedex'
+                elif 'dhl' in option_name:
+                    carrier = 'dhl_express'
+                elif 'ups' in option_name:
+                    carrier = 'ups'
+                elif 'usps' in option_name:
+                    carrier = 'usps'
+            
+            # Create from address (shop address)
+            shop_country = getattr(settings, 'SHOP_COUNTRY', 'BG')
+            shop_state = getattr(settings, 'SHOP_STATE', '')
+            
+            from_address = shippo.Address.create(
+                name=getattr(settings, 'SHOP_NAME', 'Marbaras'),
+                street1=getattr(settings, 'SHOP_ADDRESS', ''),
+                city=getattr(settings, 'SHOP_CITY', 'Sofia'),
+                state=shop_state if shop_state else None,
+                zip=getattr(settings, 'SHOP_POSTAL_CODE', ''),
+                country=shop_country,
+                phone=getattr(settings, 'SHOP_PHONE', ''),
+            )
+            
+            # Create to address (customer address)
+            to_address = shippo.Address.create(
+                name=order.full_name,
+                street1=order.address,
+                city=order.city,
+                state=None,  # Shippo will handle this if needed
+                zip=order.postal_code,
+                country=order.country or 'BG',
+                phone=order.phone,
+            )
+            
+            # Calculate package weight and dimensions
+            total_weight = Decimal('0.5')  # Default 0.5 kg
+            for item in order.items.all():
+                product_weight = getattr(item.product, 'weight', Decimal('0.1'))
+                total_weight += product_weight * Decimal(str(item.quantity))
+            
+            # Convert weight to ounces (Shippo uses ounces)
+            weight_oz = float(total_weight * Decimal('35.274'))  # kg to oz
+            
+            # Create parcel
+            parcel = shippo.Parcel.create(
+                length='20',  # cm
+                width='15',   # cm
+                height='10',  # cm
+                distance_unit='cm',
+                weight=str(weight_oz),
+                mass_unit='oz',
+            )
+            
+            # Create shipment
+            logger.info(f"Creating Shippo shipment with carrier: {carrier}")
+            shipment = shippo.Shipment.create(
+                address_from=from_address,
+                address_to=to_address,
+                parcels=[parcel],
+                async_=False,
+            )
+            
+            # Get rates and select the cheapest one
+            rates = shipment.rates
+            if not rates:
+                logger.error("No rates available for Shippo shipment")
+                return None
+            
+            # Filter rates by carrier if specified
+            if carrier:
+                rates = [r for r in rates if r.provider.lower() == carrier.lower()]
+            
+            if not rates:
+                logger.warning(f"No rates available for carrier {carrier}, using any available rate")
+                rates = shipment.rates
+            
+            # Select the cheapest rate
+            selected_rate = min(rates, key=lambda r: float(r.amount))
+            logger.info(f"Selected Shippo rate: {selected_rate.servicelevel.name} - ${selected_rate.amount}")
+            
+            # Purchase label
+            logger.info("Purchasing Shippo label...")
+            transaction = shippo.Transaction.create(
+                rate=selected_rate.object_id,
+                label_format='PDF',
+                async_=False,
+            )
+            
+            # Extract tracking and label info
+            tracking_number = transaction.tracking_number
+            label_url = transaction.label_url
+            shipment_id = transaction.shipment
+            
+            logger.info(f"✅ Shippo shipment created: tracking={tracking_number}, label_url={label_url}")
+            
+            return {
+                'tracking_number': tracking_number,
+                'label_url': label_url,
+                'shipment_id': shipment_id,
+            }
+            
+        except shippo.error.APIError as e:
+            logger.error(f"Shippo API error: {e}", exc_info=True)
+            return None
+        except Exception as e:
+            logger.error(f"Shippo shipment creation exception: {e}", exc_info=True)
+            return None
+
+
 def get_shipping_carrier(carrier_name: str) -> Optional[ShippingCarrierBase]:
     """Factory function to get shipping carrier instance."""
     carriers = {
@@ -1253,6 +1398,7 @@ def get_shipping_carrier(carrier_name: str) -> Optional[ShippingCarrierBase]:
         'deutsche_post': DeutschePostShipping,
         'global_mail': GlobalMailShipping,
         'easypost': EasyPostShipping,
+        'shippo': ShippoShipping,
     }
     
     carrier_class = carriers.get(carrier_name.lower())
@@ -1270,7 +1416,9 @@ def create_shipping_label(order, carrier_name: Optional[str] = None) -> Optional
     if not carrier_name and order.shipping_option:
         # Map shipping option names to carriers
         option_name = order.shipping_option.name.lower()
-        if 'easypost' in option_name:
+        if 'shippo' in option_name:
+            carrier_name = 'shippo'
+        elif 'easypost' in option_name:
             carrier_name = 'easypost'
         elif 'fedex' in option_name:
             carrier_name = 'fedex'
