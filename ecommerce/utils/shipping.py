@@ -1033,17 +1033,27 @@ class GlobalMailShipping(ShippingCarrierBase):
     def _get_access_token(self) -> Optional[str]:
         """Get OAuth access token from Global Mail."""
         try:
+            # Determine if sandbox or production
+            is_sandbox = 'sandbox' in self.api_url.lower() if self.api_url else True
+            
             token_url = 'https://api.globalmail.com/oauth/token'
-            if 'sandbox' in self.api_url.lower():
+            if is_sandbox:
                 token_url = 'https://api-sandbox.globalmail.com/oauth/token'
             
             logger.info(f"Requesting Global Mail OAuth token from {token_url}")
+            logger.info(f"Using API Key (consumerKey): {self.api_key[:10]}... (length: {len(self.api_key)})")
+            logger.info(f"Using API Secret (consumerSecret): {self.api_secret[:5]}... (length: {len(self.api_secret)})")
+            
+            # Global Mail uses consumerKey/consumerSecret as client_id/client_secret
             data = {
                 'grant_type': 'client_credentials',
-                'client_id': self.api_key,
-                'client_secret': self.api_secret
+                'client_id': self.api_key,  # This is the consumerKey
+                'client_secret': self.api_secret  # This is the consumerSecret
             }
-            response = requests.post(token_url, data=data, timeout=10)
+            
+            # Try Basic Auth first, then form data
+            auth = (self.api_key, self.api_secret)
+            response = requests.post(token_url, auth=auth, data=data, timeout=10)
             
             if response.status_code == 200:
                 token = response.json().get('access_token') or response.json().get('accessToken')
