@@ -6,6 +6,32 @@
   <title>{% block title %}Marbaras{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
+  <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
+  <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
+  
+  {% comment %}Open Graph / Facebook{% endcomment %}
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
+  <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}" />
+  <meta property="og:title" content="{% block og_title %}{% block title %}Marbaras{% endblock %}{% endblock %}" />
+  <meta property="og:description" content="{% block og_description %}{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}{% endblock %}" />
+  <meta property="og:image" content="{% block og_image %}{% if request.is_secure %}https{% else %}http{% endif %}://{{ request.get_host }}{% static 'logo.png' %}{% endblock %}" />
+  <meta property="og:site_name" content="Marbaras" />
+  <meta property="og:locale" content="bg_BG" />
+  
+  {% comment %}Twitter Card{% endcomment %}
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="{% block twitter_url %}{{ request.build_absolute_uri }}{% endblock %}" />
+  <meta name="twitter:title" content="{% block twitter_title %}{% block title %}Marbaras{% endblock %}{% endblock %}" />
+  <meta name="twitter:description" content="{% block twitter_description %}{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}{% endblock %}" />
+  <meta name="twitter:image" content="{% block twitter_image %}{% if request.is_secure %}https{% else %}http{% endif %}://{{ request.get_host }}{% static 'logo.png' %}{% endblock %}" />
+  
+  {% comment %}Additional SEO{% endcomment %}
+  <meta name="robots" content="{% block robots %}index, follow{% endblock %}" />
+  <meta name="author" content="Marbaras" />
+  <meta name="language" content="Bulgarian" />
+  <meta name="geo.region" content="BG" />
+  
+  {% block extra_meta %}{% endblock %}
 
   {% comment %}Google Analytics (GA4){% endcomment %}
   {% if GOOGLE_ANALYTICS_ID %}

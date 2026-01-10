@@ -40,6 +40,8 @@ path('checkout/guest/', views.guest_checkout_view, name='guest_checkout'),
     path("health/", views.health_check, name="health_check"),
     path("test-emails/", views.test_emails_view, name="test_emails"),
     path("create-order-from-product/", views.create_order_from_product, name="create_order_from_product"),
+    path("sitemap.xml", views.sitemap_xml, name="sitemap_xml"),
+    path("robots.txt", views.robots_txt, name="robots_txt"),
 ]
 
 

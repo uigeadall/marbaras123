@@ -1985,6 +1985,87 @@ def notify(request: HttpRequest, level: int, msg: str) -> HttpResponse:
     return redirect("home")
 
 
+def sitemap_xml(request: HttpRequest) -> HttpResponse:
+    """Generate sitemap.xml for search engines."""
+    from django.urls import reverse
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    products = Product.objects.filter(stock__gt=0).order_by('-id')
+    categories = Category.objects.all()
+    blog_posts = BlogPost.objects.filter(published=True) if hasattr(BlogPost, 'published') else BlogPost.objects.all()
+    
+    base_url = f"{request.scheme}://{request.get_host}"
+    lastmod = timezone.now().strftime('%Y-%m-%d')
+    
+    xml = ['<?xml version="1.0" encoding="UTF-8"?>']
+    xml.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    
+    # Homepage
+    xml.append(f'  <url><loc>{base_url}/</loc><lastmod>{lastmod}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>')
+    
+    # Products
+    for product in products:
+        url = f"{base_url}{reverse('product_detail', kwargs={'slug': product.slug})}"
+        # Use current date if product doesn't have created_at field
+        product_date = lastmod
+        if hasattr(product, 'created_at') and product.created_at:
+            product_date = product.created_at.strftime("%Y-%m-%d")
+        xml.append(f'  <url><loc>{url}</loc><lastmod>{product_date}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>')
+    
+    # Categories
+    for category in categories:
+        url = f"{base_url}{reverse('products_by_category', kwargs={'slug': category.slug})}"
+        xml.append(f'  <url><loc>{url}</loc><lastmod>{lastmod}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>')
+    
+    # Blog posts
+    for post in blog_posts:
+        url = f"{base_url}{reverse('blog_detail', kwargs={'slug': post.slug})}"
+        post_date = lastmod
+        if hasattr(post, 'created_at') and post.created_at:
+            post_date = post.created_at.strftime("%Y-%m-%d")
+        xml.append(f'  <url><loc>{url}</loc><lastmod>{post_date}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>')
+    
+    # Static pages
+    static_pages = [
+        ('products', 0.8),
+        ('cart_view', 0.5),
+        ('terms', 0.4),
+        ('privacy', 0.4),
+        ('contact', 0.5),
+    ]
+    
+    for page_name, priority in static_pages:
+        try:
+            url = f"{base_url}{reverse(page_name)}"
+            xml.append(f'  <url><loc>{url}</loc><lastmod>{lastmod}</lastmod><changefreq>monthly</changefreq><priority>{priority}</priority></url>')
+        except:
+            pass
+    
+    xml.append('</urlset>')
+    
+    response = HttpResponse('\n'.join(xml), content_type='application/xml')
+    return response
+
+
+def robots_txt(request: HttpRequest) -> HttpResponse:
+    """Generate robots.txt file."""
+    base_url = f"{request.scheme}://{request.get_host}"
+    content = f"""User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /accounts/
+Disallow: /checkout/
+Disallow: /cart/
+Disallow: /webhook/
+Disallow: /test-emails/
+Disallow: /health/
+
+Sitemap: {base_url}/sitemap.xml
+"""
+    return HttpResponse(content, content_type='text/plain')
+
+
 def order_success(request: HttpRequest) -> HttpResponse:
     return render(request, "order_success.html")
 
