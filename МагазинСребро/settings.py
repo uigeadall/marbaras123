@@ -183,6 +183,7 @@ TEMPLATES = [
                 "ecommerce.context_processors.cart_count",
                 "ecommerce.context_processors.categories",
                 "ecommerce.context_processors.meta_pixel_id",
+                "ecommerce.context_processors.google_analytics_id",
             ],
         },
     },
@@ -616,6 +617,9 @@ STRIPE_SECRET_KEY = _clean_stripe_key(env("STRIPE_SECRET_KEY", ""))
 # Meta Pixel (Facebook Pixel) Configuration
 # Get your Pixel ID from Facebook Events Manager: https://business.facebook.com/events_manager
 META_PIXEL_ID = env("META_PIXEL_ID", "")
+
+# Google Analytics (GA4)
+GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "")  # Format: G-XXXXXXXXXX
 STRIPE_PUBLISHABLE_KEY = _clean_stripe_key(env("STRIPE_PUBLISHABLE_KEY", ""))
 STRIPE_WEBHOOK_SECRET = _clean_stripe_key(env("STRIPE_WEBHOOK_SECRET", ""))
 

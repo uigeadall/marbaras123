@@ -7,6 +7,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
 
+  {% comment %}Google Analytics (GA4){% endcomment %}
+  {% if GOOGLE_ANALYTICS_ID %}
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id={{ GOOGLE_ANALYTICS_ID }}"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', '{{ GOOGLE_ANALYTICS_ID }}');
+  </script>
+  <!-- End Google Analytics -->
+  {% endif %}
+
   {% comment %}Meta Pixel (Facebook Pixel){% endcomment %}
   {% if META_PIXEL_ID %}
   <!-- Meta Pixel Code -->

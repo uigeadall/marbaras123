@@ -187,3 +187,11 @@ def meta_pixel_id(request):
     """
     from django.conf import settings
     return {"META_PIXEL_ID": getattr(settings, "META_PIXEL_ID", "")}
+
+
+def google_analytics_id(request):
+    """
+    Return Google Analytics ID (GA4) from settings for use in templates.
+    """
+    from django.conf import settings
+    return {"GOOGLE_ANALYTICS_ID": getattr(settings, "GOOGLE_ANALYTICS_ID", "")}
