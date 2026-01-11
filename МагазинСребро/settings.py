@@ -415,6 +415,14 @@ CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", "")
 CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", "")
 CLOUDINARY_UNSIGNED_PRESET = env("CLOUDINARY_UNSIGNED_PRESET", "")  # Required for files > 10MB
 
+# AI Image Optimization Settings
+# Remove.bg API for background removal (optional)
+# Get API key from: https://www.remove.bg/api
+REMOVEBG_API_KEY = env("REMOVEBG_API_KEY", "")
+
+# Enable AI image optimization by default
+ENABLE_AI_IMAGE_OPTIMIZATION = env_bool("ENABLE_AI_IMAGE_OPTIMIZATION", True)
+
 if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
     # Use Cloudinary for ALL new media storage
     # Old files will still be served from local storage via /media/ URL

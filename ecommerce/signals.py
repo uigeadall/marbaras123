@@ -10,11 +10,12 @@ import time
 
 log = logging.getLogger(__name__)
 
-from .models import Product, Category
+from .models import Product, Category, ProductImage
 from .utils.emailing import (
     send_welcome_email,
     send_order_confirmation_email,
 )
+from .utils.image_ai import optimize_image_cloudinary_ai
 
 
 user_registered = Signal()
@@ -155,3 +156,27 @@ def invalidate_products_cache(sender, instance, **kwargs):
         time_slot = ((current_timestamp // five_minutes) - i) * five_minutes
         cache.delete(f'popular_products_{time_slot}')
         cache.delete(f'editors_choice_products_{time_slot}')
+
+
+@receiver(post_save, sender=ProductImage, dispatch_uid="optimize_product_image_ai")
+def optimize_product_image_on_upload(sender, instance, created, **kwargs):
+    """
+    Automatically optimize product images using AI when uploaded.
+    Uses Cloudinary AI transformations for automatic quality and format optimization.
+    """
+    if created and instance.image:
+        try:
+            # Extract public_id from Cloudinary
+            public_id = instance.image.name
+            if '.' in public_id:
+                public_id = public_id.rsplit('.', 1)[0]
+            
+            # Optimize using Cloudinary AI
+            optimized_url = optimize_image_cloudinary_ai(public_id, remove_bg=False)
+            if optimized_url:
+                log.info(f"✅ AI-optimized product image {instance.id} ({instance.product.name})")
+            else:
+                log.warning(f"⚠️  Could not optimize product image {instance.id}")
+        except Exception as e:
+            log.error(f"❌ Error optimizing product image {instance.id}: {e}")
+            # Don't raise exception - image upload should still succeed
