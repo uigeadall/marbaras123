@@ -1140,8 +1140,25 @@
                     </form>
                   </div>
 
-                  {% comment %}Social Sharing Buttons - Desktop: under favorites bar{% endcomment %}
-                  <div class="social-sharing-desktop" style="display: flex; gap: 8px; margin-top: 12px; margin-bottom: 16px; align-items: center;">
+                  <form id="addToCartForm" method="post" action="{% url 'add_to_cart' product.pk %}">
+                    {% csrf_token %}
+                    <div class="btn-wrap" style="position: relative;">
+                      <button
+                        id="addToCartBtn"
+                        class="btn btn--primary"
+                        type="submit"
+                        {% if not product.variants.count and product.stock|default:0 == 0 %}disabled{% endif %}>
+                        🛒 Add to Cart
+                      </button>
+                      <div id="sizeWarning" class="inline-warning" aria-live="polite"></div>
+                      {% if product.variants.count %}
+                      <div id="addToCartTooltip" class="add-to-cart-tooltip">You must choose size first</div>
+                      {% endif %}
+                    </div>
+                  </form>
+                  
+                  {% comment %}Social Sharing Buttons - Desktop: between Add to Cart and Apple Pay{% endcomment %}
+                  <div class="social-sharing-desktop" style="display: flex; gap: 8px; margin-top: 12px; margin-bottom: 12px; justify-content: center; flex-wrap: wrap; align-items: center;">
                     <span style="font-size: 14px; color: #666; margin-right: 4px;">Share:</span>
                     <a href="https://www.facebook.com/sharer/sharer.php?u={{ request.build_absolute_uri|urlencode }}" 
                        target="_blank" 
@@ -1199,23 +1216,6 @@
                       <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 4.925 0 11c0 3.584 1.948 6.748 4.91 8.48L3.09 24l5.09-2.78c.5.07 1.01.11 1.52.11 6.627 0 12-4.925 12-11S18.627 0 12 0zm0 19.5c-.51 0-1.02-.04-1.52-.11l-.28-.04-2.98 1.63.8-3.12-.19-.3C5.64 15.9 3.5 13.65 3.5 11c0-4.687 3.813-8.5 8.5-8.5s8.5 3.813 8.5 8.5-3.813 8.5-8.5 8.5z"/></svg>
                     </a>
                   </div>
-
-                  <form id="addToCartForm" method="post" action="{% url 'add_to_cart' product.pk %}">
-                    {% csrf_token %}
-                    <div class="btn-wrap" style="position: relative;">
-                      <button
-                        id="addToCartBtn"
-                        class="btn btn--primary"
-                        type="submit"
-                        {% if not product.variants.count and product.stock|default:0 == 0 %}disabled{% endif %}>
-                        🛒 Add to Cart
-                      </button>
-                      <div id="sizeWarning" class="inline-warning" aria-live="polite"></div>
-                      {% if product.variants.count %}
-                      <div id="addToCartTooltip" class="add-to-cart-tooltip">You must choose size first</div>
-                      {% endif %}
-                    </div>
-                  </form>
                   
                   {% comment %}Social Sharing Buttons - Mobile: between Add to Cart and Apple Pay{% endcomment %}
                   <div class="social-sharing-mobile" style="display: none; gap: 6px; margin-top: 12px; margin-bottom: 12px; justify-content: center; flex-wrap: wrap; align-items: center;">
