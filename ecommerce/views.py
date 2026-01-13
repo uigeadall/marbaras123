@@ -620,6 +620,8 @@ def product_list(request: HttpRequest) -> HttpResponse:
         products = products.order_by("_eff_price")
     elif sort == "price_desc":
         products = products.order_by("-_eff_price")
+    elif sort == "most_sold":
+        products = products.order_by("-recently_sold", "-id")
 
     categories = _get_categories()
     recently_viewed_ids = request.session.get("recently_viewed", [])
