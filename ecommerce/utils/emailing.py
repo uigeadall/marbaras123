@@ -199,11 +199,14 @@ def send_order_shipped_email(order, base_url, tracking_number=None) -> bool:
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
     items = order.items.select_related("product", "variant").all()
 
+    # Use tracking_number from parameter if provided, otherwise use order.tracking_number
+    final_tracking_number = tracking_number or order.tracking_number
+    
     ctx = {
         "order": order,
         "items": items,
         "base_url": base_url,
-        "tracking_number": tracking_number,
+        "tracking_number": final_tracking_number,
         "shipping_option": order.shipping_option,
     }
     
