@@ -8,6 +8,7 @@ from ecommerce.utils.emailing import (
     send_order_confirmation_email,
     send_order_shipped_email,
     send_password_reset_email,
+    send_admin_order_notification,
 )
 from decimal import Decimal
 
@@ -25,7 +26,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--type',
             type=str,
-            choices=['welcome', 'order', 'shipped', 'reset', 'all'],
+            choices=['welcome', 'order', 'admin_order', 'shipped', 'reset', 'all'],
             default='all',
             help='Type of email to test',
         )
@@ -114,6 +115,68 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Order confirmation email\n'))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+
+
+        if email_type in ['admin_order', 'all']:
+            self.stdout.write(self.style.WARNING('Тестване на Admin Order Notification Email...'))
+            try:
+                # Get or create test order
+                order = Order.objects.filter(email=email).first()
+                if not order:
+                    user, _ = User.objects.get_or_create(
+                        username='test_user',
+                        defaults={'email': email}
+                    )
+                    shipping, _ = ShippingOption.objects.get_or_create(
+                        name='Standard',
+                        defaults={'price': Decimal('5.00'), 'delivery_time': '3-5 дни'}
+                    )
+                    product = Product.objects.first()
+                    if not product:
+                        self.stdout.write(self.style.ERROR('❌ Няма продукти в базата данни. Създайте поне един продукт.\n'))
+                        return
+                    
+                    order = Order.objects.create(
+                        user=user,
+                        email=email,
+                        full_name='Тест Потребител',
+                        address='Тестова Адрес 123',
+                        city='София',
+                        postal_code='1000',
+                        phone='+359888123456',
+                        shipping_option=shipping,
+                        total_price=Decimal('99.99'),
+                    )
+                    
+                    variant = product.variants.first()
+                    OrderItem.objects.create(
+                        order=order,
+                        product=product,
+                        variant=variant,
+                        quantity=2,
+                    )
+                
+                # Get order items with calculations
+                items = order.items.select_related("product", "variant").all()
+                subtotal = sum(
+                    (item.product.get_discounted_price() * Decimal(item.quantity))
+                    for item in items
+                )
+                shipping_cost = order.shipping_option.price if order.shipping_option else Decimal("0.00")
+                discount_amount = Decimal("0.00")
+                if order.coupon:
+                    discount_amount = subtotal - order.coupon.apply(subtotal)
+                total = order.total_price
+                
+                if send_admin_order_notification(order, base_url, items, subtotal, shipping_cost, discount_amount, total):
+                    self.stdout.write(self.style.SUCCESS('✅ Admin order notification email изпратен успешно!\n'))
+                    self.stdout.write(self.style.SUCCESS(f'   📧 Изпратен до: {getattr(settings, "ADMIN_EMAIL", "ADMINS setting")}\n'))
+                else:
+                    self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Admin order notification email\n'))
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+                import traceback
+                self.stdout.write(self.style.ERROR(traceback.format_exc()))
 
 
         if email_type in ['shipped', 'all']:
