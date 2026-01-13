@@ -110,10 +110,21 @@
     .carousel-container {
       height: 250px;
     }
+    /* Remove padding on mobile for full-width banner */
+    .banner-carousel-wrapper {
+      margin-left: -1rem;
+      margin-right: -1rem;
+      width: calc(100% + 2rem);
+    }
   }
   @media (max-width: 480px) {
     .carousel-container {
       height: 200px;
+    }
+    .banner-carousel-wrapper {
+      margin-left: -1rem;
+      margin-right: -1rem;
+      width: calc(100% + 2rem);
     }
   }
   .carousel-slide {
@@ -290,7 +301,7 @@
 
         <!-- Banner Carousel -->
         {% if banner_images %}
-        <div class="mt-0 mb-6">
+        <div class="mt-0 mb-6 banner-carousel-wrapper">
           <div class="banner-carousel overflow-hidden relative">
             <div class="carousel-container relative">
               {% for banner in banner_images %}
