@@ -388,6 +388,8 @@ def home(request: HttpRequest) -> HttpResponse:
         products = products.order_by("_eff_price")
     elif sort == "price_desc":
         products = products.order_by("-_eff_price")
+    elif sort == "most_sold":
+        products = products.order_by("-recently_sold", "-id")
 
 
     ids = [int(pk) for pk in request.session.get("recently_viewed", []) if str(pk).isdigit()]

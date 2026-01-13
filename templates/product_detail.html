@@ -1141,7 +1141,7 @@
                   {% if product.stock|default:0 > 0 %}
                     <span style="color: #28a745; font-weight: 600;">✓ In stock</span>
                     {% if product.recently_sold|default:0 > 0 %}
-                      <span style="margin-left: 12px; color: #666;">• Recently sold: {{ product.recently_sold }}</span>
+                      <span style="margin-left: 12px; color: #666;">• Sold: {{ product.recently_sold }}</span>
                     {% endif %}
                   {% else %}
                     Out of stock
@@ -1719,7 +1719,7 @@
           const recentlySold = {{ product.recently_sold|default:0 }};
           let stockText = '<span style="color: #28a745; font-weight: 600;">✓ In stock</span>';
           if (recentlySold > 0) {
-            stockText += `<span style="margin-left: 12px; color: #666;">• Recently sold: ${recentlySold}</span>`;
+            stockText += `<span style="margin-left: 12px; color: #666;">• Sold: ${recentlySold}</span>`;
           }
           stockLine.innerHTML = stockText;
           stockLine.classList.remove('out','muted');
