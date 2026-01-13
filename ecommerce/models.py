@@ -570,6 +570,8 @@ class Order(models.Model):
     tracking_number = models.CharField(max_length=100, blank=True, null=True, help_text="Tracking number from carrier")
     shipping_label_url = models.URLField(blank=True, null=True, help_text="URL to shipping label PDF")
     shipment_id = models.CharField(max_length=100, blank=True, null=True, help_text="Carrier shipment ID")
+    is_shipped = models.BooleanField(default=False, help_text="Mark order as shipped")
+    shipped_at = models.DateTimeField(blank=True, null=True, help_text="Date and time when order was shipped")
 
     email = models.EmailField(blank=True, null=True)
     full_name = models.CharField(max_length=100)

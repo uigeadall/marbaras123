@@ -7,6 +7,7 @@ from django.utils.html import format_html, escape
 from django.shortcuts import redirect
 from django import forms
 from django.conf import settings
+from django.utils import timezone
 from decimal import Decimal
 import csv
 import json
@@ -249,6 +250,7 @@ admin.site.register(ShippingOption)
 class OrderAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "order_status",
         "created_at",
         "full_name",
         "email",
@@ -260,18 +262,24 @@ class OrderAdmin(admin.ModelAdmin):
         "items_count",
         "print_label_link",
     )
+    
+    class Media:
+        css = {
+            'all': ('admin/css/order_admin.css',)
+        }
+        js = ('admin/js/order_admin.js',)
 
     search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number")
-    list_filter = ("shipping_option", "shipping_carrier", "coupon", "created_at")
+    list_filter = ("is_shipped", "shipping_option", "shipping_carrier", "coupon", "created_at")
     list_select_related = ("shipping_option", "coupon", "user")
-    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste")
+    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste", "shipped_at")
     
     fieldsets = (
         ("Order Information", {
             "fields": ("user", "email", "created_at", "total_price", "coupon")
         }),
         ("Shipping", {
-            "fields": ("shipping_option", "shipping_carrier", "create_label_button", "tracking_number", "shipment_id", "shipping_label_url")
+            "fields": ("shipping_option", "shipping_carrier", "create_label_button", "tracking_number", "shipment_id", "shipping_label_url", "is_shipped", "shipped_at")
         }),
         ("Customer Details", {
             "fields": ("full_name", "phone", "address", "city", "postal_code", "country")
@@ -282,11 +290,18 @@ class OrderAdmin(admin.ModelAdmin):
         }),
     )
 
-    actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels", "create_shipping_labels"]
+    actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels", "create_shipping_labels", "mark_as_shipped", "mark_as_not_shipped"]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.annotate(_items_count=Count("items"))
+    
+    def get_row_css_class(self, obj, request):
+        """Add CSS class to row based on order status."""
+        css_class = super().get_row_css_class(obj, request) or ""
+        if obj.is_shipped:
+            css_class += " admin-order-shipped"
+        return css_class.strip()
 
     @admin.display(description="Items")
     def items_count(self, obj):
@@ -295,6 +310,39 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.display(description="Coupon")
     def coupon_code(self, obj):
         return obj.coupon.code if obj.coupon else "-"
+    
+    @admin.display(description="Status", ordering="is_shipped")
+    def order_status(self, obj):
+        """Display order status with green background if shipped."""
+        if obj.is_shipped:
+            return format_html(
+                '<span style="background-color: #10b981; color: white; padding: 4px 12px; border-radius: 4px; font-weight: bold;">✓ Shipped</span>'
+            )
+        else:
+            return format_html(
+                '<span style="background-color: #f3f4f6; color: #6b7280; padding: 4px 12px; border-radius: 4px;">Pending</span>'
+            )
+    
+    def mark_as_shipped(self, request, queryset):
+        """Mark selected orders as shipped."""
+        from django.utils import timezone
+        updated = queryset.update(is_shipped=True, shipped_at=timezone.now())
+        self.message_user(
+            request,
+            f"✅ Marked {updated} order(s) as shipped.",
+            messages.SUCCESS
+        )
+    mark_as_shipped.short_description = "Mark selected orders as shipped"
+    
+    def mark_as_not_shipped(self, request, queryset):
+        """Mark selected orders as not shipped."""
+        updated = queryset.update(is_shipped=False, shipped_at=None)
+        self.message_user(
+            request,
+            f"✅ Marked {updated} order(s) as not shipped.",
+            messages.SUCCESS
+        )
+    mark_as_not_shipped.short_description = "Mark selected orders as not shipped"
 
     def send_shipped_email(self, request, queryset):
         """Admin action to send 'order shipped' email to selected orders."""
