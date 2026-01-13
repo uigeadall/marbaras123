@@ -2112,8 +2112,8 @@ def contact(request: HttpRequest) -> HttpResponse:
             for error in errors:
                 messages.error(request, error)
         else:
-            # Send email to admin
-            admin_email = getattr(settings, "ADMIN_EMAIL", getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"))
+            # Send email to marbaras.store@gmail.com
+            contact_email = "marbaras.store@gmail.com"
             email_subject = f"Contact Form: {subject}" if subject else f"Contact Form Message from {name}"
             
             email_body = f"""
@@ -2135,13 +2135,13 @@ This message was sent from the contact form on marbaras.com
                     subject=email_subject,
                     message=email_body,
                     from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"),
-                    recipient_list=[admin_email],
+                    recipient_list=[contact_email],
                     fail_silently=False,
                 )
                 messages.success(request, "Thank you for your message! We'll get back to you within 1-2 business days.")
             except Exception as e:
                 log.error(f"Failed to send contact form email: {e}")
-                messages.error(request, "Sorry, there was an error sending your message. Please try again later or email us directly at support@marbaras.com")
+                messages.error(request, "Sorry, there was an error sending your message. Please try again later or email us directly at marbaras.store@gmail.com")
     
     return render(request, "legal/contact.html")
 
