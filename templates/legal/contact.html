@@ -56,8 +56,18 @@
 <section class="contact-wrap">
   <header class="contact-hero">
     <h1>Contact Us</h1>
-    <p>Questions, feedback, or partnership ideas? Send us a message—we’ll get back to you as soon as possible.</p>
+    <p>Questions, feedback, or partnership ideas? Send us a message—we'll get back to you as soon as possible.</p>
   </header>
+
+  {% if messages %}
+    <div class="space-y-2" style="margin-bottom: 20px;">
+      {% for message in messages %}
+        <div class="{% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800{% else %}bg-green-50 border-green-200 text-green-800{% endif %} rounded-xl border px-4 py-3 text-sm">
+          {{ message }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
   <div class="contact-grid">
     <!-- Left: Form -->

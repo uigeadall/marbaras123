@@ -2093,8 +2093,8 @@ def contact(request: HttpRequest) -> HttpResponse:
         
         # Honeypot check - if website field is filled, it's spam
         if website:
-            # Silently ignore spam submissions
-            messages.success(request, "Thank you for your message! We'll get back to you soon.")
+            # Silently ignore spam submissions (don't show any message)
+            log.warning(f"Spam contact form submission detected from {email} (honeypot triggered)")
             return render(request, "legal/contact.html")
         
         # Validate required fields
