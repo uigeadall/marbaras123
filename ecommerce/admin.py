@@ -271,6 +271,90 @@ class ProductAdmin(admin.ModelAdmin):
         }
         
         return render(request, 'admin/ecommerce/product/increase_prices.html', context)
+    
+    def decrease_prices_action(self, request, queryset):
+        """Admin action to redirect to price decrease form."""
+        # Store selected product IDs in session
+        product_ids = list(queryset.values_list('id', flat=True))
+        request.session['price_decrease_product_ids'] = product_ids
+        return redirect('admin:ecommerce_product_decrease_prices')
+    decrease_prices_action.short_description = "📉 Decrease prices by percentage (selected products)"
+    
+    def decrease_prices_view(self, request):
+        """View for price decrease form and processing."""
+        # Get product IDs from session or use all products
+        product_ids = request.session.get('price_decrease_product_ids', None)
+        if product_ids:
+            queryset = Product.objects.filter(id__in=product_ids)
+            del request.session['price_decrease_product_ids']
+        else:
+            queryset = Product.objects.all()
+        
+        if request.method == 'POST':
+            form = PriceDecreaseForm(request.POST)
+            if form.is_valid():
+                percentage = form.cleaned_data['percentage']
+                apply_to_discount = form.cleaned_data['apply_to_discount_price']
+                apply_to_variants = form.cleaned_data['apply_to_variants']
+                
+                # Calculate multiplier (e.g., 5% decrease = 0.95)
+                multiplier = Decimal('1') - (percentage / Decimal('100'))
+                
+                updated_count = 0
+                updated_variants = 0
+                
+                # Update product prices
+                for product in queryset:
+                    # Update regular price
+                    old_price = product.price
+                    new_price = (old_price * multiplier).quantize(Decimal('0.01'))
+                    # Ensure price doesn't go below 0
+                    if new_price < Decimal('0'):
+                        new_price = Decimal('0')
+                    product.price = new_price
+                    
+                    # Update discount price if requested
+                    if apply_to_discount and product.discount_price:
+                        old_discount = product.discount_price
+                        new_discount = (old_discount * multiplier).quantize(Decimal('0.01'))
+                        if new_discount < Decimal('0'):
+                            new_discount = Decimal('0')
+                        product.discount_price = new_discount
+                    
+                    product.save(update_fields=['price', 'discount_price'])
+                    updated_count += 1
+                    
+                    # Update variant prices if requested
+                    if apply_to_variants:
+                        for variant in product.variants.all():
+                            if variant.price_override:
+                                old_variant_price = variant.price_override
+                                new_variant_price = (old_variant_price * multiplier).quantize(Decimal('0.01'))
+                                if new_variant_price < Decimal('0'):
+                                    new_variant_price = Decimal('0')
+                                variant.price_override = new_variant_price
+                                variant.save(update_fields=['price_override'])
+                                updated_variants += 1
+                
+                messages.success(
+                    request,
+                    f"✅ Successfully decreased prices by {percentage}% for {updated_count} product(s). "
+                    f"{f'Updated {updated_variants} variant prices.' if updated_variants > 0 else ''}"
+                )
+                return redirect('admin:ecommerce_product_changelist')
+        else:
+            form = PriceDecreaseForm()
+        
+        context = {
+            'form': form,
+            'title': 'Decrease Prices by Percentage',
+            'product_count': queryset.count(),
+            'opts': self.model._meta,
+            'has_view_permission': self.has_view_permission(request, None),
+            'action_type': 'decrease',
+        }
+        
+        return render(request, 'admin/ecommerce/product/increase_prices.html', context)
 
 
 
