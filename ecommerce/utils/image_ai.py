@@ -152,10 +152,20 @@ def get_optimized_image_url(image_field, quality: str = "auto", format: str = "a
         format: Format setting
     
     Returns:
-        Optimized image URL
+        Optimized image URL or original URL as fallback
     """
-    if not image_field or not image_field.name:
+    # Always return original URL if image_field is None or empty
+    if not image_field:
         return ""
+    
+    # Get original URL first as fallback
+    try:
+        original_url = image_field.url if hasattr(image_field, 'url') else ""
+    except Exception:
+        original_url = ""
+    
+    if not original_url or not image_field.name:
+        return original_url
     
     # Check if using Cloudinary
     if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
@@ -168,6 +178,10 @@ def get_optimized_image_url(image_field, quality: str = "auto", format: str = "a
             if '.' in public_id:
                 public_id = public_id.rsplit('.', 1)[0]
             
+            # If public_id is empty, return original URL
+            if not public_id:
+                return original_url
+            
             img = CloudinaryImage(public_id)
             optimized_url = img.build_url(
                 transformation=[
@@ -178,13 +192,20 @@ def get_optimized_image_url(image_field, quality: str = "auto", format: str = "a
                     }
                 ]
             )
-            return optimized_url
+            
+            # If optimized URL is empty or invalid, return original
+            if optimized_url:
+                return optimized_url
+            else:
+                logger.warning(f"Cloudinary returned empty URL for {public_id}, using original")
+                return original_url
             
         except Exception as e:
-            logger.warning(f"Failed to get optimized URL, using original: {e}")
+            logger.warning(f"Failed to get optimized URL for {image_field.name}, using original: {e}")
+            return original_url
     
-    # Fallback to original URL
-    return image_field.url if hasattr(image_field, 'url') else ""
+    # Not using Cloudinary, return original URL
+    return original_url
 
 
 def auto_crop_and_resize(public_id: str, width: Optional[int] = None, height: Optional[int] = None, 

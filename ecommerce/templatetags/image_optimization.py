@@ -23,12 +23,21 @@ def optimized_image(image_field, quality='auto'):
         quality: Quality setting ("auto", "best", "good", "eco", "low")
     
     Returns:
-        Optimized image URL
+        Optimized image URL or original URL as fallback
     """
     if not image_field:
         return ""
     
-    return get_optimized_image_url(image_field, quality=quality, format="auto")
+    optimized_url = get_optimized_image_url(image_field, quality=quality, format="auto")
+    
+    # Always return original URL if optimized URL is empty
+    if not optimized_url and hasattr(image_field, 'url'):
+        try:
+            return image_field.url
+        except Exception:
+            return ""
+    
+    return optimized_url
 
 
 @register.simple_tag
@@ -42,14 +51,24 @@ def responsive_image(image_field, width=None, quality='auto', lazy=True):
     
     Returns dict with: url, srcset, sizes
     """
-    if not image_field or not hasattr(image_field, 'url'):
+    if not image_field:
+        return {'url': '', 'srcset': '', 'sizes': ''}
+    
+    # Get original URL first as fallback
+    try:
+        original_url = image_field.url if hasattr(image_field, 'url') else ''
+    except Exception:
+        original_url = ''
+    
+    if not original_url:
         return {'url': '', 'srcset': '', 'sizes': ''}
     
     # Get base optimized URL
     base_url = get_optimized_image_url(image_field, quality=quality, format="auto")
     
+    # Always fallback to original URL if optimized URL is empty
     if not base_url:
-        base_url = image_field.url if hasattr(image_field, 'url') else ''
+        base_url = original_url
     
     # If Cloudinary is available, generate srcset
     if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME and 'cloudinary.com' in base_url:
