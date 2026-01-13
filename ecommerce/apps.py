@@ -10,7 +10,8 @@ class EcommerceConfig(AppConfig):
         
         # Import template tags to ensure they are registered
         try:
-            import ecommerce.template_tags.blog_filters  # noqa
-            import ecommerce.template_tags.cart_extras  # noqa
+            import ecommerce.templatetags.blog_filters  # noqa
+            import ecommerce.templatetags.cart_extras  # noqa
+            import ecommerce.templatetags.image_optimization  # noqa
         except ImportError:
             pass
