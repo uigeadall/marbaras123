@@ -358,7 +358,7 @@ class ProductAdmin(admin.ModelAdmin):
         return render(request, 'admin/ecommerce/product/increase_prices.html', context)
     
     def inventory_scanner_view(self, request):
-        """View for inventory scanner - scan products and decrease stock."""
+        """View for inventory scanner - view, add, or remove stock."""
         from django.http import JsonResponse
         from django.db import transaction
         from .models import ProductVariant
@@ -366,6 +366,7 @@ class ProductAdmin(admin.ModelAdmin):
         if request.method == 'POST':
             # Handle barcode scan
             barcode = request.POST.get('barcode', '').strip()
+            action = request.POST.get('action', 'view').strip()  # 'view', 'add', 'remove'
             
             if not barcode:
                 return JsonResponse({'success': False, 'error': 'No barcode provided'}, status=400)
@@ -402,47 +403,100 @@ class ProductAdmin(admin.ModelAdmin):
                     'error': f'Product not found for barcode: {barcode}'
                 }, status=404)
             
-            # Decrease stock
-            with transaction.atomic():
-                if variant:
-                    # Decrease variant stock
-                    if variant.stock > 0:
-                        variant.stock -= 1
+            # Get current stock
+            if variant:
+                current_stock = variant.stock
+            else:
+                current_stock = product.stock
+            
+            # Handle different actions
+            if action == 'view':
+                # Just return current stock info
+                from django.urls import reverse
+                product_url = reverse('admin:ecommerce_product_change', args=[product.id])
+                return JsonResponse({
+                    'success': True,
+                    'action': 'view',
+                    'product_id': product.id,
+                    'product_name': product.name,
+                    'product_url': product_url,
+                    'variant_size': variant.size if variant else None,
+                    'current_stock': current_stock,
+                    'message': f'Current stock: {current_stock}'
+                })
+            
+            elif action == 'add':
+                # Increase stock by 1
+                with transaction.atomic():
+                    if variant:
+                        variant.stock += 1
                         variant.save(update_fields=['stock'])
                         new_stock = variant.stock
                     else:
-                        return JsonResponse({
-                            'success': False,
-                            'error': f'Product "{product.name}" (Size: {variant.size}) is out of stock!'
-                        }, status=400)
-                else:
-                    # Decrease product stock
-                    if product.stock > 0:
-                        product.stock -= 1
+                        product.stock += 1
                         product.save(update_fields=['stock'])
                         new_stock = product.stock
+                
+                from django.urls import reverse
+                product_url = reverse('admin:ecommerce_product_change', args=[product.id])
+                return JsonResponse({
+                    'success': True,
+                    'action': 'add',
+                    'product_id': product.id,
+                    'product_name': product.name,
+                    'product_url': product_url,
+                    'variant_size': variant.size if variant else None,
+                    'current_stock': current_stock,
+                    'new_stock': new_stock,
+                    'message': f'Stock increased! New stock: {new_stock}'
+                })
+            
+            elif action == 'remove':
+                # Decrease stock by 1
+                with transaction.atomic():
+                    if variant:
+                        if variant.stock > 0:
+                            variant.stock -= 1
+                            variant.save(update_fields=['stock'])
+                            new_stock = variant.stock
+                        else:
+                            return JsonResponse({
+                                'success': False,
+                                'error': f'Product "{product.name}" (Size: {variant.size}) is out of stock!'
+                            }, status=400)
                     else:
-                        return JsonResponse({
-                            'success': False,
-                            'error': f'Product "{product.name}" is out of stock!'
-                        }, status=400)
-            
-            from django.urls import reverse
-            product_url = reverse('admin:ecommerce_product_change', args=[product.id])
-            
-            return JsonResponse({
-                'success': True,
-                'product_id': product.id,
-                'product_name': product.name,
-                'product_url': product_url,
-                'variant_size': variant.size if variant else None,
-                'new_stock': new_stock,
-                'message': f'Stock decreased! New stock: {new_stock}'
-            })
+                        if product.stock > 0:
+                            product.stock -= 1
+                            product.save(update_fields=['stock'])
+                            new_stock = product.stock
+                        else:
+                            return JsonResponse({
+                                'success': False,
+                                'error': f'Product "{product.name}" is out of stock!'
+                            }, status=400)
+                
+                from django.urls import reverse
+                product_url = reverse('admin:ecommerce_product_change', args=[product.id])
+                return JsonResponse({
+                    'success': True,
+                    'action': 'remove',
+                    'product_id': product.id,
+                    'product_name': product.name,
+                    'product_url': product_url,
+                    'variant_size': variant.size if variant else None,
+                    'current_stock': current_stock,
+                    'new_stock': new_stock,
+                    'message': f'Stock decreased! New stock: {new_stock}'
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Invalid action: {action}'
+                }, status=400)
         
         # GET request - show scanner page
         return render(request, 'admin/inventory_scanner.html', {
-            'title': 'Inventory Scanner - Scan & Remove Items'
+            'title': 'Inventory Scanner - View, Add & Remove Stock'
         })
 
 

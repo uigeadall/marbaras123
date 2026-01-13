@@ -1,7 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% load static %}
 
-{% block title %}Inventory Scanner - Scan & Remove Items{% endblock %}
+{% block title %}Inventory Scanner - View, Add & Remove Stock{% endblock %}
 
 {% block extrahead %}
 {{ block.super }}
@@ -48,27 +48,57 @@
         box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
     }
     
+    .button-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    
     .scan-button {
-        width: 100%;
         padding: 15px;
-        background: #667eea;
         color: white;
         border: none;
         border-radius: 8px;
-        font-size: 18px;
+        font-size: 16px;
         font-weight: bold;
         cursor: pointer;
-        margin-bottom: 20px;
         transition: background 0.3s;
     }
     
-    .scan-button:hover {
-        background: #5568d3;
+    .scan-button.view {
+        background: #17a2b8;
+    }
+    
+    .scan-button.view:hover {
+        background: #138496;
+    }
+    
+    .scan-button.add {
+        background: #28a745;
+    }
+    
+    .scan-button.add:hover {
+        background: #218838;
+    }
+    
+    .scan-button.remove {
+        background: #dc3545;
+    }
+    
+    .scan-button.remove:hover {
+        background: #c82333;
     }
     
     .scan-button:disabled {
         background: #ccc;
         cursor: not-allowed;
+    }
+    
+    @media (max-width: 768px) {
+        .button-group {
+            grid-template-columns: 1fr;
+        }
     }
     
     .result-box {
@@ -154,15 +184,17 @@
 {% block content %}
 <div class="scanner-container">
     <h1 class="scanner-title">📦 Inventory Scanner</h1>
-    <p class="scanner-subtitle">Scan products to decrease stock by 1</p>
+    <p class="scanner-subtitle">Scan products to view, add, or remove stock</p>
     
     <div class="instructions">
         <h3>How to use:</h3>
         <ul>
             <li>Scan a barcode using your scanner (or type manually)</li>
             <li>The system will find the product by: Serial Number, SKU, or Product ID</li>
-            <li>Stock will be automatically decreased by 1</li>
-            <li>If product has variants, scan the variant SKU to decrease variant stock</li>
+            <li><strong>View Stock:</strong> Shows current stock without changing it</li>
+            <li><strong>Add Stock:</strong> Increases stock by 1</li>
+            <li><strong>Remove Stock:</strong> Decreases stock by 1</li>
+            <li>If product has variants, scan the variant SKU to manage variant stock</li>
         </ul>
     </div>
     
@@ -175,7 +207,11 @@
         autofocus
     >
     
-    <button type="button" class="scan-button" onclick="scanProduct()">Scan Product</button>
+    <div class="button-group">
+        <button type="button" class="scan-button view" onclick="scanProduct('view')">👁️ View Stock</button>
+        <button type="button" class="scan-button add" onclick="scanProduct('add')">➕ Add Stock</button>
+        <button type="button" class="scan-button remove" onclick="scanProduct('remove')">➖ Remove Stock</button>
+    </div>
     
     <div id="resultBox" class="result-box"></div>
 </div>
@@ -186,10 +222,11 @@
     let isProcessing = false;
     
     // Auto-submit on Enter key (barcode scanners usually send Enter after barcode)
+    // Default action is 'view' when Enter is pressed
     barcodeInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !isProcessing) {
             e.preventDefault();
-            scanProduct();
+            scanProduct('view');
         }
     });
     
@@ -205,7 +242,7 @@
         }
     });
     
-    function scanProduct() {
+    function scanProduct(action = 'view') {
         const barcode = barcodeInput.value.trim();
         
         if (!barcode) {
@@ -218,14 +255,19 @@
         }
         
         isProcessing = true;
-        const scanButton = document.querySelector('.scan-button');
-        scanButton.disabled = true;
-        scanButton.textContent = 'Processing...';
+        const buttons = document.querySelectorAll('.scan-button');
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            if (btn.classList.contains(action)) {
+                btn.textContent = 'Processing...';
+            }
+        });
         
         // Show loading
         resultBox.className = 'result-box';
         resultBox.style.display = 'block';
-        resultBox.innerHTML = '<p>Scanning product...</p>';
+        const actionText = action === 'view' ? 'Viewing' : action === 'add' ? 'Adding stock to' : 'Removing stock from';
+        resultBox.innerHTML = `<p>${actionText} product...</p>`;
         
         // Send request
         fetch('{% url "admin:ecommerce_product_inventory_scanner" %}', {
@@ -234,17 +276,19 @@
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-CSRFToken': '{{ csrf_token }}'
             },
-            body: 'barcode=' + encodeURIComponent(barcode)
+            body: 'barcode=' + encodeURIComponent(barcode) + '&action=' + encodeURIComponent(action)
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showSuccess(data);
-                // Clear input and focus for next scan
-                setTimeout(() => {
-                    barcodeInput.value = '';
-                    barcodeInput.focus();
-                }, 1000);
+                showSuccess(data, action);
+                // Clear input and focus for next scan (only for add/remove, not view)
+                if (action !== 'view') {
+                    setTimeout(() => {
+                        barcodeInput.value = '';
+                        barcodeInput.focus();
+                    }, 1500);
+                }
             } else {
                 showError(data.error || 'Product not found');
             }
@@ -254,27 +298,42 @@
         })
         .finally(() => {
             isProcessing = false;
-            scanButton.disabled = false;
-            scanButton.textContent = 'Scan Product';
+            buttons.forEach(btn => {
+                btn.disabled = false;
+                if (btn.classList.contains('view')) btn.textContent = '👁️ View Stock';
+                if (btn.classList.contains('add')) btn.textContent = '➕ Add Stock';
+                if (btn.classList.contains('remove')) btn.textContent = '➖ Remove Stock';
+            });
         });
     }
     
-    function showSuccess(data) {
+    function showSuccess(data, action) {
         resultBox.className = 'result-box success';
         const variantInfo = data.variant_size ? `<p><strong>Size:</strong> ${data.variant_size}</p>` : '';
+        
+        let actionMessage = '';
+        let stockDisplay = '';
+        
+        if (action === 'view') {
+            actionMessage = '📊 Current Stock Information';
+            stockDisplay = `<div class="stock-info" style="font-size: 24px; color: #17a2b8;">Current Stock: ${data.current_stock}</div>`;
+        } else if (action === 'add') {
+            actionMessage = '✅ Stock Increased Successfully!';
+            stockDisplay = `<div class="stock-info" style="color: #28a745;">Previous: ${data.current_stock} → New: ${data.new_stock}</div>`;
+        } else if (action === 'remove') {
+            actionMessage = '✅ Stock Decreased Successfully!';
+            stockDisplay = `<div class="stock-info" style="color: #dc3545;">Previous: ${data.current_stock} → New: ${data.new_stock}</div>`;
+        }
+        
         resultBox.innerHTML = `
-            <strong>✅ Stock Decreased Successfully!</strong>
+            <strong>${actionMessage}</strong>
             <div class="product-info">
                 <strong>${data.product_name}</strong>
                 ${variantInfo}
-                <div class="stock-info">New Stock: ${data.new_stock}</div>
+                ${stockDisplay}
                 <a href="${data.product_url}" target="_blank">View Product →</a>
             </div>
         `;
-        
-        // Play success sound (optional)
-        // const audio = new Audio('/static/sounds/success.mp3');
-        // audio.play().catch(() => {});
     }
     
     function showError(message) {
