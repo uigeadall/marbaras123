@@ -367,9 +367,13 @@ class ProductAdmin(admin.ModelAdmin):
             # Handle barcode scan
             barcode = request.POST.get('barcode', '').strip()
             action = request.POST.get('action', 'view').strip()  # 'view', 'add', 'remove'
+            quantity = int(request.POST.get('quantity', 1))  # Quantity to add/remove
             
             if not barcode:
                 return JsonResponse({'success': False, 'error': 'No barcode provided'}, status=400)
+            
+            if action != 'view' and (quantity < 1):
+                return JsonResponse({'success': False, 'error': 'Quantity must be at least 1'}, status=400)
             
             # Try to find product by serial_number, SKU (from variants), or ID
             product = None
@@ -422,18 +426,19 @@ class ProductAdmin(admin.ModelAdmin):
                     'product_url': product_url,
                     'variant_size': variant.size if variant else None,
                     'current_stock': current_stock,
+                    'quantity': 0,
                     'message': f'Current stock: {current_stock}'
                 })
             
             elif action == 'add':
-                # Increase stock by 1
+                # Increase stock by quantity
                 with transaction.atomic():
                     if variant:
-                        variant.stock += 1
+                        variant.stock += quantity
                         variant.save(update_fields=['stock'])
                         new_stock = variant.stock
                     else:
-                        product.stock += 1
+                        product.stock += quantity
                         product.save(update_fields=['stock'])
                         new_stock = product.stock
                 
@@ -448,31 +453,32 @@ class ProductAdmin(admin.ModelAdmin):
                     'variant_size': variant.size if variant else None,
                     'current_stock': current_stock,
                     'new_stock': new_stock,
-                    'message': f'Stock increased! New stock: {new_stock}'
+                    'quantity': quantity,
+                    'message': f'Stock increased by {quantity}! New stock: {new_stock}'
                 })
             
             elif action == 'remove':
-                # Decrease stock by 1
+                # Decrease stock by quantity
                 with transaction.atomic():
                     if variant:
-                        if variant.stock > 0:
-                            variant.stock -= 1
+                        if variant.stock >= quantity:
+                            variant.stock -= quantity
                             variant.save(update_fields=['stock'])
                             new_stock = variant.stock
                         else:
                             return JsonResponse({
                                 'success': False,
-                                'error': f'Product "{product.name}" (Size: {variant.size}) is out of stock!'
+                                'error': f'Product "{product.name}" (Size: {variant.size}) has only {variant.stock} in stock, cannot remove {quantity}!'
                             }, status=400)
                     else:
-                        if product.stock > 0:
-                            product.stock -= 1
+                        if product.stock >= quantity:
+                            product.stock -= quantity
                             product.save(update_fields=['stock'])
                             new_stock = product.stock
                         else:
                             return JsonResponse({
                                 'success': False,
-                                'error': f'Product "{product.name}" is out of stock!'
+                                'error': f'Product "{product.name}" has only {product.stock} in stock, cannot remove {quantity}!'
                             }, status=400)
                 
                 from django.urls import reverse
@@ -486,7 +492,8 @@ class ProductAdmin(admin.ModelAdmin):
                     'variant_size': variant.size if variant else None,
                     'current_stock': current_stock,
                     'new_stock': new_stock,
-                    'message': f'Stock decreased! New stock: {new_stock}'
+                    'quantity': quantity,
+                    'message': f'Stock decreased by {quantity}! New stock: {new_stock}'
                 })
             else:
                 return JsonResponse({

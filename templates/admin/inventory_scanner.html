@@ -36,7 +36,7 @@
         font-size: 24px;
         border: 3px solid #667eea;
         border-radius: 8px;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
         text-align: center;
         font-weight: 600;
         letter-spacing: 2px;
@@ -46,6 +46,56 @@
         outline: none;
         border-color: #5568d3;
         box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .quantity-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .quantity-label {
+        font-weight: 600;
+        color: #333;
+        white-space: nowrap;
+    }
+    
+    .quantity-input {
+        flex: 1;
+        padding: 15px;
+        font-size: 20px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: 600;
+    }
+    
+    .quantity-input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+    }
+    
+    .quick-quantity-buttons {
+        display: flex;
+        gap: 5px;
+    }
+    
+    .quick-qty-btn {
+        padding: 8px 12px;
+        background: #f0f0f0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+    
+    .quick-qty-btn:hover {
+        background: #e0e0e0;
+        border-color: #667eea;
     }
     
     .button-group {
@@ -207,6 +257,25 @@
         autofocus
     >
     
+    <div class="quantity-group">
+        <label for="quantityInput" class="quantity-label">Quantity:</label>
+        <input 
+            type="number" 
+            id="quantityInput" 
+            class="quantity-input" 
+            placeholder="Enter quantity"
+            min="1"
+            value="1"
+            autocomplete="off"
+        >
+        <div class="quick-quantity-buttons">
+            <button type="button" class="quick-qty-btn" onclick="setQuantity(10)">10</button>
+            <button type="button" class="quick-qty-btn" onclick="setQuantity(50)">50</button>
+            <button type="button" class="quick-qty-btn" onclick="setQuantity(100)">100</button>
+            <button type="button" class="quick-qty-btn" onclick="setQuantity(500)">500</button>
+        </div>
+    </div>
+    
     <div class="button-group">
         <button type="button" class="scan-button view" onclick="scanProduct('view')">👁️ View Stock</button>
         <button type="button" class="scan-button add" onclick="scanProduct('add')">➕ Add Stock</button>
@@ -230,6 +299,15 @@
         }
     });
     
+    // Allow Enter key in quantity input to trigger the last action
+    document.getElementById('quantityInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !isProcessing) {
+            e.preventDefault();
+            // Default to 'add' when Enter is pressed in quantity field
+            scanProduct('add');
+        }
+    });
+    
     // Focus input on page load
     window.addEventListener('load', function() {
         barcodeInput.focus();
@@ -242,12 +320,27 @@
         }
     });
     
+    function setQuantity(qty) {
+        document.getElementById('quantityInput').value = qty;
+    }
+    
     function scanProduct(action = 'view') {
         const barcode = barcodeInput.value.trim();
+        const quantityInput = document.getElementById('quantityInput');
+        let quantity = parseInt(quantityInput.value) || 1;
         
         if (!barcode) {
             showError('Please scan or enter a barcode');
             return;
+        }
+        
+        // For view action, quantity is not needed, but validate for add/remove
+        if (action !== 'view') {
+            if (!quantity || quantity < 1) {
+                showError('Please enter a valid quantity (minimum 1)');
+                quantityInput.focus();
+                return;
+            }
         }
         
         if (isProcessing) {
@@ -266,7 +359,7 @@
         // Show loading
         resultBox.className = 'result-box';
         resultBox.style.display = 'block';
-        const actionText = action === 'view' ? 'Viewing' : action === 'add' ? 'Adding stock to' : 'Removing stock from';
+        const actionText = action === 'view' ? 'Viewing' : action === 'add' ? `Adding ${quantity} to` : `Removing ${quantity} from`;
         resultBox.innerHTML = `<p>${actionText} product...</p>`;
         
         // Send request
@@ -276,7 +369,7 @@
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-CSRFToken': '{{ csrf_token }}'
             },
-            body: 'barcode=' + encodeURIComponent(barcode) + '&action=' + encodeURIComponent(action)
+            body: 'barcode=' + encodeURIComponent(barcode) + '&action=' + encodeURIComponent(action) + '&quantity=' + encodeURIComponent(quantity)
         })
         .then(response => response.json())
         .then(data => {
@@ -314,14 +407,16 @@
         let actionMessage = '';
         let stockDisplay = '';
         
+        const quantity = data.quantity || 1;
+        
         if (action === 'view') {
             actionMessage = '📊 Current Stock Information';
             stockDisplay = `<div class="stock-info" style="font-size: 24px; color: #17a2b8;">Current Stock: ${data.current_stock}</div>`;
         } else if (action === 'add') {
-            actionMessage = '✅ Stock Increased Successfully!';
+            actionMessage = `✅ Stock Increased Successfully! (+${quantity})`;
             stockDisplay = `<div class="stock-info" style="color: #28a745;">Previous: ${data.current_stock} → New: ${data.new_stock}</div>`;
         } else if (action === 'remove') {
-            actionMessage = '✅ Stock Decreased Successfully!';
+            actionMessage = `✅ Stock Decreased Successfully! (-${quantity})`;
             stockDisplay = `<div class="stock-info" style="color: #dc3545;">Previous: ${data.current_stock} → New: ${data.new_stock}</div>`;
         }
         
