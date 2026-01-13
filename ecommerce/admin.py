@@ -491,7 +491,7 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number")
     list_filter = ("is_shipped", "shipping_option", "shipping_carrier", "coupon", "created_at")
     list_select_related = ("shipping_option", "coupon", "user")
-    readonly_fields = ("created_at", "tracking_number", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste", "shipped_at")
+    readonly_fields = ("created_at", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste", "shipped_at")
     
     fieldsets = (
         ("Order Information", {
