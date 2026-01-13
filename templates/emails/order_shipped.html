@@ -28,11 +28,16 @@
     
     <p>We're excited to inform you that your order <strong>#{{ order.id }}</strong> has been shipped!</p>
     
-    {% if shipping_option %}
+    {% if shipping_option or order.shipping_carrier %}
     <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0;">
       <h3 style="margin-top: 0;">Shipping information:</h3>
+      {% if shipping_option %}
       <p><strong>Method:</strong> {{ shipping_option.name }}</p>
       <p><strong>Delivery time:</strong> {{ shipping_option.delivery_time }}</p>
+      {% endif %}
+      {% if order.shipping_carrier %}
+      <p><strong>Carrier:</strong> {{ order.get_shipping_carrier_display }}</p>
+      {% endif %}
       {% if tracking_number %}
       <p><strong>Tracking number:</strong> <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">{{ tracking_number }}</code></p>
       {% endif %}

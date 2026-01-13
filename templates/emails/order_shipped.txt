@@ -2,10 +2,15 @@ Hello, {% if order.user %}{{ order.user.username|default:order.full_name }}{% el
 
 We're excited to inform you that your order #{{ order.id }} has been shipped!
 
-{% if shipping_option %}
+{% if shipping_option or order.shipping_carrier %}
 Shipping information:
+{% if shipping_option %}
 - Method: {{ shipping_option.name }}
 - Delivery time: {{ shipping_option.delivery_time }}
+{% endif %}
+{% if order.shipping_carrier %}
+- Carrier: {{ order.get_shipping_carrier_display }}
+{% endif %}
 {% if tracking_number %}
 - Tracking number: {{ tracking_number }}
 {% endif %}
