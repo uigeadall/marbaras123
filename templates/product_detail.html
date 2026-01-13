@@ -1139,7 +1139,10 @@
                    {% if not product.variants.count %}data-base-stock="{{ product.stock|default:0 }}"{% endif %}>
                 {% if not product.variants.count %}
                   {% if product.stock|default:0 > 0 %}
-                    In stock: {{ product.stock }}
+                    <span style="color: #28a745; font-weight: 600;">✓ In stock</span>
+                    {% if product.recently_sold|default:0 > 0 %}
+                      <span style="margin-left: 12px; color: #666;">• Recently sold: {{ product.recently_sold }}</span>
+                    {% endif %}
                   {% else %}
                     Out of stock
                   {% endif %}
@@ -1713,7 +1716,12 @@
       if (!stockLine) return;
       if (typeof stock === 'number') {
         if (stock > 0) {
-          stockLine.textContent = `In stock: ${stock}`;
+          const recentlySold = {{ product.recently_sold|default:0 }};
+          let stockText = '<span style="color: #28a745; font-weight: 600;">✓ In stock</span>';
+          if (recentlySold > 0) {
+            stockText += `<span style="margin-left: 12px; color: #666;">• Recently sold: ${recentlySold}</span>`;
+          }
+          stockLine.innerHTML = stockText;
           stockLine.classList.remove('out','muted');
         } else {
           stockLine.textContent = 'Out of stock';

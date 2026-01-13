@@ -139,7 +139,7 @@ class ProductAdmin(admin.ModelAdmin):
                 "fields": ("price", "discount_price")
             }),
             ("Inventory", {
-                "fields": ("stock", "cart_add_count")
+                "fields": ("stock", "recently_sold", "cart_add_count")
             }),
             ("Images", {
                 "fields": ("image",)

@@ -124,6 +124,10 @@ class Product(models.Model):
 
     cart_add_count = models.PositiveIntegerField(default=0, db_index=True)
     stock = models.PositiveIntegerField(default=0, db_index=True)
+    recently_sold = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of items recently sold (displayed on product page)"
+    )
     sale_expires_at = models.DateTimeField(
         null=True,
         blank=True,
