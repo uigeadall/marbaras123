@@ -603,6 +603,36 @@ class Order(models.Model):
             return self.total_price + self.shipping_option.price
         return self.total_price
 
+    def get_tracking_url(self) -> str:
+        """Generate tracking URL based on shipping carrier and tracking number."""
+        if not self.tracking_number:
+            return ""
+        
+        tracking_number = self.tracking_number.strip()
+        carrier = self.shipping_carrier or ""
+        
+        # Generate tracking URL based on carrier
+        if carrier == "dhl" or carrier == "global_mail":
+            # DHL and Global Mail use DHL tracking
+            return f"https://www.dhl.com/en/express/tracking.html?AWB={tracking_number}"
+        elif carrier == "fedex":
+            return f"https://www.fedex.com/fedextrack/?trknbr={tracking_number}"
+        elif carrier == "deutsche_post":
+            return f"https://www.dhl.de/en/privatkunden/pakete-empfangen/verfolgen.html?lang=de&idc={tracking_number}"
+        elif carrier == "easypost":
+            # EasyPost tracking URL (generic)
+            return f"https://track.easypost.com/{tracking_number}"
+        else:
+            # Fallback: try to detect carrier from tracking number format or use generic
+            # DHL tracking numbers are typically 10 digits
+            if len(tracking_number) == 10 and tracking_number.isdigit():
+                return f"https://www.dhl.com/en/express/tracking.html?AWB={tracking_number}"
+            # FedEx tracking numbers are typically 12 digits
+            elif len(tracking_number) == 12 and tracking_number.isdigit():
+                return f"https://www.fedex.com/fedextrack/?trknbr={tracking_number}"
+            # Default: return empty string if we can't determine
+            return ""
+
     def __str__(self) -> str:
         return f"Order #{self.pk} by {self.full_name}"
 

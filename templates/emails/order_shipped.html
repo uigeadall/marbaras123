@@ -66,6 +66,9 @@
     <p style="margin-top: 30px;">We look forward to you receiving your order soon! If you have any questions, please don't hesitate to contact us.</p>
     
     <div style="text-align: center; margin-top: 30px;">
+      {% if tracking_number and order.get_tracking_url %}
+        <a href="{{ order.get_tracking_url }}" target="_blank" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 10px; margin-bottom: 10px;">📦 Track Your Order</a>
+      {% endif %}
       <a href="{{ base_url }}{% url 'profile_orders' %}" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Orders</a>
     </div>
     
