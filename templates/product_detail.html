@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load image_optimization %}
 
 {% block title %}{{ product.name }} - Marbaras{% endblock %}
 {% block meta_description %}{{ product.name }} - {{ product.description|truncatewords:25 }} | Premium Silver Jewelry at Marbaras{% endblock %}
@@ -124,12 +125,31 @@
     flex-wrap: wrap; 
     gap: 30px; 
     width: 100%; 
-    overflow: visible; 
+    overflow: visible;
+    align-items: flex-start;
   }
 
-  .image-section, .info-section { flex: 1; min-width: 280px; max-width: 100%; }
+  .image-section, .info-section { 
+    flex: 1; 
+    min-width: 280px; 
+    max-width: 100%;
+    align-self: flex-start;
+  }
+  
+  .info-section {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-  .image-section { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .image-section { 
+    display: flex; 
+    flex-direction: column; 
+    align-items: flex-start; 
+    gap: 16px; 
+    flex-wrap: nowrap;
+    width: 100%;
+  }
   .main-preview {
     order: 1;
     position: relative;
@@ -141,7 +161,7 @@
     cursor: zoom-in;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     background: #fff;
   }
   .thumbs-col {
@@ -153,8 +173,10 @@
     flex-direction: row; 
     gap: 10px; 
     padding-right: 0;
+    padding-left: 0;
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: flex-start;
+    align-items: flex-start;
   }
   .thumbs-col img {
     width: 70px; 
@@ -439,6 +461,34 @@
   .line-clamp-2{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-height: 2.8em; }
 
   h1 { font-size: 1.8rem !important; font-weight: 900 !important; line-height: 1.15; margin-bottom: 10px; }
+  
+  /* Desktop: Ensure image-section and info-section align properly */
+  @media (min-width: 769px) {
+    .content-wrapper .flex {
+      align-items: flex-start;
+    }
+    .image-section {
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+    .main-preview-wrapper {
+      align-items: flex-start !important;
+      width: 100%;
+    }
+    .thumbs-col {
+      justify-content: flex-start !important;
+      align-items: flex-start;
+      padding-left: 0;
+    }
+    .info-section {
+      align-items: flex-start;
+    }
+    .info-section h1 {
+      margin-left: 0;
+      padding-left: 0;
+    }
+  }
+  
   @media (max-width: 768px) {
     
     .image-section { flex-direction: column; }
@@ -845,11 +895,18 @@
               {% if silver_images or has_gold_plated %}
                 <div class="thumbs-col" id="thumbsCol">
                   {% for img in silver_images|slice:":5" %}
+                    {% responsive_image img.image width=150 as thumb_img %}
                     <img
-                      src="{{ img.image.url }}"
+                      src="{{ img.image|optimized_image }}"
+                      srcset="{{ thumb_img.srcset }}"
+                      sizes="150px"
                       alt="{{ product.name }} - Silver Image {{ forloop.counter }}"
-                      data-image-url="{{ img.image.url }}"
+                      data-image-url="{{ img.image|optimized_image }}"
                       data-version-type="silver"
+                      loading="lazy"
+                      decoding="async"
+                      width="150"
+                      height="150"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
@@ -859,11 +916,18 @@
                   {% endfor %}
                   {% if has_gold_plated %}
                     {% for img in gold_plated_images|slice:":5" %}
+                      {% responsive_image img.image width=150 as thumb_img %}
                       <img
-                        src="{{ img.image.url }}"
+                        src="{{ img.image|optimized_image }}"
+                        srcset="{{ thumb_img.srcset }}"
+                        sizes="150px"
                         alt="{{ product.name }} - Gold Plated Image {{ forloop.counter }}"
-                        data-image-url="{{ img.image.url }}"
+                        data-image-url="{{ img.image|optimized_image }}"
                         data-version-type="gold_plated"
+                        loading="lazy"
+                        decoding="async"
+                        width="150"
+                        height="150"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"
@@ -873,11 +937,18 @@
                       >
                     {% endfor %}
                     {% for img in rose_gold_plated_images|slice:":5" %}
+                      {% responsive_image img.image width=150 as thumb_img %}
                       <img
-                        src="{{ img.image.url }}"
+                        src="{{ img.image|optimized_image }}"
+                        srcset="{{ thumb_img.srcset }}"
+                        sizes="150px"
                         alt="{{ product.name }} - Rose Gold Plated Image {{ forloop.counter }}"
-                        data-image-url="{{ img.image.url }}"
+                        data-image-url="{{ img.image|optimized_image }}"
                         data-version-type="rose_gold_plated"
+                        loading="lazy"
+                        decoding="async"
+                        width="150"
+                        height="150"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"
@@ -889,24 +960,48 @@
                   {% endif %}
                 </div>
               {% endif %}
-              <div class="main-preview-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+              <div class="main-preview-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; width: 100%; align-items: flex-start;">
                 <div class="main-preview" style="width: 100%;">
                   {% if product.main_image %}
-                    <img id="mainImage" src="{{ product.main_image.url }}" alt="{{ product.name }}">
+                    {% responsive_image product.main_image width=1200 as main_img %}
+                    <img id="mainImage" 
+                         src="{{ product.main_image|optimized_image }}" 
+                         {% if main_img.srcset %}srcset="{{ main_img.srcset }}" sizes="{{ main_img.sizes }}"{% endif %}
+                         alt="{{ product.name }}"
+                         loading="eager"
+                         fetchpriority="high"
+                         decoding="async"
+                         width="1200"
+                         height="1200">
                   {% elif silver_images %}
-                    <img id="mainImage" src="{{ silver_images.0.image.url }}" alt="{{ product.name }}">
+                    {% responsive_image silver_images.0.image width=1200 as main_img %}
+                    <img id="mainImage" 
+                         src="{{ silver_images.0.image|optimized_image }}" 
+                         {% if main_img.srcset %}srcset="{{ main_img.srcset }}" sizes="{{ main_img.sizes }}"{% endif %}
+                         alt="{{ product.name }}"
+                         loading="eager"
+                         fetchpriority="high"
+                         decoding="async"
+                         width="1200"
+                         height="1200">
                   {% else %}
-                    <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image">
+                    <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image" width="1200" height="1200">
                   {% endif %}
                 </div>
                 {% if normal_images|length > 5 or gold_plated_images|length > 5 %}
                 <div class="additional-thumbs" id="additionalThumbs" style="display: flex; flex-wrap: wrap; gap: 10px; padding-top: 10px; width: 100%;">
                   {% for img in normal_images|slice:"5:" %}
+                    {% responsive_image img.image width=150 as thumb_img %}
                     <img
-                      src="{{ img.image.url }}"
+                      src="{{ img.image|optimized_image }}"
+                      {% if thumb_img.srcset %}srcset="{{ thumb_img.srcset }}" sizes="70px"{% endif %}
                       alt="{{ product.name }} - Image {{ forloop.counter|add:5 }}"
-                      data-image-url="{{ img.image.url }}"
+                      data-image-url="{{ img.image|optimized_image }}"
                       data-is-gold-plated="false"
+                      loading="lazy"
+                      decoding="async"
+                      width="70"
+                      height="70"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
@@ -919,11 +1014,17 @@
                   {% endfor %}
                   {% if has_gold_plated %}
                     {% for img in gold_plated_images|slice:"5:" %}
+                      {% responsive_image img.image width=150 as thumb_img %}
                       <img
-                        src="{{ img.image.url }}"
+                        src="{{ img.image|optimized_image }}"
+                        {% if thumb_img.srcset %}srcset="{{ thumb_img.srcset }}" sizes="70px"{% endif %}
                         alt="{{ product.name }} - Gold Plated Image {{ forloop.counter|add:5 }}"
-                        data-image-url="{{ img.image.url }}"
+                        data-image-url="{{ img.image|optimized_image }}"
                         data-is-gold-plated="true"
+                        loading="lazy"
+                        decoding="async"
+                        width="70"
+                        height="70"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"
@@ -1464,7 +1565,23 @@
 
   function updateMainImage(url, thumbEl) {
     const mainImg = document.getElementById('mainImage');
-    if (mainImg) mainImg.src = url;
+    if (mainImg) {
+      // Use optimized URL if available, otherwise use provided URL
+      // If URL contains Cloudinary, ensure it's optimized
+      let optimizedUrl = url;
+      if (url && url.includes('cloudinary.com')) {
+        // Ensure Cloudinary URL has optimization parameters
+        if (!url.includes('q_auto') && !url.includes('f_auto')) {
+          // Add Cloudinary optimization if not present
+          optimizedUrl = url.replace('/upload/', '/upload/q_auto,f_auto/');
+        }
+      }
+      mainImg.src = optimizedUrl;
+      // Update srcset if available
+      if (thumbEl && thumbEl.hasAttribute('data-srcset')) {
+        mainImg.srcset = thumbEl.getAttribute('data-srcset');
+      }
+    }
     // Update aria-current for all thumbs (both left column and additional thumbs)
     document.querySelectorAll('.thumbnail-img').forEach(t => t.removeAttribute('aria-current'));
     if (thumbEl) thumbEl.setAttribute('aria-current','true');

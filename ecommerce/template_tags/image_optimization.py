@@ -1,9 +1,10 @@
 """
-Template tags for AI-powered image optimization.
+Template tags for AI-powered image optimization with responsive images.
 """
 from django import template
 from django.conf import settings
 from ecommerce.utils.image_ai import get_optimized_image_url
+import re
 
 register = template.Library()
 
@@ -28,6 +29,73 @@ def optimized_image(image_field, quality='auto'):
         return ""
     
     return get_optimized_image_url(image_field, quality=quality, format="auto")
+
+
+@register.simple_tag
+def responsive_image(image_field, width=None, quality='auto', lazy=True):
+    """
+    Generate responsive image with srcset and optimized URLs.
+    
+    Usage:
+    {% responsive_image product.main_image width=800 %}
+    {% responsive_image product.main_image width=800 lazy=False %}
+    
+    Returns dict with: url, srcset, sizes
+    """
+    if not image_field or not hasattr(image_field, 'url'):
+        return {'url': '', 'srcset': '', 'sizes': ''}
+    
+    # Get base optimized URL
+    base_url = get_optimized_image_url(image_field, quality=quality, format="auto")
+    
+    if not base_url:
+        base_url = image_field.url if hasattr(image_field, 'url') else ''
+    
+    # If Cloudinary is available, generate srcset
+    if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME and 'cloudinary.com' in base_url:
+        try:
+            from cloudinary import CloudinaryImage
+            
+            # Extract public_id from URL
+            public_id = image_field.name
+            if '.' in public_id:
+                public_id = public_id.rsplit('.', 1)[0]
+            
+            img = CloudinaryImage(public_id)
+            
+            # Generate srcset with multiple sizes
+            widths = [400, 600, 800, 1200, 1600] if not width else [width // 2, width, width * 2]
+            srcset_parts = []
+            
+            for w in widths:
+                optimized_url = img.build_url(
+                    transformation=[{
+                        "width": w,
+                        "quality": quality,
+                        "fetch_format": "auto",
+                        "flags": "auto",
+                        "crop": "limit"  # Don't crop, just resize
+                    }]
+                )
+                srcset_parts.append(f"{optimized_url} {w}w")
+            
+            srcset = ", ".join(srcset_parts)
+            sizes = f"(max-width: 768px) 100vw, (max-width: 1200px) 50vw, {width or 800}px" if width else "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 800px"
+            
+            return {
+                'url': base_url,
+                'srcset': srcset,
+                'sizes': sizes
+            }
+        except Exception:
+            pass
+    
+    # Fallback: return base URL without srcset
+    return {
+        'url': base_url,
+        'srcset': '',
+        'sizes': ''
+    }
 
 
 @register.simple_tag

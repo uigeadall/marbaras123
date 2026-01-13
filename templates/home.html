@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load image_optimization %}
 
 {% block title %}Home - Marbaras{% endblock %}
 
@@ -645,18 +646,30 @@
               <article class="group rounded-2xl bg-white overflow-hidden shadow-sm hover:shadow-card transition card-rel">
                 <a href="{% url 'product_detail' product.slug %}" class="block">
                   {% if product.main_image %}
+                    {% responsive_image product.main_image width=400 as prod_img %}
                     {% if forloop.counter <= 5 %}
-                      <link rel="preload" as="image" href="{{ product.main_image.url }}">
-                      <img src="{{ product.main_image.url }}" alt="{{ product.name }}" 
-                           loading="eager" fetchpriority="high" decoding="async"
+                      <link rel="preload" as="image" href="{{ product.main_image|optimized_image }}">
+                      <img src="{{ product.main_image|optimized_image }}" 
+                           {% if prod_img.srcset %}srcset="{{ prod_img.srcset }}" sizes="{{ prod_img.sizes }}"{% endif %}
+                           alt="{{ product.name }}" 
+                           loading="eager" 
+                           fetchpriority="high" 
+                           decoding="async"
+                           width="400"
+                           height="400"
                            class="w-full aspect-square object-cover">
                     {% else %}
-                      <img src="{{ product.main_image.url }}" alt="{{ product.name }}" 
-                           loading="lazy" decoding="async"
+                      <img src="{{ product.main_image|optimized_image }}" 
+                           {% if prod_img.srcset %}srcset="{{ prod_img.srcset }}" sizes="{{ prod_img.sizes }}"{% endif %}
+                           alt="{{ product.name }}" 
+                           loading="lazy" 
+                           decoding="async"
+                           width="400"
+                           height="400"
                            class="w-full aspect-square object-cover">
                     {% endif %}
                   {% else %}
-                    <img src="{% static 'images/placeholder.jpg' %}" alt="No Image" loading="lazy" decoding="async"
+                    <img src="{% static 'images/placeholder.jpg' %}" alt="No Image" loading="lazy" decoding="async" width="400" height="400"
                          class="w-full aspect-square object-cover">
                   {% endif %}
                 </a>
