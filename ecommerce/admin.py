@@ -188,11 +188,12 @@ class ProductAdmin(admin.ModelAdmin):
         return qs, use_distinct
     
     def get_urls(self):
-        """Add custom URLs for price increase/decrease forms."""
+        """Add custom URLs for price increase/decrease forms and inventory scanner."""
         urls = super().get_urls()
         custom_urls = [
             path('increase-prices/', self.admin_site.admin_view(self.increase_prices_view), name='ecommerce_product_increase_prices'),
             path('decrease-prices/', self.admin_site.admin_view(self.decrease_prices_view), name='ecommerce_product_decrease_prices'),
+            path('inventory-scanner/', self.admin_site.admin_view(self.inventory_scanner_view), name='ecommerce_product_inventory_scanner'),
         ]
         return custom_urls + urls
     
@@ -355,7 +356,94 @@ class ProductAdmin(admin.ModelAdmin):
         }
         
         return render(request, 'admin/ecommerce/product/increase_prices.html', context)
-
+    
+    def inventory_scanner_view(self, request):
+        """View for inventory scanner - scan products and decrease stock."""
+        from django.http import JsonResponse
+        from django.db import transaction
+        from .models import ProductVariant
+        
+        if request.method == 'POST':
+            # Handle barcode scan
+            barcode = request.POST.get('barcode', '').strip()
+            
+            if not barcode:
+                return JsonResponse({'success': False, 'error': 'No barcode provided'}, status=400)
+            
+            # Try to find product by serial_number, SKU (from variants), or ID
+            product = None
+            variant = None
+            
+            # First try serial_number (exact match)
+            try:
+                product = Product.objects.get(serial_number__iexact=barcode)
+            except Product.DoesNotExist:
+                pass
+            
+            # If not found, try SKU from variants
+            if not product:
+                try:
+                    variant = ProductVariant.objects.select_related('product').get(sku__iexact=barcode)
+                    product = variant.product
+                except ProductVariant.DoesNotExist:
+                    pass
+            
+            # If still not found, try product ID
+            if not product:
+                try:
+                    product_id = int(barcode)
+                    product = Product.objects.get(pk=product_id)
+                except (ValueError, Product.DoesNotExist):
+                    pass
+            
+            if not product:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Product not found for barcode: {barcode}'
+                }, status=404)
+            
+            # Decrease stock
+            with transaction.atomic():
+                if variant:
+                    # Decrease variant stock
+                    if variant.stock > 0:
+                        variant.stock -= 1
+                        variant.save(update_fields=['stock'])
+                        new_stock = variant.stock
+                    else:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'Product "{product.name}" (Size: {variant.size}) is out of stock!'
+                        }, status=400)
+                else:
+                    # Decrease product stock
+                    if product.stock > 0:
+                        product.stock -= 1
+                        product.save(update_fields=['stock'])
+                        new_stock = product.stock
+                    else:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'Product "{product.name}" is out of stock!'
+                        }, status=400)
+            
+            from django.urls import reverse
+            product_url = reverse('admin:ecommerce_product_change', args=[product.id])
+            
+            return JsonResponse({
+                'success': True,
+                'product_id': product.id,
+                'product_name': product.name,
+                'product_url': product_url,
+                'variant_size': variant.size if variant else None,
+                'new_stock': new_stock,
+                'message': f'Stock decreased! New stock: {new_stock}'
+            })
+        
+        # GET request - show scanner page
+        return render(request, 'admin/inventory_scanner.html', {
+            'title': 'Inventory Scanner - Scan & Remove Items'
+        })
 
 
 @admin.register(BlogPost)

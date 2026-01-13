@@ -1,0 +1,285 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Inventory Scanner - Scan & Remove Items{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .scanner-container {
+        max-width: 700px;
+        margin: 50px auto;
+        padding: 30px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .scanner-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 10px;
+        text-align: center;
+        color: #333;
+    }
+    
+    .scanner-subtitle {
+        text-align: center;
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 14px;
+    }
+    
+    .barcode-input {
+        width: 100%;
+        padding: 20px;
+        font-size: 24px;
+        border: 3px solid #667eea;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+        font-weight: 600;
+        letter-spacing: 2px;
+    }
+    
+    .barcode-input:focus {
+        outline: none;
+        border-color: #5568d3;
+        box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .scan-button {
+        width: 100%;
+        padding: 15px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        margin-bottom: 20px;
+        transition: background 0.3s;
+    }
+    
+    .scan-button:hover {
+        background: #5568d3;
+    }
+    
+    .scan-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+    
+    .result-box {
+        margin-top: 20px;
+        padding: 20px;
+        border-radius: 8px;
+        display: none;
+        font-size: 16px;
+    }
+    
+    .result-box.success {
+        background: #d4edda;
+        border: 2px solid #28a745;
+        color: #155724;
+    }
+    
+    .result-box.error {
+        background: #f8d7da;
+        border: 2px solid #dc3545;
+        color: #721c24;
+    }
+    
+    .result-box .product-info {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid rgba(0,0,0,0.1);
+    }
+    
+    .result-box .product-info strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 18px;
+    }
+    
+    .result-box a {
+        display: inline-block;
+        margin-top: 15px;
+        padding: 10px 20px;
+        background: #667eea;
+        color: white;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: bold;
+    }
+    
+    .result-box a:hover {
+        background: #5568d3;
+    }
+    
+    .instructions {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        border-left: 4px solid #667eea;
+    }
+    
+    .instructions h3 {
+        margin-top: 0;
+        color: #333;
+        font-size: 18px;
+    }
+    
+    .instructions ul {
+        margin: 10px 0;
+        padding-left: 20px;
+    }
+    
+    .instructions li {
+        margin: 8px 0;
+        color: #555;
+    }
+    
+    .stock-info {
+        font-size: 20px;
+        font-weight: bold;
+        color: #28a745;
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="scanner-container">
+    <h1 class="scanner-title">📦 Inventory Scanner</h1>
+    <p class="scanner-subtitle">Scan products to decrease stock by 1</p>
+    
+    <div class="instructions">
+        <h3>How to use:</h3>
+        <ul>
+            <li>Scan a barcode using your scanner (or type manually)</li>
+            <li>The system will find the product by: Serial Number, SKU, or Product ID</li>
+            <li>Stock will be automatically decreased by 1</li>
+            <li>If product has variants, scan the variant SKU to decrease variant stock</li>
+        </ul>
+    </div>
+    
+    <input 
+        type="text" 
+        id="barcodeInput" 
+        class="barcode-input" 
+        placeholder="Scan barcode or enter manually..."
+        autocomplete="off"
+        autofocus
+    >
+    
+    <button type="button" class="scan-button" onclick="scanProduct()">Scan Product</button>
+    
+    <div id="resultBox" class="result-box"></div>
+</div>
+
+<script>
+    const barcodeInput = document.getElementById('barcodeInput');
+    const resultBox = document.getElementById('resultBox');
+    let isProcessing = false;
+    
+    // Auto-submit on Enter key (barcode scanners usually send Enter after barcode)
+    barcodeInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !isProcessing) {
+            e.preventDefault();
+            scanProduct();
+        }
+    });
+    
+    // Focus input on page load
+    window.addEventListener('load', function() {
+        barcodeInput.focus();
+    });
+    
+    // Clear result when typing
+    barcodeInput.addEventListener('input', function() {
+        if (resultBox.style.display === 'block') {
+            resultBox.style.display = 'none';
+        }
+    });
+    
+    function scanProduct() {
+        const barcode = barcodeInput.value.trim();
+        
+        if (!barcode) {
+            showError('Please scan or enter a barcode');
+            return;
+        }
+        
+        if (isProcessing) {
+            return;
+        }
+        
+        isProcessing = true;
+        const scanButton = document.querySelector('.scan-button');
+        scanButton.disabled = true;
+        scanButton.textContent = 'Processing...';
+        
+        // Show loading
+        resultBox.className = 'result-box';
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = '<p>Scanning product...</p>';
+        
+        // Send request
+        fetch('{% url "admin:ecommerce_product_inventory_scanner" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: 'barcode=' + encodeURIComponent(barcode)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess(data);
+                // Clear input and focus for next scan
+                setTimeout(() => {
+                    barcodeInput.value = '';
+                    barcodeInput.focus();
+                }, 1000);
+            } else {
+                showError(data.error || 'Product not found');
+            }
+        })
+        .catch(error => {
+            showError('Error: ' + error.message);
+        })
+        .finally(() => {
+            isProcessing = false;
+            scanButton.disabled = false;
+            scanButton.textContent = 'Scan Product';
+        });
+    }
+    
+    function showSuccess(data) {
+        resultBox.className = 'result-box success';
+        const variantInfo = data.variant_size ? `<p><strong>Size:</strong> ${data.variant_size}</p>` : '';
+        resultBox.innerHTML = `
+            <strong>✅ Stock Decreased Successfully!</strong>
+            <div class="product-info">
+                <strong>${data.product_name}</strong>
+                ${variantInfo}
+                <div class="stock-info">New Stock: ${data.new_stock}</div>
+                <a href="${data.product_url}" target="_blank">View Product →</a>
+            </div>
+        `;
+        
+        // Play success sound (optional)
+        // const audio = new Audio('/static/sounds/success.mp3');
+        // audio.play().catch(() => {});
+    }
+    
+    function showError(message) {
+        resultBox.className = 'result-box error';
+        resultBox.innerHTML = `<strong>❌ Error:</strong> ${message}`;
+    }
+</script>
+{% endblock %}
