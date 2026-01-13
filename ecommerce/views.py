@@ -2075,11 +2075,33 @@ def order_success(request: HttpRequest) -> HttpResponse:
 
 
 def terms(request: HttpRequest) -> HttpResponse:
-    return render(request, "legal/terms.html")
+    from .models import LegalPage
+    legal_page = LegalPage.objects.filter(page_type='terms').first()
+    
+    # Fallback to template if no legal page exists in database
+    if not legal_page:
+        return render(request, "legal/terms.html")
+    
+    context = {
+        'legal_page': legal_page,
+        'page_title': legal_page.title or 'Terms & Conditions',
+    }
+    return render(request, "legal/legal_page.html", context)
 
 
 def privacy(request: HttpRequest) -> HttpResponse:
-    return render(request, "legal/privacy.html")
+    from .models import LegalPage
+    legal_page = LegalPage.objects.filter(page_type='privacy').first()
+    
+    # Fallback to template if no legal page exists in database
+    if not legal_page:
+        return render(request, "legal/privacy.html")
+    
+    context = {
+        'legal_page': legal_page,
+        'page_title': legal_page.title or 'Privacy Policy',
+    }
+    return render(request, "legal/legal_page.html", context)
 
 
 def contact(request: HttpRequest) -> HttpResponse:

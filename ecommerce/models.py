@@ -711,6 +711,36 @@ class BlogPost(models.Model):
         return self.title
 
 
+class LegalPage(models.Model):
+    """Model for legal pages (Privacy Policy, Terms & Conditions) that can be edited from admin."""
+    PAGE_TYPE_CHOICES = [
+        ('privacy', 'Privacy Policy'),
+        ('terms', 'Terms & Conditions'),
+    ]
+    
+    page_type = models.CharField(
+        max_length=20,
+        choices=PAGE_TYPE_CHOICES,
+        unique=True,
+        help_text="Type of legal page"
+    )
+    title = models.CharField(max_length=200, help_text="Page title")
+    content = models.TextField(help_text="HTML content of the page")
+    last_updated = models.DateTimeField(auto_now=True, help_text="Last update timestamp")
+    
+    class Meta:
+        verbose_name = "Legal Page"
+        verbose_name_plural = "Legal Pages"
+        ordering = ['page_type']
+    
+    def __str__(self):
+        return self.get_page_type_display()
+    
+    def save(self, *args, **kwargs):
+        # Ensure only one page per type
+        super().save(*args, **kwargs)
+
+
 class BannerImage(models.Model):
     """Banner images/videos for the home page carousel."""
     # Get storage dynamically to ensure Cloudinary is used if configured

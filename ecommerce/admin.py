@@ -14,7 +14,7 @@ import csv
 import json
 
 from .models import (
-    BlogPost, BannerImage,
+    BlogPost, BannerImage, LegalPage,
     Category, Product, ProductImage, ProductVariant,
     CartItem, Order, OrderItem, Favorite, Discount, ShippingOption, Coupon, ProductBundleItem
 )
@@ -1345,6 +1345,30 @@ class BannerImageAdminForm(forms.ModelForm):
                     f"Video file is too large ({video_file.size / 1024 / 1024:.2f}MB). Maximum size is 500MB."
                 )
         return video_file
+
+
+@admin.register(LegalPage)
+class LegalPageAdmin(admin.ModelAdmin):
+    list_display = ('page_type', 'title', 'last_updated')
+    list_filter = ('page_type', 'last_updated')
+    fieldsets = (
+        ('Page Information', {
+            'fields': ('page_type', 'title')
+        }),
+        ('Content', {
+            'fields': ('content',),
+            'description': 'Enter HTML content for the page. You can use HTML tags for formatting.'
+        }),
+    )
+    readonly_fields = ('last_updated',)
+    
+    def has_add_permission(self, request):
+        # Only allow adding if there are less than 2 pages (privacy + terms)
+        return LegalPage.objects.count() < 2
+    
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion of legal pages
+        return False
 
 
 @admin.register(BannerImage)

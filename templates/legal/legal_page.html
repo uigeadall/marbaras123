@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title }} - Marbaras{% endblock %}
+
+{% block extra_head %}
+<style>
+  .legal-wrap{max-width:900px;margin:0 auto;}
+  .legal-hero{margin-bottom:24px}
+  .legal-hero h1{font-size:2rem;margin-bottom:6px}
+  .legal-meta{font-size:.95rem;color:#777}
+  .badge{display:inline-block;background:#eef2ff;border-radius:999px;padding:4px 10px;font-size:.8rem;margin-left:8px}
+
+  .toc{background:#f8f8f8;border-radius:12px;padding:16px;margin:16px 0}
+  .toc h2{font-size:1.1rem;margin-bottom:10px}
+  .toc ol{margin:0 0 0 18px}
+
+  .legal-section{margin:28px 0}
+  .legal-section h2{font-size:1.35rem;margin-bottom:8px}
+  .legal-section p,.legal-section li{margin:8px 0;line-height:1.7}
+
+  blockquote.notice{background:#fffceb;border-radius:8px;padding:12px 14px;margin-top:10px}
+  blockquote.note{background:#fffceb;border-radius:8px;padding:12px 14px;margin-top:10px}
+  address{font-style:normal;line-height:1.8}
+  .anchor{scroll-margin-top:90px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#f2f2f2;font-size:.8rem;margin-right:6px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:768px){
+    .legal-hero h1{font-size:1.7rem}
+    .grid-2{grid-template-columns:1fr}
+  }
+  
+  /* Style HTML content from admin */
+  .legal-content {
+    line-height: 1.7;
+  }
+  .legal-content h2 {
+    font-size: 1.35rem;
+    margin: 28px 0 8px 0;
+  }
+  .legal-content h3 {
+    font-size: 1.2rem;
+    margin: 24px 0 6px 0;
+  }
+  .legal-content p {
+    margin: 8px 0;
+  }
+  .legal-content ul, .legal-content ol {
+    margin: 8px 0;
+    padding-left: 24px;
+  }
+  .legal-content li {
+    margin: 6px 0;
+  }
+  .legal-content a {
+    color: #2563eb;
+    text-decoration: underline;
+  }
+  .legal-content a:hover {
+    color: #1d4ed8;
+  }
+  .legal-content blockquote {
+    background: #fffceb;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 10px 0;
+    border-left: 4px solid #fbbf24;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="legal-wrap">
+  <div id="top"></div>
+  <header class="legal-hero">
+    <h1>{{ legal_page.title }} <span class="badge">Last updated: {{ legal_page.last_updated|date:"F j, Y" }}</span></h1>
+  </header>
+
+  <div class="legal-content">
+    {{ legal_page.content|safe }}
+  </div>
+
+  <p style="margin-top: 40px;"><a href="#top">Back to top ↑</a></p>
+</section>
+{% endblock %}
