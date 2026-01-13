@@ -493,9 +493,9 @@ FILE_UPLOAD_HANDLERS = [
 
 
 
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "marbaras.store@gmail.com")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "support@marbaras.com")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
-ADMINS = [("Site Admin", env("ADMIN_EMAIL", "marbaras.store@gmail.com"))]
+ADMINS = [("Site Admin", env("ADMIN_EMAIL", "support@marbaras.com"))]
 
 # Email Configuration
 # Django uses its built-in email functions - no 3rd party library needed!
@@ -532,20 +532,7 @@ ADMINS = [("Site Admin", env("ADMIN_EMAIL", "marbaras.store@gmail.com"))]
 RESEND_API_KEY = env("RESEND_API_KEY", "")
 SENDGRID_API_KEY = env("SENDGRID_API_KEY", "")
 
-# Gmail SMTP Configuration
-# Set USE_GMAIL_SMTP=true to use Gmail SMTP instead of Resend/SendGrid
-USE_GMAIL_SMTP = env_bool("USE_GMAIL_SMTP", False)
-
-if USE_GMAIL_SMTP:
-    # Use Gmail SMTP
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-    EMAIL_HOST = "smtp.gmail.com"
-    EMAIL_PORT = 587
-    EMAIL_USE_TLS = True
-    EMAIL_USE_SSL = False
-    EMAIL_HOST_USER = env("GMAIL_EMAIL", "marbaras.store@gmail.com")
-    EMAIL_HOST_PASSWORD = env("GMAIL_APP_PASSWORD", "")  # Gmail App Password (not regular password)
-elif RESEND_API_KEY:
+if RESEND_API_KEY:
     EMAIL_BACKEND = "ecommerce.utils.resend_backend.ResendBackend"
 elif SENDGRID_API_KEY:
     EMAIL_BACKEND = "ecommerce.utils.sendgrid_backend.SendGridBackend"
