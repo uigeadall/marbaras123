@@ -19,8 +19,8 @@ RING_SIZE_CHOICES = [(s, s) for s in [
 
 class Category(models.Model):
     """Product category (e.g., Rings, Necklaces, etc.) with support for sub-categories."""
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(blank=True)
+    name = models.CharField(max_length=100, db_index=True)
+    slug = models.SlugField(blank=True, db_index=True)
     image = models.ImageField(upload_to="categories/", blank=True, null=True, help_text="Image for sub-category display")
     parent = models.ForeignKey(
         'self',
@@ -28,7 +28,8 @@ class Category(models.Model):
         null=True,
         blank=True,
         related_name='subcategories',
-        help_text="Select a parent category to make this a sub-category"
+        help_text="Select a parent category to make this a sub-category",
+        db_index=True
     )
     
     class Meta:
@@ -64,8 +65,8 @@ class Category(models.Model):
 
 class Product(models.Model):
     """Main product entity."""
-    name = models.CharField(max_length=200)
-    slug = models.SlugField(max_length=250, unique=True, blank=True, help_text="URL-friendly version of product name")
+    name = models.CharField(max_length=200, db_index=True)
+    slug = models.SlugField(max_length=250, unique=True, blank=True, help_text="URL-friendly version of product name", db_index=True)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -75,6 +76,7 @@ class Product(models.Model):
         on_delete=models.CASCADE,
         related_name="products",
         help_text="Primary category (for backward compatibility)",
+        db_index=True
     )
     categories = models.ManyToManyField(
         Category,
@@ -120,8 +122,8 @@ class Product(models.Model):
         help_text="Check if this product is gold plated. When checked, gold plated images will be shown. When unchecked, normal images will be shown."
     )
 
-    cart_add_count = models.PositiveIntegerField(default=0)
-    stock = models.PositiveIntegerField(default=0)
+    cart_add_count = models.PositiveIntegerField(default=0, db_index=True)
+    stock = models.PositiveIntegerField(default=0, db_index=True)
     sale_expires_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -277,11 +279,11 @@ class ProductBundleItem(models.Model):
 
 class ProductVariant(models.Model):
     """Size/variant only for ring-type products."""
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants', db_index=True)
     size = models.CharField(max_length=10, choices=RING_SIZE_CHOICES)
     price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    stock = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
-    sku = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    stock = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)], db_index=True)
+    sku = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
 
     class Meta:
         unique_together = (('product', 'size'),)
@@ -312,7 +314,7 @@ class ProductImage(models.Model):
         ('rose_gold_plated', 'Rose Gold Plated'),
     ]
     
-    product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE, db_index=True)
     
     # Get storage dynamically to ensure Cloudinary is used if configured
     # Use HybridMediaStorage to support both old local files and new Cloudinary files
@@ -358,8 +360,8 @@ class ProductImage(models.Model):
 
 
 class Rating(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='ratings')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='ratings', db_index=True)
     value = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])
 
     class Meta:
@@ -445,9 +447,9 @@ class Favorite(models.Model):
     Reverse from Product is 'favorited_by' (a queryset of Favorite rows).
     Filter products via: Product.objects.filter(favorited_by__user=request.user)
     """
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='favorited_by')
-    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites', db_index=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='favorited_by', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ('user', 'product')
@@ -460,10 +462,10 @@ class Favorite(models.Model):
 
 
 class Comment(models.Model):
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='comments')
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='comments', db_index=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_index=True)
     text = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     
     class Meta:
         ordering = ["-created_at"]
@@ -489,12 +491,12 @@ class ShippingOption(models.Model):
 
 
 class Coupon(models.Model):
-    code = models.CharField(max_length=40, unique=True)
+    code = models.CharField(max_length=40, unique=True, db_index=True)
     percent_off = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     amount_off = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    active = models.BooleanField(default=True)
-    starts_at = models.DateTimeField(null=True, blank=True)
-    ends_at = models.DateTimeField(null=True, blank=True)
+    active = models.BooleanField(default=True, db_index=True)
+    starts_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    ends_at = models.DateTimeField(null=True, blank=True, db_index=True)
     usage_limit = models.IntegerField(null=True, blank=True)
     used_count = models.IntegerField(default=0)
     
@@ -570,10 +572,10 @@ class Order(models.Model):
     tracking_number = models.CharField(max_length=100, blank=True, null=True, help_text="Tracking number from carrier")
     shipping_label_url = models.URLField(blank=True, null=True, help_text="URL to shipping label PDF")
     shipment_id = models.CharField(max_length=100, blank=True, null=True, help_text="Carrier shipment ID")
-    is_shipped = models.BooleanField(default=False, help_text="Mark order as shipped")
-    shipped_at = models.DateTimeField(blank=True, null=True, help_text="Date and time when order was shipped")
+    is_shipped = models.BooleanField(default=False, help_text="Mark order as shipped", db_index=True)
+    shipped_at = models.DateTimeField(blank=True, null=True, help_text="Date and time when order was shipped", db_index=True)
 
-    email = models.EmailField(blank=True, null=True)
+    email = models.EmailField(blank=True, null=True, db_index=True)
     full_name = models.CharField(max_length=100)
     country = models.CharField(max_length=100, blank=True, null=True)
     address = models.CharField(max_length=255)
@@ -606,8 +608,8 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items', db_index=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, db_index=True)
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True)
     quantity = models.PositiveIntegerField()
 
@@ -644,8 +646,8 @@ class UserProfile(models.Model):
 
 class BlogPost(models.Model):
     """Blog post model for articles."""
-    title = models.CharField(max_length=200)
-    slug = models.SlugField(unique=True, blank=True)
+    title = models.CharField(max_length=200, db_index=True)
+    slug = models.SlugField(unique=True, blank=True, db_index=True)
     content = models.TextField()
     excerpt = models.TextField(max_length=500, blank=True, help_text="Short summary for preview")
     image = models.ImageField(upload_to="blog/", blank=True, null=True, help_text="Featured image for blog post")
@@ -656,10 +658,10 @@ class BlogPost(models.Model):
         help_text="Upload a video file (MP4, WebM, OGG). Max size: 100MB"
     )
     video_url = models.URLField(blank=True, null=True, help_text="Optional video URL (YouTube, Vimeo, etc.) or upload a file above")
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
-    is_published = models.BooleanField(default=True)
-    order = models.IntegerField(default=0, help_text="Order for display (lower numbers first)")
+    is_published = models.BooleanField(default=True, db_index=True)
+    order = models.IntegerField(default=0, help_text="Order for display (lower numbers first)", db_index=True)
 
     class Meta:
         ordering = ["order", "-created_at"]
