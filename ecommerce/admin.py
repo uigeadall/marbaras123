@@ -64,6 +64,7 @@ class CategorySubcategoryInline(admin.TabularInline):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
+    actions = ['increase_prices_action']
     
     def get_list_display(self, request):
         """Dynamically get list_display to handle missing sale_expires_at field."""
