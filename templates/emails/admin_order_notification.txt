@@ -1,0 +1,65 @@
+🛒 NEW ORDER RECEIVED!
+
+Order #{{ order.id }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CUSTOMER INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Name: {{ customer_name }}
+Email: {{ customer_email }}
+Phone: {{ order.phone }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SHIPPING ADDRESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ order.address }}
+{{ order.city }}, {{ order.postal_code }}
+{% if order.country %}{{ order.country }}{% endif %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ORDER ITEMS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{% for item in items %}
+{{ item.quantity }}x {{ item.product.name }}{% if item.variant %} (Size: {{ item.variant.size }}){% endif %}
+   ${{ item.product.get_discounted_price|floatformat:2 }} each = ${{ item.product.get_discounted_price|floatformat:2|multiply:item.quantity|floatformat:2 }}
+
+{% endfor %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ORDER SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Subtotal:        ${{ subtotal|floatformat:2 }}
+Shipping:        ${{ shipping_cost|floatformat:2 }}
+{% if discount_amount > 0 %}Discount:        -${{ discount_amount|floatformat:2 }}
+{% endif %}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOTAL:           ${{ total|floatformat:2 }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{% if order.shipping_option %}
+Shipping Method: {{ order.shipping_option.name }}
+Delivery Time: {{ order.shipping_option.delivery_time }}
+{% endif %}
+
+{% if order.coupon %}
+Coupon Used: {{ order.coupon.code }}
+{% endif %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+View order in admin panel:
+{{ admin_url }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Order placed on {{ order.created_at|date:"F d, Y" }} at {{ order.created_at|time:"H:i" }}
+
+This is an automated notification from Marbaras e-commerce system.

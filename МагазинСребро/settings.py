@@ -579,7 +579,7 @@ SHOP_EMAIL = env("SHOP_EMAIL", DEFAULT_FROM_EMAIL)
 #   EMAIL_USE_TLS = True (for port 587)
 #   EMAIL_USE_SSL = True (for port 465)
 
-# Default SMTP settings (used if not using Gmail or API backends)
+# Default to jump.bg SMTP settings
 # For SMTPS (SMTP over SSL) on port 465:
 #   EMAIL_PORT = 465
 #   EMAIL_USE_SSL = True
@@ -588,18 +588,12 @@ SHOP_EMAIL = env("SHOP_EMAIL", DEFAULT_FROM_EMAIL)
 #   EMAIL_PORT = 587
 #   EMAIL_USE_TLS = True
 #   EMAIL_USE_SSL = False
-# Gmail SMTP settings (if USE_GMAIL_SMTP=true):
-#   EMAIL_HOST = smtp.gmail.com
-#   EMAIL_PORT = 587
-#   EMAIL_USE_TLS = True
-#   EMAIL_HOST_USER = marbaras.store@gmail.com
-#   EMAIL_HOST_PASSWORD = Gmail App Password
-EMAIL_HOST = env("EMAIL_HOST", "smtp.gmail.com" if env_bool("USE_GMAIL_SMTP", False) else "mail.marbaras.com")
-EMAIL_PORT = int(env("EMAIL_PORT", "587" if env_bool("USE_GMAIL_SMTP", False) else "465"))
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True if env_bool("USE_GMAIL_SMTP", False) else False)
-EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False if env_bool("USE_GMAIL_SMTP", False) else True)
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", "marbaras.store@gmail.com" if env_bool("USE_GMAIL_SMTP", False) else "support@marbaras.com")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", env("GMAIL_APP_PASSWORD", "") if env_bool("USE_GMAIL_SMTP", False) else env("EMAIL_HOST_PASSWORD", ""))
+EMAIL_HOST = env("EMAIL_HOST", "mail.marbaras.com")
+EMAIL_PORT = int(env("EMAIL_PORT", "465"))  # Default to 465 for SMTPS
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", False)  # False for SMTPS on port 465
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", True)  # True for SMTPS on port 465
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", "support@marbaras.com")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
 # Increased timeout for SMTP connections (especially SSL connections can take longer)
 EMAIL_TIMEOUT = int(env("EMAIL_TIMEOUT", "60"))
 

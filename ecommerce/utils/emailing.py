@@ -181,23 +181,7 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
 
         if notify_admin:
             log.info("  Sending admin notification email...")
-            customer = getattr(order, "full_name", None) or getattr(order, "user", None)
-            admin_message = f"""New order #{order.id}
-
-Customer: {customer}
-Email: {recipient}
-Total: ${total}
-Address: {order.address}, {order.city}, {order.postal_code}
-Phone: {order.phone}
-
-View: {base_url}/admin/ecommerce/order/{order.id}/
-"""
-            admin_result = mail_admins(
-                subject=f"New order #{order.id}",
-                message=admin_message,
-                fail_silently=True,
-            )
-            log.info("✅ Admin notification email sent (result: %s)", admin_result)
+            send_admin_order_notification(order, base_url, items, subtotal, shipping_cost, discount_amount, total)
         return True
     except Exception as e:
         log.error("❌ Failed to send order email for #%s: %s", order.id, e)
@@ -247,6 +231,107 @@ def send_order_shipped_email(order, base_url, tracking_number=None) -> bool:
         return True
     except Exception as e:
         log.error("❌ Failed to send order shipped email for #%s: %s", order.id, e)
+        log.exception("Exception details:")
+        return False
+
+
+def send_admin_order_notification(order, base_url, items, subtotal, shipping_cost, discount_amount, total) -> bool:
+    """Send detailed order notification email to admin."""
+    try:
+        from django.conf import settings
+        
+        # Get admin email from settings
+        admin_email = getattr(settings, 'ADMIN_EMAIL', None)
+        if not admin_email:
+            # Try to get from ADMINS setting
+            admins = getattr(settings, 'ADMINS', [])
+            if admins and len(admins) > 0:
+                admin_email = admins[0][1] if isinstance(admins[0], tuple) else admins[0]
+        
+        if not admin_email:
+            log.warning("⚠️  No admin email configured. Set ADMIN_EMAIL in settings.")
+            return False
+        
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
+        recipient = getattr(order, "email", None) or getattr(getattr(order, "user", None), "email", None)
+        customer_name = getattr(order, "full_name", None) or (getattr(order.user, "username", None) if order.user else "Guest")
+        
+        ctx = {
+            "order": order,
+            "items": items,
+            "base_url": base_url,
+            "subtotal": subtotal,
+            "shipping_cost": shipping_cost,
+            "discount_amount": discount_amount,
+            "total": total,
+            "customer_name": customer_name,
+            "customer_email": recipient,
+            "admin_url": f"{base_url}/admin/ecommerce/order/{order.id}/",
+        }
+        
+        log.info("📧 ATTEMPTING TO SEND ADMIN ORDER NOTIFICATION")
+        log.info("  Order ID: #%s", order.id)
+        log.info("  To: %s", admin_email)
+        log.info("  From: %s", from_email)
+        log.info("  Subject: 🛒 New Order #%s - %s", order.id, customer_name)
+        
+        try:
+            subject = f"🛒 New Order #%s - %s" % (order.id, customer_name)
+            
+            # Try to render HTML template, fallback to text if not available
+            try:
+                html = render_to_string("emails/admin_order_notification.html", ctx)
+                text = render_to_string("emails/admin_order_notification.txt", ctx)
+            except Exception as template_error:
+                log.warning("  Template not found, using simple text email: %s", template_error)
+                # Fallback to simple text email
+                text = f"""New Order #{order.id}
+
+Customer: {customer_name}
+Email: {recipient}
+Phone: {order.phone}
+
+Shipping Address:
+{order.address}
+{order.city}, {order.postal_code}
+{order.country or ''}
+
+Order Items:
+"""
+                for item in items:
+                    product_name = item.product.name
+                    if item.variant:
+                        product_name += f" (Size: {item.variant.size})"
+                    text += f"- {item.quantity}x {product_name} - ${item.product.get_discounted_price() * Decimal(item.quantity)}\n"
+                
+                text += f"""
+Subtotal: ${subtotal}
+Shipping: ${shipping_cost}
+"""
+                if discount_amount > 0:
+                    text += f"Discount: -${discount_amount}\n"
+                text += f"""
+Total: ${total}
+
+View order: {base_url}/admin/ecommerce/order/{order.id}/
+"""
+                html = None
+            
+            msg = EmailMultiAlternatives(subject, text, from_email, [admin_email])
+            if html:
+                msg.attach_alternative(html, "text/html")
+            
+            result = msg.send(fail_silently=True)
+            log.info("✅ Admin order notification email sent successfully to %s (result: %s)", admin_email, result)
+            return True
+            
+        except Exception as e:
+            log.error("❌ Failed to send admin notification email: %s", e)
+            log.exception("Exception details:")
+            return False
+            
+    except Exception as e:
+        log.error("❌ Error in send_admin_order_notification: %s", e)
         log.exception("Exception details:")
         return False
 
