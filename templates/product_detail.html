@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% load static %}
-{% load image_optimization %}
 
 {% block title %}{{ product.name }} - Marbaras{% endblock %}
 {% block meta_description %}{{ product.name }} - {{ product.description|truncatewords:25 }} | Premium Silver Jewelry at Marbaras{% endblock %}
@@ -895,18 +894,11 @@
               {% if silver_images or has_gold_plated %}
                 <div class="thumbs-col" id="thumbsCol">
                   {% for img in silver_images|slice:":5" %}
-                    {% responsive_image img.image width=150 as thumb_img %}
                     <img
-                      src="{{ img.image|optimized_image }}"
-                      srcset="{{ thumb_img.srcset }}"
-                      sizes="150px"
+                      src="{{ img.image.url }}"
                       alt="{{ product.name }} - Silver Image {{ forloop.counter }}"
-                      data-image-url="{{ img.image|optimized_image }}"
+                      data-image-url="{{ img.image.url }}"
                       data-version-type="silver"
-                      loading="lazy"
-                      decoding="async"
-                      width="150"
-                      height="150"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
@@ -916,18 +908,11 @@
                   {% endfor %}
                   {% if has_gold_plated %}
                     {% for img in gold_plated_images|slice:":5" %}
-                      {% responsive_image img.image width=150 as thumb_img %}
                       <img
-                        src="{{ img.image|optimized_image }}"
-                        srcset="{{ thumb_img.srcset }}"
-                        sizes="150px"
+                        src="{{ img.image.url }}"
                         alt="{{ product.name }} - Gold Plated Image {{ forloop.counter }}"
-                        data-image-url="{{ img.image|optimized_image }}"
+                        data-image-url="{{ img.image.url }}"
                         data-version-type="gold_plated"
-                        loading="lazy"
-                        decoding="async"
-                        width="150"
-                        height="150"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"
@@ -937,18 +922,11 @@
                       >
                     {% endfor %}
                     {% for img in rose_gold_plated_images|slice:":5" %}
-                      {% responsive_image img.image width=150 as thumb_img %}
                       <img
-                        src="{{ img.image|optimized_image }}"
-                        srcset="{{ thumb_img.srcset }}"
-                        sizes="150px"
+                        src="{{ img.image.url }}"
                         alt="{{ product.name }} - Rose Gold Plated Image {{ forloop.counter }}"
-                        data-image-url="{{ img.image|optimized_image }}"
+                        data-image-url="{{ img.image.url }}"
                         data-version-type="rose_gold_plated"
-                        loading="lazy"
-                        decoding="async"
-                        width="150"
-                        height="150"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"
@@ -960,48 +938,24 @@
                   {% endif %}
                 </div>
               {% endif %}
-              <div class="main-preview-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; width: 100%; align-items: flex-start;">
+              <div class="main-preview-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
                 <div class="main-preview" style="width: 100%;">
                   {% if product.main_image %}
-                    {% responsive_image product.main_image width=1200 as main_img %}
-                    <img id="mainImage" 
-                         src="{{ product.main_image|optimized_image }}" 
-                         {% if main_img.srcset %}srcset="{{ main_img.srcset }}" sizes="{{ main_img.sizes }}"{% endif %}
-                         alt="{{ product.name }}"
-                         loading="eager"
-                         fetchpriority="high"
-                         decoding="async"
-                         width="1200"
-                         height="1200">
+                    <img id="mainImage" src="{{ product.main_image.url }}" alt="{{ product.name }}">
                   {% elif silver_images %}
-                    {% responsive_image silver_images.0.image width=1200 as main_img %}
-                    <img id="mainImage" 
-                         src="{{ silver_images.0.image|optimized_image }}" 
-                         {% if main_img.srcset %}srcset="{{ main_img.srcset }}" sizes="{{ main_img.sizes }}"{% endif %}
-                         alt="{{ product.name }}"
-                         loading="eager"
-                         fetchpriority="high"
-                         decoding="async"
-                         width="1200"
-                         height="1200">
+                    <img id="mainImage" src="{{ silver_images.0.image.url }}" alt="{{ product.name }}">
                   {% else %}
-                    <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image" width="1200" height="1200">
+                    <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image">
                   {% endif %}
                 </div>
                 {% if normal_images|length > 5 or gold_plated_images|length > 5 %}
                 <div class="additional-thumbs" id="additionalThumbs" style="display: flex; flex-wrap: wrap; gap: 10px; padding-top: 10px; width: 100%;">
                   {% for img in normal_images|slice:"5:" %}
-                    {% responsive_image img.image width=150 as thumb_img %}
                     <img
-                      src="{{ img.image|optimized_image }}"
-                      {% if thumb_img.srcset %}srcset="{{ thumb_img.srcset }}" sizes="70px"{% endif %}
+                      src="{{ img.image.url }}"
                       alt="{{ product.name }} - Image {{ forloop.counter|add:5 }}"
-                      data-image-url="{{ img.image|optimized_image }}"
+                      data-image-url="{{ img.image.url }}"
                       data-is-gold-plated="false"
-                      loading="lazy"
-                      decoding="async"
-                      width="70"
-                      height="70"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
@@ -1014,17 +968,11 @@
                   {% endfor %}
                   {% if has_gold_plated %}
                     {% for img in gold_plated_images|slice:"5:" %}
-                      {% responsive_image img.image width=150 as thumb_img %}
                       <img
-                        src="{{ img.image|optimized_image }}"
-                        {% if thumb_img.srcset %}srcset="{{ thumb_img.srcset }}" sizes="70px"{% endif %}
+                        src="{{ img.image.url }}"
                         alt="{{ product.name }} - Gold Plated Image {{ forloop.counter|add:5 }}"
-                        data-image-url="{{ img.image|optimized_image }}"
+                        data-image-url="{{ img.image.url }}"
                         data-is-gold-plated="true"
-                        loading="lazy"
-                        decoding="async"
-                        width="70"
-                        height="70"
                         onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                         role="button"
                         tabindex="0"

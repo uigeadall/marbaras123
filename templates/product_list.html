@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% load static %}
-{% load image_optimization %}
 
 {% block title %}Products - Marbaras{% endblock %}
 
@@ -109,28 +108,16 @@
           <div class="product-card">
             <a href="{% url 'product_detail' p.slug %}">
               {% if p.image %}
-                {% responsive_image p.image width=400 as prod_img %}
                 {% if forloop.counter <= 5 %}
-                  <link rel="preload" as="image" href="{{ p.image|optimized_image }}">
-                  <img src="{{ p.image|optimized_image }}" 
-                       {% if prod_img.srcset %}srcset="{{ prod_img.srcset }}" sizes="{{ prod_img.sizes }}"{% endif %}
-                       alt="{{ p.name }}" 
-                       loading="eager" 
-                       fetchpriority="high" 
-                       decoding="async"
-                       width="400"
-                       height="400">
+                  <link rel="preload" as="image" href="{{ p.image.url }}">
+                  <img src="{{ p.image.url }}" alt="{{ p.name }}" 
+                       loading="eager" fetchpriority="high" decoding="async">
                 {% else %}
-                  <img src="{{ p.image|optimized_image }}" 
-                       {% if prod_img.srcset %}srcset="{{ prod_img.srcset }}" sizes="{{ prod_img.sizes }}"{% endif %}
-                       alt="{{ p.name }}" 
-                       loading="lazy" 
-                       decoding="async"
-                       width="400"
-                       height="400">
+                  <img src="{{ p.image.url }}" alt="{{ p.name }}" 
+                       loading="lazy" decoding="async">
                 {% endif %}
               {% else %}
-                <img src="{% static 'images/placeholder.jpg' %}" alt="{{ p.name }}" loading="lazy" decoding="async" width="400" height="400">
+                <img src="{% static 'images/placeholder.jpg' %}" alt="{{ p.name }}" loading="lazy" decoding="async">
               {% endif %}
             </a>
             <h3>{{ p.name }}</h3>
