@@ -491,6 +491,15 @@
         </div>
 
         {% if user.is_authenticated %}
+          <a href="{% url 'profile_dashboard' %}"
+             class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
+            👤 Profile
+          </a>
+          <a href="{% url 'profile_favorites' %}"
+             class="block w-full px-2.5 py-1.5 rounded-md text-xs font-extrabold text-right
+                    border border-red-200 bg-red-50 text-red-700 shadow-soft hover:bg-red-100 transition">
+            ❤️ Favorites
+          </a>
           <a href="{% url 'account_logout' %}"
              class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
             Logout
@@ -1460,7 +1469,7 @@
               console.log('📦 Selected option text:', selectedOption.textContent);
               console.log('📦 Shipping price (EUR):', shippingPrice);
               console.log('📦 Shipping name:', shippingName);
-            } else {
+          } else {
               console.log('⚠️ WARNING - Selected option is invalid:', selectedOption);
             }
           } else {
@@ -2225,7 +2234,7 @@
         submitBtn.disabled = !this.checked;
       });
     }
-    
+
     // Form submit handler (always available, regardless of Payment Request)
     const form = document.getElementById('payment-form');
     if (form) {
