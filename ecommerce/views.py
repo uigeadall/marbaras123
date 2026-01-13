@@ -2079,6 +2079,70 @@ def privacy(request: HttpRequest) -> HttpResponse:
 
 
 def contact(request: HttpRequest) -> HttpResponse:
+    from django.contrib import messages
+    from django.core.mail import send_mail
+    from django.conf import settings
+    
+    if request.method == "POST":
+        # Get form data
+        name = request.POST.get("name", "").strip()
+        email = request.POST.get("email", "").strip()
+        subject = request.POST.get("subject", "").strip()
+        message = request.POST.get("message", "").strip()
+        website = request.POST.get("website", "").strip()  # Honeypot field
+        
+        # Honeypot check - if website field is filled, it's spam
+        if website:
+            # Silently ignore spam submissions
+            messages.success(request, "Thank you for your message! We'll get back to you soon.")
+            return render(request, "legal/contact.html")
+        
+        # Validate required fields
+        errors = []
+        if not name:
+            errors.append("Name is required.")
+        if not email:
+            errors.append("Email is required.")
+        elif "@" not in email:
+            errors.append("Please enter a valid email address.")
+        if not message:
+            errors.append("Message is required.")
+        
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        else:
+            # Send email to admin
+            admin_email = getattr(settings, "ADMIN_EMAIL", getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"))
+            email_subject = f"Contact Form: {subject}" if subject else f"Contact Form Message from {name}"
+            
+            email_body = f"""
+New contact form submission from Marbaras website:
+
+Name: {name}
+Email: {email}
+Subject: {subject if subject else '(No subject)'}
+
+Message:
+{message}
+
+---
+This message was sent from the contact form on marbaras.com
+"""
+            
+            try:
+                send_mail(
+                    subject=email_subject,
+                    message=email_body,
+                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"),
+                    recipient_list=[admin_email],
+                    fail_silently=False,
+                )
+                messages.success(request, "Thank you for your message! We'll get back to you within 1-2 business days.")
+            except Exception as e:
+                log.error(f"Failed to send contact form email: {e}")
+                messages.error(request, "Sorry, there was an error sending your message. Please try again later or email us directly at support@marbaras.com")
+    
     return render(request, "legal/contact.html")
 
 @login_required
