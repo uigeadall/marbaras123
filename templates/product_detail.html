@@ -1513,23 +1513,7 @@
 
   function updateMainImage(url, thumbEl) {
     const mainImg = document.getElementById('mainImage');
-    if (mainImg) {
-      // Use optimized URL if available, otherwise use provided URL
-      // If URL contains Cloudinary, ensure it's optimized
-      let optimizedUrl = url;
-      if (url && url.includes('cloudinary.com')) {
-        // Ensure Cloudinary URL has optimization parameters
-        if (!url.includes('q_auto') && !url.includes('f_auto')) {
-          // Add Cloudinary optimization if not present
-          optimizedUrl = url.replace('/upload/', '/upload/q_auto,f_auto/');
-        }
-      }
-      mainImg.src = optimizedUrl;
-      // Update srcset if available
-      if (thumbEl && thumbEl.hasAttribute('data-srcset')) {
-        mainImg.srcset = thumbEl.getAttribute('data-srcset');
-      }
-    }
+    if (mainImg) mainImg.src = url;
     // Update aria-current for all thumbs (both left column and additional thumbs)
     document.querySelectorAll('.thumbnail-img').forEach(t => t.removeAttribute('aria-current'));
     if (thumbEl) thumbEl.setAttribute('aria-current','true');
