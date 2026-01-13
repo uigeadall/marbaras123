@@ -61,6 +61,30 @@ class CategorySubcategoryInline(admin.TabularInline):
     verbose_name = "Sub-category"
     verbose_name_plural = "Sub-categories"
 
+
+class PriceIncreaseForm(forms.Form):
+    """Form for global price increase."""
+    percentage = forms.DecimalField(
+        label="Percentage Increase (%)",
+        help_text="Enter the percentage to increase all prices (e.g., 5 for 5% increase)",
+        min_value=0,
+        max_value=1000,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={'step': '0.01', 'class': 'vTextField'})
+    )
+    apply_to_discount_price = forms.BooleanField(
+        label="Also increase discount prices",
+        help_text="If checked, discount prices will also be increased",
+        required=False,
+        initial=True
+    )
+    apply_to_variants = forms.BooleanField(
+        label="Also increase variant prices",
+        help_text="If checked, product variant price overrides will also be increased",
+        required=False,
+        initial=True
+    )
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
@@ -138,6 +162,90 @@ class ProductAdmin(admin.ModelAdmin):
             exact = queryset.model.objects.filter(serial_number__iexact=search_term)
             qs = exact | qs
         return qs, use_distinct
+    
+    def get_urls(self):
+        """Add custom URL for price increase form."""
+        urls = super().get_urls()
+        custom_urls = [
+            path('increase-prices/', self.admin_site.admin_view(self.increase_prices_view), name='ecommerce_product_increase_prices'),
+        ]
+        return custom_urls + urls
+    
+    def increase_prices_action(self, request, queryset):
+        """Admin action to redirect to price increase form."""
+        # Store selected product IDs in session
+        product_ids = list(queryset.values_list('id', flat=True))
+        request.session['price_increase_product_ids'] = product_ids
+        return redirect('admin:ecommerce_product_increase_prices')
+    increase_prices_action.short_description = "📈 Increase prices by percentage (selected products)"
+    
+    def increase_prices_view(self, request):
+        """View for price increase form and processing."""
+        # Get product IDs from session or use all products
+        product_ids = request.session.get('price_increase_product_ids', None)
+        if product_ids:
+            queryset = Product.objects.filter(id__in=product_ids)
+            del request.session['price_increase_product_ids']
+        else:
+            queryset = Product.objects.all()
+        
+        if request.method == 'POST':
+            form = PriceIncreaseForm(request.POST)
+            if form.is_valid():
+                percentage = form.cleaned_data['percentage']
+                apply_to_discount = form.cleaned_data['apply_to_discount_price']
+                apply_to_variants = form.cleaned_data['apply_to_variants']
+                
+                # Calculate multiplier (e.g., 5% = 1.05)
+                multiplier = Decimal('1') + (percentage / Decimal('100'))
+                
+                updated_count = 0
+                updated_variants = 0
+                
+                # Update product prices
+                for product in queryset:
+                    # Update regular price
+                    old_price = product.price
+                    new_price = (old_price * multiplier).quantize(Decimal('0.01'))
+                    product.price = new_price
+                    
+                    # Update discount price if requested
+                    if apply_to_discount and product.discount_price:
+                        old_discount = product.discount_price
+                        new_discount = (old_discount * multiplier).quantize(Decimal('0.01'))
+                        product.discount_price = new_discount
+                    
+                    product.save(update_fields=['price', 'discount_price'])
+                    updated_count += 1
+                    
+                    # Update variant prices if requested
+                    if apply_to_variants:
+                        for variant in product.variants.all():
+                            if variant.price_override:
+                                old_variant_price = variant.price_override
+                                new_variant_price = (old_variant_price * multiplier).quantize(Decimal('0.01'))
+                                variant.price_override = new_variant_price
+                                variant.save(update_fields=['price_override'])
+                                updated_variants += 1
+                
+                messages.success(
+                    request,
+                    f"✅ Successfully increased prices by {percentage}% for {updated_count} product(s). "
+                    f"{f'Updated {updated_variants} variant prices.' if updated_variants > 0 else ''}"
+                )
+                return redirect('admin:ecommerce_product_changelist')
+        else:
+            form = PriceIncreaseForm()
+        
+        context = {
+            'form': form,
+            'title': 'Increase Prices by Percentage',
+            'product_count': queryset.count(),
+            'opts': self.model._meta,
+            'has_view_permission': self.has_view_permission(request, None),
+        }
+        
+        return render(request, 'admin/ecommerce/product/increase_prices.html', context)
 
 
 
