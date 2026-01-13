@@ -85,10 +85,34 @@ class PriceIncreaseForm(forms.Form):
         initial=True
     )
 
+
+class PriceDecreaseForm(forms.Form):
+    """Form for global price decrease."""
+    percentage = forms.DecimalField(
+        label="Percentage Decrease (%)",
+        help_text="Enter the percentage to decrease all prices (e.g., 5 for 5% decrease)",
+        min_value=0,
+        max_value=100,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={'step': '0.01', 'class': 'vTextField'})
+    )
+    apply_to_discount_price = forms.BooleanField(
+        label="Also decrease discount prices",
+        help_text="If checked, discount prices will also be decreased",
+        required=False,
+        initial=True
+    )
+    apply_to_variants = forms.BooleanField(
+        label="Also decrease variant prices",
+        help_text="If checked, product variant price overrides will also be decreased",
+        required=False,
+        initial=True
+    )
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
-    actions = ['increase_prices_action']
+    actions = ['increase_prices_action', 'decrease_prices_action']
     
     def get_list_display(self, request):
         """Dynamically get list_display to handle missing sale_expires_at field."""
@@ -164,10 +188,11 @@ class ProductAdmin(admin.ModelAdmin):
         return qs, use_distinct
     
     def get_urls(self):
-        """Add custom URL for price increase form."""
+        """Add custom URLs for price increase/decrease forms."""
         urls = super().get_urls()
         custom_urls = [
             path('increase-prices/', self.admin_site.admin_view(self.increase_prices_view), name='ecommerce_product_increase_prices'),
+            path('decrease-prices/', self.admin_site.admin_view(self.decrease_prices_view), name='ecommerce_product_decrease_prices'),
         ]
         return custom_urls + urls
     

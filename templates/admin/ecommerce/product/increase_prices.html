@@ -1,19 +1,19 @@
 {% extends "admin/base_site.html" %}
 {% load i18n admin_urls static admin_modify %}
 
-{% block title %}Increase Prices | {{ site_title|default:_('Django site admin') }}{% endblock %}
+{% block title %}{% if action_type == 'decrease' %}Decrease{% else %}Increase{% endif %} Prices | {{ site_title|default:_('Django site admin') }}{% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
 <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
 &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
 &rsaquo; <a href="{% url 'admin:ecommerce_product_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
-&rsaquo; {% trans 'Increase Prices' %}
+&rsaquo; {% if action_type == 'decrease' %}{% trans 'Decrease Prices' %}{% else %}{% trans 'Increase Prices' %}{% endif %}
 </div>
 {% endblock %}
 
 {% block content %}
-<h1>Increase Prices by Percentage</h1>
+<h1>{% if action_type == 'decrease' %}Decrease{% else %}Increase{% endif %} Prices by Percentage</h1>
 
 {% if product_count %}
 <p class="help">
@@ -68,7 +68,7 @@
     </fieldset>
     
     <div class="submit-row">
-        <input type="submit" value="Increase Prices" class="default" name="increase">
+        <input type="submit" value="{% if action_type == 'decrease' %}Decrease{% else %}Increase{% endif %} Prices" class="default" name="{% if action_type == 'decrease' %}decrease{% else %}increase{% endif %}">
         <a href="{% url 'admin:ecommerce_product_changelist' %}" class="button">Cancel</a>
     </div>
 </form>
@@ -86,7 +86,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
         
-        const confirmMessage = `Are you sure you want to increase prices by ${percentage}%?\n\n` +
+        const actionType = '{% if action_type == "decrease" %}decrease{% else %}increase{% endif %}';
+        const confirmMessage = `Are you sure you want to ${actionType} prices by ${percentage}%?\n\n` +
                               `This will affect {{ product_count|default:"all" }} product(s).\n\n` +
                               `This action cannot be undone!`;
         
