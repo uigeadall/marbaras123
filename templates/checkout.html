@@ -55,6 +55,12 @@
          class="block px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800">
         Register
       </a>
+      {% if show_welcome_discount_button %}
+      <button onclick="showEmailPopup()" 
+              class="block w-full px-3 py-2 rounded-md text-sm font-semibold bg-green-600 text-white hover:bg-green-700 mt-2">
+        🎁 Get 5% Discount
+      </button>
+      {% endif %}
     {% endif %}
   </div>
 {% endblock %}

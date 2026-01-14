@@ -195,3 +195,23 @@ def google_analytics_id(request):
     """
     from django.conf import settings
     return {"GOOGLE_ANALYTICS_ID": getattr(settings, "GOOGLE_ANALYTICS_ID", "")}
+
+
+def show_welcome_discount_button(request):
+    """
+    Check if welcome discount button should be shown.
+    Returns True if user hasn't received a welcome promo code yet.
+    """
+    from ecommerce.models import EmailSubscription
+    
+    # If user is authenticated, check by email
+    if request.user.is_authenticated and request.user.email:
+        has_subscription = EmailSubscription.objects.filter(email=request.user.email.lower()).exists()
+        return {"show_welcome_discount_button": not has_subscription}
+    
+    # For anonymous users, check cookie
+    # Cookie is set when user subscribes via popup
+    cookies = request.COOKIES
+    has_subscribed = cookies.get('email_popup_subscribed') == 'true'
+    
+    return {"show_welcome_discount_button": not has_subscribed}
