@@ -435,15 +435,13 @@
             <div class="totals">
               <div class="row">
                 <span>Subtotal</span>
-                <span data-eur-price="{{ subtotal }}">${{ subtotal|floatformat:2 }}</span>
+                <span id="subtotal-display" data-eur-price="{{ subtotal }}">${{ subtotal|floatformat:2 }}</span>
               </div>
 
-              {% if discount %}
-                <div class="row">
-                  <span>Discount</span>
-                  <span data-eur-price="{{ discount }}">- ${{ discount|floatformat:2 }}</span>
-                </div>
-              {% endif %}
+              <div class="row" id="discount-row" style="display: {% if discount %}flex{% else %}none{% endif %};">
+                <span>Discount</span>
+                <span id="discount-display" data-eur-price="{{ discount|default:0 }}">- ${{ discount|default:0|floatformat:2 }}</span>
+              </div>
 
               <div class="row" id="shipping-row" style="display: none;">
                   <span id="shipping-label">Shipping</span>
