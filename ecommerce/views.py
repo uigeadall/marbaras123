@@ -2162,16 +2162,13 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
         is_active = c.active
         is_valid_date = (not c.starts_at or c.starts_at <= now) and (not c.ends_at or c.ends_at >= now)
         is_available = not c.usage_limit or c.used_count < c.usage_limit
-        logger.info(f"  - Coupon: {c.code} (ID: {c.id}, discount: {discount}, active: {is_active}, valid_date: {is_valid_date}, available: {is_available}, used: {c.used_count}/{c.usage_limit or 'unlimited'}, starts: {c.starts_at}, ends: {c.ends_at})")
+        is_assigned = c.id in already_assigned_coupon_ids
+        logger.info(f"  - Coupon: {c.code} (ID: {c.id}, discount: {discount}, active: {is_active}, valid_date: {is_valid_date}, available: {is_available}, assigned: {is_assigned}, used: {c.used_count}/{c.usage_limit or 'unlimited'}, starts: {c.starts_at}, ends: {c.ends_at})")
     
-    all_available = available_coupons.order_by('used_count', '-id')  # Order by unused first, then by newest
-    
-    logger.info(f"Final available coupons count: {all_available.count()}")
-    for c in all_available[:5]:  # Log first 5 available
-        discount = f"{c.percent_off}%" if c.percent_off else f"${c.amount_off}"
-        logger.info(f"  ✅ Available: {c.code} (ID: {c.id}, discount: {discount}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
-    
-    coupon = all_available.first()
+    if coupon:
+        logger.info(f"✅ Selected coupon: {coupon.code} (ID: {coupon.id}, discount: {coupon.percent_off}%)")
+    else:
+        logger.warning(f"⚠️ No coupon selected yet, will try expired coupons...")
     
     if not coupon:
         logger.warning(f"⚠️ No coupons with valid dates found. Trying to auto-update expired coupons...")
