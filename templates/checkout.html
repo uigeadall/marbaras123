@@ -433,14 +433,19 @@
             </div>
 
             <div class="totals">
-              <div class="row">
-                <span>Subtotal</span>
-                <span id="subtotal-display" data-eur-price="{{ subtotal }}">${{ subtotal|floatformat:2 }}</span>
+              <div class="row" id="original-subtotal-row">
+                <span>Original Subtotal</span>
+                <span id="original-subtotal-display" data-eur-price="{{ subtotal }}">${{ subtotal|floatformat:2 }}</span>
               </div>
 
               <div class="row" id="discount-row" style="display: {% if discount %}flex{% else %}none{% endif %};">
                 <span>Discount</span>
                 <span id="discount-display" data-eur-price="{{ discount|default:0 }}">- ${{ discount|default:0|floatformat:2 }}</span>
+              </div>
+
+              <div class="row">
+                <span>Subtotal</span>
+                <span id="subtotal-display" data-eur-price="{{ subtotal }}">${{ subtotal|floatformat:2 }}</span>
               </div>
 
               <div class="row" id="shipping-row" style="display: none;">
@@ -938,7 +943,19 @@
             currentDiscount = 0;
             appliedCouponCode = null;
             couponMessage.innerHTML = `<span style="color:#c00;">✗ ${data.error || 'Invalid coupon code'}</span>`;
+            
+            // Hide original subtotal row if no discount
+            const originalSubtotalRow = document.getElementById('original-subtotal-row');
+            if (originalSubtotalRow) {
+              originalSubtotalRow.style.display = 'none';
+            }
+            
+            // Hide discount row
             discountRow.style.display = 'none';
+            
+            // Reset subtotal to original
+            subtotalDisplay.setAttribute('data-eur-price', originalSubtotal);
+            
             updateTotal();
             if (window.updateAllPrices) {
               window.updateAllPrices();
