@@ -788,7 +788,9 @@
         }
       }
 
-      const finalSubtotal = subtotal - currentDiscount;
+      // Always calculate from original subtotal minus current discount
+      // This ensures correct calculation even if Apply is clicked multiple times
+      const finalSubtotal = originalSubtotal - currentDiscount;
       const total = finalSubtotal + shippingCost;
 
       // Use currency converter functions from base.html
