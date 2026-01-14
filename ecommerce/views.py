@@ -204,7 +204,23 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
                         return subtotal, discount, coupon_applied, coupon_error
         
         coupon = Coupon.objects.filter(code=coupon_code).first()
-        if coupon and coupon.is_valid_now():
+        if not coupon:
+            coupon_error = f"Coupon code '{coupon_code}' not found."
+        elif not coupon.is_valid_now():
+            # Provide specific error message based on why coupon is invalid
+            from django.utils import timezone
+            now = timezone.now()
+            if not coupon.active:
+                coupon_error = f"Coupon '{coupon_code}' is inactive."
+            elif coupon.starts_at and now < coupon.starts_at:
+                coupon_error = f"Coupon '{coupon_code}' is not yet active. It will be available from {coupon.starts_at.strftime('%Y-%m-%d %H:%M')}."
+            elif coupon.ends_at and now > coupon.ends_at:
+                coupon_error = f"Coupon '{coupon_code}' has expired on {coupon.ends_at.strftime('%Y-%m-%d %H:%M')}."
+            elif coupon.usage_limit and coupon.used_count >= coupon.usage_limit:
+                coupon_error = f"Coupon '{coupon_code}' has reached its usage limit ({coupon.used_count}/{coupon.usage_limit})."
+            else:
+                coupon_error = f"Coupon '{coupon_code}' is invalid."
+        else:
             new_subtotal = coupon.apply(subtotal)
             discount = subtotal - new_subtotal
             subtotal = new_subtotal
@@ -212,8 +228,6 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
                 coupon.used_count += 1
                 coupon.save(update_fields=["used_count"])
             coupon_applied = coupon.code
-        else:
-            coupon_error = "Invalid or expired coupon."
     
     return subtotal, discount, coupon_applied, coupon_error
 
