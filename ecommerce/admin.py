@@ -608,7 +608,23 @@ class CategoryAdmin(admin.ModelAdmin):
 admin.site.register(ProductImage)
 admin.site.register(CartItem)
 admin.site.register(OrderItem)
-admin.site.register(Favorite)
+
+
+@admin.register(Favorite)
+class FavoriteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'product', 'product_sku', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__username', 'user__email', 'product__name', 'product__sku', 'product__serial_number')
+    list_select_related = ('user', 'product')
+    readonly_fields = ('created_at',)
+    date_hierarchy = 'created_at'
+    
+    @admin.display(description='SKU', ordering='product__sku')
+    def product_sku(self, obj):
+        return obj.product.sku or '-'
+    product_sku.short_description = 'SKU'
+
+
 admin.site.register(Discount)
 admin.site.register(ShippingOption)
 
