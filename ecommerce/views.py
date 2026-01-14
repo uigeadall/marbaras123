@@ -187,16 +187,26 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
     
     Args:
         coupon_code: The coupon code to process
-        subtotal: The subtotal amount
+        subtotal: The subtotal amount (total of all items)
         apply_usage: If True, increment used_count (for actual order). If False, just validate (for preview).
         cart_items: Optional cart items to check for Sale category products.
+    
+    Returns:
+        Tuple of (new_subtotal, discount, coupon_applied, coupon_error)
+        - new_subtotal: Subtotal after applying coupon (only to non-Sale items)
+        - discount: Discount amount applied
+        - coupon_applied: Coupon code if applied, None otherwise
+        - coupon_error: Error message if coupon cannot be applied
     """
     discount = Decimal("0.00")
     coupon_applied = None
     coupon_error = None
     
     if coupon_code:
-        # Check if cart contains products in Sale category
+        # Calculate subtotal only for non-Sale products
+        non_sale_subtotal = subtotal
+        sale_subtotal = Decimal("0.00")
+        
         if cart_items:
             from ecommerce.models import Category, CartItem, Product
             import logging
@@ -209,45 +219,48 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
             if sale_category:
                 logger.info(f"Checking for Sale category products. Sale category ID: {sale_category.id}, Name: {sale_category.name}")
                 
-                # Use direct database query to check if any cart items have products in Sale category
-                # This works whether cart_items is a queryset or a list
+                # Get product IDs that are in Sale category
+                sale_product_ids = set()
                 if hasattr(cart_items, 'model') and cart_items.model == CartItem:
-                    # It's a queryset - use it directly with filter
-                    logger.info(f"cart_items is a queryset, using direct filter")
-                    has_sale_product = cart_items.filter(
-                        product__categories=sale_category
-                    ).exists()
-                    logger.info(f"Has sale product (queryset check): {has_sale_product}")
+                    # It's a queryset - get product IDs directly
+                    sale_product_ids = set(
+                        cart_items.filter(product__categories=sale_category)
+                        .values_list('product_id', flat=True)
+                    )
                 else:
-                    # It's a list/iterable - get product IDs and check
-                    logger.info(f"cart_items is a list/iterable, extracting product IDs")
-                    product_ids = []
-                    for item in cart_items:
+                    # It's a list/iterable - check each item
+                    cart_items_list = list(cart_items) if not isinstance(cart_items, list) else cart_items
+                    for item in cart_items_list:
+                        product_id = None
                         if hasattr(item, 'product_id'):
-                            product_ids.append(item.product_id)
+                            product_id = item.product_id
                         elif hasattr(item, 'product') and hasattr(item.product, 'id'):
-                            product_ids.append(item.product.id)
-                    
-                    logger.info(f"Product IDs in cart: {product_ids}")
-                    
-                    if product_ids:
-                        # Check if any of these products are in Sale category
-                        has_sale_product = Product.objects.filter(
-                            id__in=product_ids,
-                            categories=sale_category
-                        ).exists()
-                        logger.info(f"Has sale product (list check): {has_sale_product}")
-                    else:
-                        has_sale_product = False
-                        logger.info("No product IDs found in cart items")
+                            product_id = item.product.id
+                        
+                        if product_id:
+                            # Check if this product is in Sale category
+                            if Product.objects.filter(id=product_id, categories=sale_category).exists():
+                                sale_product_ids.add(product_id)
                 
-                if has_sale_product:
-                    logger.warning(f"Coupon {coupon_code} blocked: cart contains Sale category products")
-                    coupon_error = "Coupons cannot be applied to products in Sale category."
-                    return subtotal, discount, coupon_applied, coupon_error
-                else:
-                    logger.info(f"No Sale category products found in cart, allowing coupon {coupon_code}")
+                logger.info(f"Sale product IDs: {sale_product_ids}")
+                
+                # Calculate subtotals separately
+                if sale_product_ids:
+                    # Calculate subtotal for Sale products
+                    if hasattr(cart_items, 'model') and cart_items.model == CartItem:
+                        sale_items = cart_items.filter(product_id__in=sale_product_ids)
+                    else:
+                        cart_items_list = list(cart_items) if not isinstance(cart_items, list) else cart_items
+                        sale_items = [item for item in cart_items_list 
+                                    if (hasattr(item, 'product_id') and item.product_id in sale_product_ids) or
+                                       (hasattr(item, 'product') and hasattr(item.product, 'id') and item.product.id in sale_product_ids)]
+                    
+                    sale_subtotal = _compute_subtotal(sale_items)
+                    non_sale_subtotal = subtotal - sale_subtotal
+                    
+                    logger.info(f"Sale subtotal: {sale_subtotal}, Non-Sale subtotal: {non_sale_subtotal}")
         
+        # Apply coupon only to non-Sale subtotal
         coupon = Coupon.objects.filter(code=coupon_code).first()
         if not coupon:
             coupon_error = f"Coupon code '{coupon_code}' not found."
@@ -266,9 +279,12 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
             else:
                 coupon_error = f"Coupon '{coupon_code}' is invalid."
         else:
-            new_subtotal = coupon.apply(subtotal)
-            discount = subtotal - new_subtotal
-            subtotal = new_subtotal
+            # Apply coupon only to non-Sale subtotal
+            discounted_non_sale_subtotal = coupon.apply(non_sale_subtotal)
+            discount = non_sale_subtotal - discounted_non_sale_subtotal
+            # Final subtotal = discounted non-Sale items + original Sale items
+            subtotal = discounted_non_sale_subtotal + sale_subtotal
+            
             if apply_usage:
                 coupon.used_count += 1
                 coupon.save(update_fields=["used_count"])
