@@ -2129,22 +2129,31 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     logger.info(f"Coupons with valid dates: {valid_date_coupons.count()}")
     
     # FIRST: Try to find 5% discount coupons (preferred for email subscriptions)
+    # Exclude coupons that are already assigned to other email subscriptions
+    already_assigned_coupon_ids = EmailSubscription.objects.exclude(
+        coupon__isnull=True
+    ).values_list('coupon_id', flat=True)
+    
     available_5_percent = valid_date_coupons.filter(
         percent_off=5.00
+    ).exclude(
+        id__in=already_assigned_coupon_ids  # Exclude already assigned coupons
     ).filter(
         Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
     ).order_by('used_count', '-id')
     
-    logger.info(f"Available 5% coupons: {available_5_percent.count()}")
+    logger.info(f"Available 5% coupons (not assigned): {available_5_percent.count()}")
     
     coupon = available_5_percent.first()
     
-    # If no 5% coupon found, try any available coupon
+    # If no 5% coupon found, try any available coupon (but still exclude assigned ones)
     if not coupon:
-        available_coupons = valid_date_coupons.filter(
+        available_coupons = valid_date_coupons.exclude(
+            id__in=already_assigned_coupon_ids  # Exclude already assigned coupons
+        ).filter(
             Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
         ).order_by('used_count', '-id')
-        logger.info(f"Coupons with available usage (any %): {available_coupons.count()}")
+        logger.info(f"Coupons with available usage (any %, not assigned): {available_coupons.count()}")
         coupon = available_coupons.first()
     
     # Log details of first 10 coupons for debugging
