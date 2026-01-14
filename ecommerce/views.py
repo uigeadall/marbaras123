@@ -204,43 +204,35 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
             ).first()
             
             if sale_category:
-                # Get cart item IDs or session/user filter
-                cart_item_ids = []
-                cart_filter = None
-                
-                # Convert to list to check if it's a queryset
+                # Use direct database query to check if any cart items have products in Sale category
+                # This works whether cart_items is a queryset or a list
                 if hasattr(cart_items, 'model') and cart_items.model == CartItem:
-                    # It's a queryset - get IDs and filter
-                    cart_item_ids = list(cart_items.values_list('id', flat=True))
-                    if cart_item_ids:
-                        # Check if any cart items have products in Sale category using direct DB query
-                        has_sale_product = CartItem.objects.filter(
-                            id__in=cart_item_ids,
-                            product__categories=sale_category
-                        ).exists()
-                        
-                        if has_sale_product:
-                            coupon_error = "Coupons cannot be applied to products in Sale category."
-                            return subtotal, discount, coupon_applied, coupon_error
+                    # It's a queryset - use it directly with filter
+                    has_sale_product = cart_items.filter(
+                        product__categories=sale_category
+                    ).exists()
                 else:
-                    # It's a list/iterable - check each item
-                    cart_items_list = list(cart_items) if not isinstance(cart_items, list) else cart_items
-                    
-                    for item in cart_items_list:
-                        # Use direct database query to check if product is in Sale category
+                    # It's a list/iterable - get product IDs and check
+                    from ecommerce.models import Product
+                    product_ids = []
+                    for item in cart_items:
                         if hasattr(item, 'product_id'):
-                            has_sale = Category.objects.filter(
-                                id=sale_category.id,
-                                categorized_products__id=item.product_id
-                            ).exists()
-                        else:
-                            # Fallback: check prefetched categories
-                            product_category_ids = [cat.id for cat in item.product.categories.all()]
-                            has_sale = sale_category.id in product_category_ids
-                        
-                        if has_sale:
-                            coupon_error = "Coupons cannot be applied to products in Sale category."
-                            return subtotal, discount, coupon_applied, coupon_error
+                            product_ids.append(item.product_id)
+                        elif hasattr(item, 'product') and hasattr(item.product, 'id'):
+                            product_ids.append(item.product.id)
+                    
+                    if product_ids:
+                        # Check if any of these products are in Sale category
+                        has_sale_product = Product.objects.filter(
+                            id__in=product_ids,
+                            categories=sale_category
+                        ).exists()
+                    else:
+                        has_sale_product = False
+                
+                if has_sale_product:
+                    coupon_error = "Coupons cannot be applied to products in Sale category."
+                    return subtotal, discount, coupon_applied, coupon_error
         
         coupon = Coupon.objects.filter(code=coupon_code).first()
         if not coupon:
