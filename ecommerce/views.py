@@ -2063,11 +2063,8 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
 @csrf_exempt
 @require_http_methods(["POST"])
 def subscribe_email(request: HttpRequest) -> JsonResponse:
-    """Handle email subscription from popup and send welcome email with promo code."""
-    import secrets
-    import string
+    """Handle email subscription from popup and send welcome email with promo code from existing coupons."""
     from django.utils import timezone
-    from datetime import timedelta
     from ecommerce.models import Coupon
     from ecommerce.utils.emailing import send_welcome_email_with_promo
     
@@ -2084,35 +2081,40 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     except ValidationError:
         return JsonResponse({'success': False, 'message': 'Invalid email address'}, status=400)
     
-    # Generate unique promo code
-    code_base = 'WELCOME5'
-    code = code_base
-    counter = 1
+    # Find an available coupon (active, not expired, not fully used)
+    # Prefer coupons with 5% discount, but accept any available coupon
+    now = timezone.now()
+    coupon = Coupon.objects.filter(
+        active=True,
+        percent_off=5.00  # Look for 5% discount coupons
+    ).filter(
+        Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+        Q(ends_at__isnull=True) | Q(ends_at__gte=now)
+    ).filter(
+        Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
+    ).first()
     
-    # Ensure code is unique
-    while Coupon.objects.filter(code=code).exists():
-        code = f"{code_base}{counter}"
-        counter += 1
+    # If no 5% coupon found, try to find any available coupon
+    if not coupon:
+        coupon = Coupon.objects.filter(
+            active=True
+        ).filter(
+            Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+            Q(ends_at__isnull=True) | Q(ends_at__gte=now)
+        ).filter(
+            Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
+        ).first()
     
-    # Create coupon (5% discount, valid for 30 days, one-time use)
-    try:
-        coupon = Coupon.objects.create(
-            code=code,
-            percent_off=5.00,
-            active=True,
-            starts_at=timezone.now(),
-            ends_at=timezone.now() + timedelta(days=30),
-            usage_limit=1,
-            used_count=0
-        )
-    except Exception as e:
+    if not coupon:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Error creating coupon: {e}")
-        return JsonResponse({'success': False, 'message': 'Error creating promo code'}, status=500)
+        logger.warning(f"No available coupon found for email subscription: {email}")
+        return JsonResponse({
+            'success': False, 
+            'message': 'Sorry, no promo codes available at the moment. Please try again later.'
+        }, status=404)
     
-    # Create a temporary user object for email sending (or use email directly)
-    # We'll create a simple user-like object
+    # Create a temporary user object for email sending
     class EmailUser:
         def __init__(self, email):
             self.email = email
@@ -2121,31 +2123,38 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     email_user = EmailUser(email)
     base_url = request.build_absolute_uri('/').rstrip('/')
     
+    # Get discount percentage or amount for display
+    discount_display = ""
+    if coupon.percent_off:
+        discount_display = f"{coupon.percent_off}% OFF"
+    elif coupon.amount_off:
+        discount_display = f"${coupon.amount_off} OFF"
+    
     # Send welcome email with promo code
     try:
-        result = send_welcome_email_with_promo(email_user, base_url, coupon.code)
+        result = send_welcome_email_with_promo(email_user, base_url, coupon.code, discount_display)
         if result:
             return JsonResponse({
                 'success': True, 
-                'message': f'Check your email! Your 5% discount code ({coupon.code}) has been sent.'
+                'message': f'Check your email! Your discount code ({coupon.code}) has been sent.'
             })
         else:
-            # Coupon was created but email failed - still return success but log it
+            # Email failed but coupon exists - still return success with the code
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Email failed for {email} but coupon {coupon.code} was created")
+            logger.warning(f"Email failed for {email} but coupon {coupon.code} is available")
             return JsonResponse({
                 'success': True, 
-                'message': f'Your promo code is: {coupon.code}. Use it at checkout for 5% off!'
+                'message': f'Your promo code is: {coupon.code}. Use it at checkout for {discount_display}!'
             })
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error sending welcome email: {e}")
-        # Still return success with the code since coupon was created
+        # Still return success with the code since coupon exists
         return JsonResponse({
             'success': True, 
-            'message': f'Your promo code is: {coupon.code}. Use it at checkout for 5% off!'
+            'message': f'Your promo code is: {coupon.code}. Use it at checkout for {discount_display}!'
         })
 
 

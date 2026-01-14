@@ -123,7 +123,7 @@ def send_welcome_email(user, base_url) -> bool:
         log.exception("Exception details:")
         return False
 
-def send_welcome_email_with_promo(user, base_url, promo_code) -> bool:
+def send_welcome_email_with_promo(user, base_url, promo_code, discount_display="5% OFF") -> bool:
     """Send welcome email with promo code to email subscriber. Returns True on success, False on failure."""
     try:
         email = getattr(user, "email", None)
@@ -135,15 +135,17 @@ def send_welcome_email_with_promo(user, base_url, promo_code) -> bool:
         ctx = {
             "user": user, 
             "base_url": base_url,
-            "promo_code": promo_code
+            "promo_code": promo_code,
+            "discount_display": discount_display
         }
 
         log.info("📧 ATTEMPTING TO SEND WELCOME EMAIL WITH PROMO CODE")
         log.info("  To: %s", email)
         log.info("  Promo Code: %s", promo_code)
+        log.info("  Discount: %s", discount_display)
 
         try:
-            subject = "🎁 Welcome to Marbaras - Your 5% Discount Code!"
+            subject = f"🎁 Welcome to Marbaras - Your {discount_display} Discount Code!"
             text = render_to_string("emails/welcome_promo.txt", ctx)
             html = render_to_string("emails/welcome_promo.html", ctx)
             msg = EmailMultiAlternatives(subject, text, from_email, [email])

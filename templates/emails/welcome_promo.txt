@@ -6,9 +6,9 @@ Thank you for subscribing to Marbaras! We're excited to welcome you to our famil
 
 Your exclusive discount code: {{ promo_code }}
 
-Get 5% OFF your order!
+Get {{ discount_display|default:"5% OFF" }} your order!
 
-How to use: Enter this code at checkout to get 5% off your order. Valid for 30 days, one-time use only.
+How to use: Enter this code at checkout to get your discount. This code can be used once and expires after first use.
 
 Shop now: {{ base_url }}{% url 'home' %}?all=true
 
