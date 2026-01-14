@@ -2109,35 +2109,39 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     logger = logging.getLogger(__name__)
     now = timezone.now()
     
-    # First, try to find 5% discount coupons
+    # First, try to find 5% discount coupons (EXCLUDE "WELCOME5" - it's a legacy code)
     available_5_percent = Coupon.objects.filter(
         active=True,
         percent_off=5.00
+    ).exclude(
+        code__iexact="WELCOME5"  # Exclude legacy hardcoded code
     ).filter(
         Q(starts_at__isnull=True) | Q(starts_at__lte=now),
         Q(ends_at__isnull=True) | Q(ends_at__gte=now)
     ).filter(
         Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
-    )
+    ).order_by('-id')  # Order by newest first
     
-    logger.info(f"Found {available_5_percent.count()} available 5% coupons")
+    logger.info(f"Found {available_5_percent.count()} available 5% coupons (excluding WELCOME5)")
     for c in available_5_percent:
         logger.info(f"  - Coupon: {c.code} (ID: {c.id}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
     
     coupon = available_5_percent.first()
     
-    # If no 5% coupon found, try to find any available coupon
+    # If no 5% coupon found, try to find any available coupon (EXCLUDE "WELCOME5")
     if not coupon:
         all_available = Coupon.objects.filter(
             active=True
+        ).exclude(
+            code__iexact="WELCOME5"  # Exclude legacy hardcoded code
         ).filter(
             Q(starts_at__isnull=True) | Q(starts_at__lte=now),
             Q(ends_at__isnull=True) | Q(ends_at__gte=now)
         ).filter(
             Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
-        )
+        ).order_by('-id')  # Order by newest first
         
-        logger.info(f"Found {all_available.count()} available coupons (any discount)")
+        logger.info(f"Found {all_available.count()} available coupons (any discount, excluding WELCOME5)")
         for c in all_available:
             discount = f"{c.percent_off}%" if c.percent_off else f"${c.amount_off}"
             logger.info(f"  - Coupon: {c.code} (ID: {c.id}, discount: {discount}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
