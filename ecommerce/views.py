@@ -2112,26 +2112,49 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     
     # Find any available coupon (EXCLUDE "WELCOME5" - it's a legacy code)
     # Prefer coupons that haven't been used yet (used_count = 0)
-    all_available = Coupon.objects.filter(
-        active=True
-    ).exclude(
-        code__iexact="WELCOME5"  # Exclude legacy hardcoded code
-    ).filter(
+    
+    # First, let's check all coupons for debugging
+    all_coupons = Coupon.objects.exclude(code__iexact="WELCOME5")
+    logger.info(f"Total coupons in DB (excluding WELCOME5): {all_coupons.count()}")
+    
+    # Check each filter condition separately
+    active_coupons = all_coupons.filter(active=True)
+    logger.info(f"Active coupons: {active_coupons.count()}")
+    
+    valid_date_coupons = active_coupons.filter(
         Q(starts_at__isnull=True) | Q(starts_at__lte=now),
         Q(ends_at__isnull=True) | Q(ends_at__gte=now)
-    ).filter(
-        Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
-    ).order_by('used_count', '-id')  # Order by unused first, then by newest
+    )
+    logger.info(f"Coupons with valid dates: {valid_date_coupons.count()}")
     
-    logger.info(f"Found {all_available.count()} available coupons (excluding WELCOME5)")
-    for c in all_available[:10]:  # Log first 10 for debugging
+    available_coupons = valid_date_coupons.filter(
+        Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
+    )
+    logger.info(f"Coupons with available usage: {available_coupons.count()}")
+    
+    # Log details of first 10 coupons for debugging
+    for c in all_coupons[:10]:
         discount = f"{c.percent_off}%" if c.percent_off else f"${c.amount_off}"
-        logger.info(f"  - Coupon: {c.code} (ID: {c.id}, discount: {discount}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
+        is_active = c.active
+        is_valid_date = (not c.starts_at or c.starts_at <= now) and (not c.ends_at or c.ends_at >= now)
+        is_available = not c.usage_limit or c.used_count < c.usage_limit
+        logger.info(f"  - Coupon: {c.code} (ID: {c.id}, discount: {discount}, active: {is_active}, valid_date: {is_valid_date}, available: {is_available}, used: {c.used_count}/{c.usage_limit or 'unlimited'}, starts: {c.starts_at}, ends: {c.ends_at})")
+    
+    all_available = available_coupons.order_by('used_count', '-id')  # Order by unused first, then by newest
+    
+    logger.info(f"Final available coupons count: {all_available.count()}")
+    for c in all_available[:5]:  # Log first 5 available
+        discount = f"{c.percent_off}%" if c.percent_off else f"${c.amount_off}"
+        logger.info(f"  ✅ Available: {c.code} (ID: {c.id}, discount: {discount}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
     
     coupon = all_available.first()
     
     if not coupon:
-        logger.warning(f"No available coupon found for email subscription: {email}")
+        logger.error(f"❌ No available coupon found for email subscription: {email}")
+        logger.error(f"   Active coupons: {active_coupons.count()}")
+        logger.error(f"   Valid date coupons: {valid_date_coupons.count()}")
+        logger.error(f"   Available usage coupons: {available_coupons.count()}")
+        logger.error(f"   Current time: {now}")
         return JsonResponse({
             'success': False, 
             'message': 'Sorry, no promo codes available at the moment. Please try again later.'
