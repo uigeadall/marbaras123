@@ -1388,6 +1388,15 @@ class LegalPageAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(EmailSubscription)
+class EmailSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('email', 'coupon', 'subscribed_at')
+    list_filter = ('subscribed_at', 'coupon')
+    search_fields = ('email', 'coupon__code')
+    readonly_fields = ('subscribed_at',)
+    date_hierarchy = 'subscribed_at'
+
+
 @admin.register(BannerImage)
 class BannerImageAdmin(admin.ModelAdmin):
     form = BannerImageAdminForm
