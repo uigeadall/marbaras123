@@ -2155,10 +2155,26 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
         logger.error(f"   Valid date coupons: {valid_date_coupons.count()}")
         logger.error(f"   Available usage coupons: {available_coupons.count()}")
         logger.error(f"   Current time: {now}")
-        return JsonResponse({
-            'success': False, 
-            'message': 'Sorry, no promo codes available at the moment. Please try again later.'
-        }, status=404)
+        
+        # Try to find any coupon without usage limit as fallback
+        fallback_coupons = Coupon.objects.filter(
+            active=True,
+            usage_limit__isnull=True
+        ).exclude(
+            code__iexact="WELCOME5"
+        ).filter(
+            Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+            Q(ends_at__isnull=True) | Q(ends_at__gte=now)
+        ).order_by('-id')
+        
+        if fallback_coupons.exists():
+            coupon = fallback_coupons.first()
+            logger.info(f"✅ Using fallback coupon (no usage limit): {coupon.code}")
+        else:
+            return JsonResponse({
+                'success': False, 
+                'message': 'Sorry, no promo codes available at the moment. Please try again later.'
+            }, status=404)
     
     logger.info(f"Selected coupon for {email}: {coupon.code} (ID: {coupon.id})")
     
