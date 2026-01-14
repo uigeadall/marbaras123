@@ -770,13 +770,13 @@
         &times;
       </span>
       <!-- Image Section -->
-      <div style="width: 100%; height: 250px; overflow: hidden; position: relative;">
+      <div style="width: 100%; height: 250px; overflow: hidden; position: relative; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
         {% load static %}
         <img 
           src="{% static 'images/jewerly-popup.png' %}" 
           alt="Marbaras Jewelry Collection" 
-          style="width: 100%; height: 100%; object-fit: cover;"
-          onerror="this.style.display='none'; this.parentElement.style.height='0';"
+          style="width: 100%; height: 100%; object-fit: cover; display: block;"
+          onerror="console.error('Failed to load popup image:', this.src); this.style.display='none';"
         >
         <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.7), transparent); padding: 20px; text-align: center;">
           <h2 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🎁 Special Offer!</h2>
