@@ -2165,30 +2165,34 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
         discount_display = f"${coupon.amount_off} OFF"
     
     # Send welcome email with promo code
+    # IMPORTANT: Use coupon.code from database, not hardcoded "WELCOME5"
+    promo_code_to_send = coupon.code
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Sending welcome email to {email} with coupon code: {promo_code_to_send} (ID: {coupon.id})")
+    
     try:
-        result = send_welcome_email_with_promo(email_user, base_url, coupon.code, discount_display)
+        result = send_welcome_email_with_promo(email_user, base_url, promo_code_to_send, discount_display)
         if result:
+            logger.info(f"Successfully sent welcome email to {email} with code: {promo_code_to_send}")
             return JsonResponse({
                 'success': True, 
-                'message': f'Check your email! Your discount code ({coupon.code}) has been sent.'
+                'message': f'Check your email! Your discount code ({promo_code_to_send}) has been sent.'
             })
         else:
             # Email failed but subscription was created - still return success with the code
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Email failed for {email} but subscription was created with coupon {coupon.code}")
+            logger.warning(f"Email failed for {email} but subscription was created with coupon {promo_code_to_send}")
             return JsonResponse({
                 'success': True, 
-                'message': f'Your promo code is: {coupon.code}. Use it at checkout for {discount_display}!'
+                'message': f'Your promo code is: {promo_code_to_send}. Use it at checkout for {discount_display}!'
             })
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Error sending welcome email: {e}")
+        logger.error(f"Error sending welcome email to {email}: {e}")
+        logger.exception("Full error traceback:")
         # Still return success with the code since subscription was created
         return JsonResponse({
             'success': True, 
-            'message': f'Your promo code is: {coupon.code}. Use it at checkout for {discount_display}!'
+            'message': f'Your promo code is: {promo_code_to_send}. Use it at checkout for {discount_display}!'
         })
 
 

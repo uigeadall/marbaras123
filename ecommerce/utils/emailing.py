@@ -141,8 +141,14 @@ def send_welcome_email_with_promo(user, base_url, promo_code, discount_display="
 
         log.info("📧 ATTEMPTING TO SEND WELCOME EMAIL WITH PROMO CODE")
         log.info("  To: %s", email)
-        log.info("  Promo Code: %s", promo_code)
+        log.info("  Promo Code: %s (type: %s)", promo_code, type(promo_code).__name__)
         log.info("  Discount: %s", discount_display)
+        
+        # Ensure promo_code is a string and not None
+        if not promo_code:
+            log.error("  ❌ promo_code is None or empty!")
+            return False
+        promo_code = str(promo_code).strip()
 
         try:
             subject = f"🎁 Welcome to Marbaras - Your {discount_display} Discount Code!"
