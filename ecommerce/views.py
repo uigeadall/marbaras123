@@ -1626,6 +1626,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
 def guest_checkout_view(request: HttpRequest) -> HttpResponse:
     _ensure_session(request)
     cart_qs = CartItem.objects.filter(session_key=request.session.session_key).select_related("product")
+    cart_items = cart_qs  # Alias for consistency with checkout_view
 
     if not cart_qs.exists():
         messages.warning(request, "Your cart is empty.")
