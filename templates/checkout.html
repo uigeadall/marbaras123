@@ -915,6 +915,9 @@
             if (window.updateAllPrices) {
               window.updateAllPrices();
             }
+            
+            // Update Payment Request (Apple Pay / Google Pay) with new total
+            updatePaymentRequestWithCoupon(data.new_subtotal, data.discount);
           } else {
             // Show error
             currentDiscount = 0;
@@ -1001,6 +1004,76 @@
         // Clear selection if no option selected
         window.selectedShippingOptionForPayment = null;
         console.log('🔄 Cleared Payment Request shipping option');
+      }
+      
+      // Update payment request total with current discount
+      updatePaymentRequestTotal();
+    }
+    
+    // Function to update Payment Request total with coupon discount
+    function updatePaymentRequestWithCoupon(newSubtotal, discount) {
+      if (!window.paymentRequest) return;
+      
+      // Store coupon info globally for use in payment processing
+      window.appliedCouponCode = appliedCouponCode;
+      window.currentDiscountAmount = discount;
+      
+      // Update payment request total
+      updatePaymentRequestTotal();
+    }
+    
+    // Function to update Payment Request total (includes shipping and discount)
+    function updatePaymentRequestTotal() {
+      if (!window.paymentRequest) return;
+      
+      try {
+        // Get current subtotal (after discount if applied)
+        const subtotalDisplay = document.getElementById('subtotal-display');
+        const currentSubtotal = parseFloat(subtotalDisplay?.getAttribute('data-eur-price')) || subtotal;
+        
+        // Get shipping cost
+        let shippingCost = 0;
+        if (window.selectedShippingOptionForPayment) {
+          shippingCost = window.selectedShippingOptionForPayment.price || 0;
+        } else {
+          // Check if shipping option is selected in dropdown
+          const selectedOption = shippingSelect?.options[shippingSelect?.selectedIndex];
+          if (selectedOption && selectedOption.value) {
+            shippingCost = parseFloat(selectedOption.getAttribute('data-price')) || 0;
+          }
+        }
+        
+        // Calculate total (subtotal after discount + shipping)
+        const totalEUR = currentSubtotal + shippingCost;
+        
+        // Get current currency
+        const getCurrentCurrency = window.getCurrentCurrency || function() {
+          return localStorage.getItem('selectedCurrency') || 'EUR';
+        };
+        const currentCurrency = getCurrentCurrency().toLowerCase();
+        
+        // Convert to current currency
+        const totalInCurrency = window.convertPrice ? window.convertPrice(totalEUR, currentCurrency.toUpperCase()) : totalEUR;
+        const totalInCents = Math.round(totalInCurrency * 100);
+        
+        // Update payment request
+        window.paymentRequest.update({
+          total: {
+            label: 'Total',
+            amount: totalInCents,
+          }
+        });
+        
+        console.log('🔄 Updated Payment Request total:', {
+          subtotal: currentSubtotal,
+          shipping: shippingCost,
+          total: totalEUR,
+          totalInCurrency: totalInCurrency,
+          totalInCents: totalInCents,
+          currency: currentCurrency.toUpperCase()
+        });
+      } catch (e) {
+        console.error('Error updating Payment Request total:', e);
       }
     }
     
@@ -2147,6 +2220,13 @@
           const cityField = document.getElementById('city');
           const postalCodeField = document.getElementById('postal_code');
           const countryField = document.getElementById('country');
+          const couponField = document.getElementById('coupon');
+          
+          // Ensure coupon code is set if one was applied
+          if (appliedCouponCode && couponField) {
+            couponField.value = appliedCouponCode;
+            console.log('✅ Set coupon code in form:', appliedCouponCode);
+          }
           
           if (ev.payerName && fullNameField) {
             fullNameField.value = ev.payerName;
