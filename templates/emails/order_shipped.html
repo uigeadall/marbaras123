@@ -74,11 +74,11 @@
       {% if order.tracking_number %}
         {% with tracking_url=order.get_tracking_url %}
           {% if tracking_url %}
-            <a href="{{ tracking_url }}" target="_blank" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 10px; margin-bottom: 10px;">📦 Track Your Order</a>
+            <a href="{{ tracking_url }}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-right: 10px; margin-bottom: 10px;">📦 Track Your Order</a>
           {% endif %}
         {% endwith %}
       {% endif %}
-      <a href="{{ base_url }}{% url 'profile_orders' %}" target="_blank" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Orders</a>
+      <a href="{{ base_url }}{% url 'profile_orders' %}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Orders</a>
     </div>
     
     <p style="margin-top: 30px; color: #666; font-size: 14px;">Best regards,<br>The Marbaras Team</p>
