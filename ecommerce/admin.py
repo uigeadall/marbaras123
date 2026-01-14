@@ -1431,18 +1431,22 @@ class CouponAdmin(admin.ModelAdmin):
             # Check if email already subscribed
             existing_subscription = EmailSubscription.objects.filter(email=email).first()
             if existing_subscription:
-                messages.warning(request, f'Email {email} already has a subscription with coupon {existing_subscription.coupon.code if existing_subscription.coupon else "N/A"}')
-                return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
-            
-            # Create email subscription record
-            try:
-                subscription = EmailSubscription.objects.create(
-                    email=email,
-                    coupon=coupon
-                )
-            except Exception as e:
-                messages.error(request, f'Error creating subscription: {str(e)}')
-                return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
+                # Update existing subscription with new coupon
+                old_coupon_code = existing_subscription.coupon.code if existing_subscription.coupon else "N/A"
+                existing_subscription.coupon = coupon
+                existing_subscription.save()
+                subscription = existing_subscription
+                messages.info(request, f'Email {email} already had a subscription with coupon {old_coupon_code}. Updated to new coupon {coupon.code}.')
+            else:
+                # Create email subscription record
+                try:
+                    subscription = EmailSubscription.objects.create(
+                        email=email,
+                        coupon=coupon
+                    )
+                except Exception as e:
+                    messages.error(request, f'Error creating subscription: {str(e)}')
+                    return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
             
             # Create temporary user object
             class EmailUser:
