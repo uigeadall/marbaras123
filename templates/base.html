@@ -852,6 +852,11 @@
             closeEmailPopup();
             // Set cookie to remember user subscribed
             document.cookie = 'email_popup_subscribed=true; path=/; max-age=2592000'; // 30 days
+            // Hide discount button if it exists
+            const discountButtons = document.querySelectorAll('button[onclick="showEmailPopup()"]');
+            discountButtons.forEach(btn => {
+              btn.style.display = 'none';
+            });
           }, 3000);
         } else {
           messageDiv.innerHTML = '<span style="color: #dc2626;">❌ ' + (data.message || 'An error occurred. Please try again.') + '</span>';
