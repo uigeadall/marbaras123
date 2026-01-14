@@ -169,10 +169,11 @@
         {% for rv in recently_viewed %}
           <div class="product-card">
             <a href="{% url 'product_detail' rv.slug %}">
-              {% if rv.image %}
-                <img src="{{ rv.image.url }}" alt="{{ rv.name }}" loading="lazy">
+              {% if rv.main_image %}
+                <img src="{{ rv.main_image.url }}" alt="{{ rv.name }}" loading="lazy"
+                     onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}';">
               {% else %}
-                <img src="{% static 'images/placeholder.jpg' %}" alt="{{ p.name }}" loading="lazy">
+                <img src="{% static 'images/placeholder.jpg' %}" alt="{{ rv.name }}" loading="lazy">
               {% endif %}
             </a>
             <h3>{{ rv.name }}</h3>
