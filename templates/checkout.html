@@ -863,6 +863,8 @@
       const applyBtn = document.getElementById('apply-coupon-btn');
       const couponInput = document.getElementById('coupon');
       const couponMessage = document.getElementById('coupon-message');
+      const originalSubtotalRow = document.getElementById('original-subtotal-row');
+      const originalSubtotalDisplay = document.getElementById('original-subtotal-display');
       const discountRow = document.getElementById('discount-row');
       const discountDisplay = document.getElementById('discount-display');
       const subtotalDisplay = document.getElementById('subtotal-display');
@@ -922,6 +924,13 @@
 
             // Update UI
             couponMessage.innerHTML = `<span style="color:#0a0;">✓ Coupon ${data.coupon_code} applied! ${data.discount_display}</span>`;
+            
+            // Show original subtotal row
+            if (originalSubtotalRow) {
+              originalSubtotalRow.style.display = 'flex';
+            }
+            
+            // Show discount row
             discountRow.style.display = 'flex';
             discountDisplay.setAttribute('data-eur-price', data.discount);
             
