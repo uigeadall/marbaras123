@@ -2104,37 +2104,54 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
             }, status=400)
     
     # Find an available coupon (active, not expired, not fully used)
-    # Prefer coupons with 5% discount, but accept any available coupon
+    # IMPORTANT: Use coupons from database, NOT hardcoded "WELCOME5"
+    import logging
+    logger = logging.getLogger(__name__)
     now = timezone.now()
-    coupon = Coupon.objects.filter(
+    
+    # First, try to find 5% discount coupons
+    available_5_percent = Coupon.objects.filter(
         active=True,
-        percent_off=5.00  # Look for 5% discount coupons
+        percent_off=5.00
     ).filter(
         Q(starts_at__isnull=True) | Q(starts_at__lte=now),
         Q(ends_at__isnull=True) | Q(ends_at__gte=now)
     ).filter(
         Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
-    ).first()
+    )
+    
+    logger.info(f"Found {available_5_percent.count()} available 5% coupons")
+    for c in available_5_percent:
+        logger.info(f"  - Coupon: {c.code} (ID: {c.id}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
+    
+    coupon = available_5_percent.first()
     
     # If no 5% coupon found, try to find any available coupon
     if not coupon:
-        coupon = Coupon.objects.filter(
+        all_available = Coupon.objects.filter(
             active=True
         ).filter(
             Q(starts_at__isnull=True) | Q(starts_at__lte=now),
             Q(ends_at__isnull=True) | Q(ends_at__gte=now)
         ).filter(
             Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
-        ).first()
+        )
+        
+        logger.info(f"Found {all_available.count()} available coupons (any discount)")
+        for c in all_available:
+            discount = f"{c.percent_off}%" if c.percent_off else f"${c.amount_off}"
+            logger.info(f"  - Coupon: {c.code} (ID: {c.id}, discount: {discount}, used: {c.used_count}/{c.usage_limit or 'unlimited'})")
+        
+        coupon = all_available.first()
     
     if not coupon:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning(f"No available coupon found for email subscription: {email}")
         return JsonResponse({
             'success': False, 
             'message': 'Sorry, no promo codes available at the moment. Please try again later.'
         }, status=404)
+    
+    logger.info(f"Selected coupon for {email}: {coupon.code} (ID: {coupon.id})")
     
     # Create email subscription record
     try:
