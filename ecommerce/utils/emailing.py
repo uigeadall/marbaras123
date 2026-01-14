@@ -132,10 +132,18 @@ def send_welcome_email_with_promo(user, base_url, promo_code, discount_display="
             return False
 
         from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
+        # Ensure promo_code is a string and not None
+        if not promo_code:
+            log.error("  ❌ promo_code is None or empty in send_welcome_email_with_promo!")
+            return False
+        promo_code_str = str(promo_code).strip()
+        
+        log.info("  Promo code received: '%s' (original type: %s)", promo_code_str, type(promo_code).__name__)
+        
         ctx = {
             "user": user, 
             "base_url": base_url,
-            "promo_code": promo_code,
+            "promo_code": promo_code_str,  # Use string version
             "discount_display": discount_display
         }
 
