@@ -1331,7 +1331,40 @@ class CouponAdmin(admin.ModelAdmin):
     list_display = ("code", "percent_off", "amount_off", "active", "starts_at", "ends_at", "used_count", "usage_limit")
     search_fields = ("code",)
     list_filter = ("active",)
-    actions = ["send_coupon_email"]
+    actions = ["send_coupon_email", "generate_5_percent_coupons"]
+    
+    def generate_5_percent_coupons(self, request, queryset):
+        """Generate 200 new 5% discount coupons."""
+        from django.utils import timezone
+        from ecommerce.utils.coupons import create_batch
+        from django.contrib import messages
+        
+        now = timezone.now()
+        starts_at = now
+        ends_at = now + timezone.timedelta(days=365)
+        
+        try:
+            codes = create_batch(
+                200,
+                prefix="WELCOME-",
+                percent_off=5.0,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                usage_limit=1,
+                active=True,
+            )
+            self.message_user(
+                request,
+                f'✅ Successfully generated {len(codes)} coupons with 5% discount!',
+                messages.SUCCESS
+            )
+        except Exception as e:
+            self.message_user(
+                request,
+                f'❌ Error generating coupons: {str(e)}',
+                messages.ERROR
+            )
+    generate_5_percent_coupons.short_description = "Generate 200 new 5% discount coupons"
     readonly_fields = ("send_coupon_button",)
     
     fieldsets = (
