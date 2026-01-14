@@ -584,6 +584,7 @@
                 class="px-3 py-2 rounded-lg border border-slate-200 text-sm"
                 onchange="this.form.submit()">
           <option value="" {% if not sort %}selected{% endif %}>Default</option>
+          <option value="newest" {% if sort == "newest" %}selected{% endif %}>Newest</option>
           <option value="most_sold" {% if sort == "most_sold" %}selected{% endif %}>Most Sold</option>
           <option value="price_asc" {% if sort == "price_asc" %}selected{% endif %}>Price: Low to High</option>
           <option value="price_desc" {% if sort == "price_desc" %}selected{% endif %}>Price: High to Low</option>

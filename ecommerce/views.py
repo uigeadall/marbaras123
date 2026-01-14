@@ -390,6 +390,8 @@ def home(request: HttpRequest) -> HttpResponse:
         products = products.order_by("-_eff_price")
     elif sort == "most_sold":
         products = products.order_by("-recently_sold", "-id")
+    elif sort == "newest":
+        products = products.order_by("-id")
 
 
     ids = [int(pk) for pk in request.session.get("recently_viewed", []) if str(pk).isdigit()]
@@ -558,6 +560,10 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
         products = products.order_by("_eff_price")
     elif sort == "price_desc":
         products = products.order_by("-_eff_price")
+    elif sort == "most_sold":
+        products = products.order_by("-recently_sold", "-id")
+    elif sort == "newest":
+        products = products.order_by("-id")
 
     recently_viewed_ids = request.session.get("recently_viewed", [])
     recently_viewed = Product.objects.filter(id__in=recently_viewed_ids)
@@ -622,6 +628,8 @@ def product_list(request: HttpRequest) -> HttpResponse:
         products = products.order_by("-_eff_price")
     elif sort == "most_sold":
         products = products.order_by("-recently_sold", "-id")
+    elif sort == "newest":
+        products = products.order_by("-id")
 
     categories = _get_categories()
     recently_viewed_ids = request.session.get("recently_viewed", [])

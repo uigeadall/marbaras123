@@ -72,6 +72,12 @@
     <aside class="sidebar-fixed">
       <h2>Categories</h2>
       <ul>
+        <li>
+          <a href="{% url 'product_list' %}?sort=newest"
+             class="{% if request.GET.sort == 'newest' and not selected_category %}active{% endif %}">
+            NEWEST
+          </a>
+        </li>
         {% for category in categories %}
           <li>
             <a href="{% url 'products_by_category' category.slug %}?sort={{ request.GET.sort|default:'' }}"
