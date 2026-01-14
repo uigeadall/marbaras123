@@ -2186,7 +2186,20 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     promo_code_to_send = coupon.code
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"Sending welcome email to {email} with coupon code: {promo_code_to_send} (ID: {coupon.id})")
+    logger.info(f"=== SENDING WELCOME EMAIL ===")
+    logger.info(f"Email: {email}")
+    logger.info(f"Coupon ID: {coupon.id}")
+    logger.info(f"Coupon Code from DB: '{coupon.code}'")
+    logger.info(f"Coupon Code Type: {type(coupon.code)}")
+    logger.info(f"Promo code to send: '{promo_code_to_send}'")
+    logger.info(f"Discount display: '{discount_display}'")
+    logger.info(f"Base URL: {base_url}")
+    
+    # Double-check we're using the right code
+    if promo_code_to_send == "WELCOME5":
+        logger.warning(f"⚠️ WARNING: Using 'WELCOME5' - this might be from database!")
+        logger.warning(f"   Coupon object: {coupon}")
+        logger.warning(f"   Coupon.__dict__: {coupon.__dict__}")
     
     try:
         result = send_welcome_email_with_promo(email_user, base_url, promo_code_to_send, discount_display)

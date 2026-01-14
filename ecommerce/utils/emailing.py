@@ -153,8 +153,27 @@ def send_welcome_email_with_promo(user, base_url, promo_code, discount_display="
 
         try:
             subject = f"🎁 Welcome to Marbaras - Your {discount_display} Discount Code!"
+            
+            # Log context before rendering
+            log.info("  Context before rendering:")
+            log.info("    promo_code: '%s'", ctx.get('promo_code'))
+            log.info("    discount_display: '%s'", ctx.get('discount_display'))
+            log.info("    base_url: '%s'", ctx.get('base_url'))
+            
             text = render_to_string("emails/welcome_promo.txt", ctx)
             html = render_to_string("emails/welcome_promo.html", ctx)
+            
+            # Log rendered content to verify promo_code is correct
+            if promo_code_str in text:
+                log.info("  ✅ Promo code '%s' found in text email", promo_code_str)
+            else:
+                log.error("  ❌ Promo code '%s' NOT found in text email! Text preview: %s", promo_code_str, text[:200])
+            
+            if promo_code_str in html:
+                log.info("  ✅ Promo code '%s' found in HTML email", promo_code_str)
+            else:
+                log.error("  ❌ Promo code '%s' NOT found in HTML email! HTML preview: %s", promo_code_str, html[:500])
+            
             msg = EmailMultiAlternatives(subject, text, from_email, [email])
             msg.attach_alternative(html, "text/html")
             
