@@ -103,6 +103,7 @@
       <label for="sort">Sort by:</label>
       <select name="sort" id="sort" onchange="this.form.submit()">
         <option value="" {% if not request.GET.sort %}selected{% endif %}>Default</option>
+        <option value="newest" {% if request.GET.sort == "newest" %}selected{% endif %}>Newest</option>
         <option value="most_sold" {% if request.GET.sort == "most_sold" %}selected{% endif %}>Most Sold</option>
         <option value="price_asc" {% if request.GET.sort == "price_asc" %}selected{% endif %}>Price: Low to High</option>
         <option value="price_desc" {% if request.GET.sort == "price_desc" %}selected{% endif %}>Price: High to Low</option>
