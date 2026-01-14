@@ -115,14 +115,16 @@
         {% for p in products %}
           <div class="product-card">
             <a href="{% url 'product_detail' p.slug %}">
-              {% if p.image %}
+              {% if p.main_image %}
                 {% if forloop.counter <= 5 %}
-                  <link rel="preload" as="image" href="{{ p.image.url }}">
-                  <img src="{{ p.image.url }}" alt="{{ p.name }}" 
-                       loading="eager" fetchpriority="high" decoding="async">
+                  <link rel="preload" as="image" href="{{ p.main_image.url }}">
+                  <img src="{{ p.main_image.url }}" alt="{{ p.name }}" 
+                       loading="eager" fetchpriority="high" decoding="async"
+                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}';">
                 {% else %}
-                  <img src="{{ p.image.url }}" alt="{{ p.name }}" 
-                       loading="lazy" decoding="async">
+                  <img src="{{ p.main_image.url }}" alt="{{ p.name }}" 
+                       loading="lazy" decoding="async"
+                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}';">
                 {% endif %}
               {% else %}
                 <img src="{% static 'images/placeholder.jpg' %}" alt="{{ p.name }}" loading="lazy" decoding="async">

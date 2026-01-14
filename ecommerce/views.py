@@ -713,9 +713,19 @@ def product_list(request: HttpRequest) -> HttpResponse:
 
     if category_id:
         selected_category = get_object_or_404(Category, id=category_id)
-        products = Product.objects.filter(category=selected_category).select_related("category")
+        products = (
+            Product.objects
+            .filter(category=selected_category)
+            .select_related("category")
+            .prefetch_related(Prefetch("images", queryset=ProductImage.objects.all()))
+        )
     else:
-        products = Product.objects.all().select_related("category")
+        products = (
+            Product.objects
+            .all()
+            .select_related("category")
+            .prefetch_related(Prefetch("images", queryset=ProductImage.objects.all()))
+        )
 
     products = products.annotate(_eff_price=Coalesce("discount_price", "price"))
     if sort == "price_asc":
@@ -729,7 +739,12 @@ def product_list(request: HttpRequest) -> HttpResponse:
 
     categories = _get_categories()
     recently_viewed_ids = request.session.get("recently_viewed", [])
-    recently_viewed = Product.objects.filter(id__in=recently_viewed_ids)
+    recently_viewed = (
+        Product.objects
+        .filter(id__in=recently_viewed_ids)
+        .select_related("category")
+        .prefetch_related(Prefetch("images", queryset=ProductImage.objects.all()))
+    )
     recently_viewed = sorted(recently_viewed, key=lambda x: recently_viewed_ids.index(x.id))
 
     return render(
