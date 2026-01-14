@@ -851,6 +851,109 @@
       {% endif %}
     }
 
+    // Coupon application handler
+    (function() {
+      const applyBtn = document.getElementById('apply-coupon-btn');
+      const couponInput = document.getElementById('coupon');
+      const couponMessage = document.getElementById('coupon-message');
+      const discountRow = document.getElementById('discount-row');
+      const discountDisplay = document.getElementById('discount-display');
+      const subtotalDisplay = document.getElementById('subtotal-display');
+      const totalDisplay = document.getElementById('total-display');
+      const couponErrorInitial = document.getElementById('coupon-error-initial');
+      const couponSuccessInitial = document.getElementById('coupon-success-initial');
+
+      // Hide initial messages if they exist
+      if (couponErrorInitial) couponErrorInitial.style.display = 'none';
+      if (couponSuccessInitial) couponSuccessInitial.style.display = 'none';
+
+      function applyCoupon() {
+        const couponCode = couponInput.value.trim().toUpperCase();
+        
+        if (!couponCode) {
+          couponMessage.innerHTML = '<span style="color:#c00;">Please enter a coupon code</span>';
+          return;
+        }
+
+        // Get current subtotal from the display element
+        const currentSubtotal = parseFloat(subtotalDisplay.getAttribute('data-eur-price')) || subtotal;
+
+        // Disable button during request
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying...';
+        couponMessage.innerHTML = '';
+
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+        // Make AJAX request
+        fetch('{% url "validate_coupon" %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrfToken
+          },
+          body: `coupon_code=${encodeURIComponent(couponCode)}&subtotal=${currentSubtotal}`
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            // Update discount
+            currentDiscount = parseFloat(data.discount);
+            appliedCouponCode = data.coupon_code;
+
+            // Update UI
+            couponMessage.innerHTML = `<span style="color:#0a0;">✓ Coupon ${data.coupon_code} applied! ${data.discount_display}</span>`;
+            discountRow.style.display = 'flex';
+            discountDisplay.setAttribute('data-eur-price', data.discount);
+            
+            // Update subtotal display with new subtotal after discount
+            subtotalDisplay.setAttribute('data-eur-price', data.new_subtotal);
+            
+            // Update prices
+            updateTotal();
+            
+            // Update prices with currency conversion
+            if (window.updateAllPrices) {
+              window.updateAllPrices();
+            }
+          } else {
+            // Show error
+            currentDiscount = 0;
+            appliedCouponCode = null;
+            couponMessage.innerHTML = `<span style="color:#c00;">✗ ${data.error || 'Invalid coupon code'}</span>`;
+            discountRow.style.display = 'none';
+            updateTotal();
+            if (window.updateAllPrices) {
+              window.updateAllPrices();
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Error applying coupon:', error);
+          couponMessage.innerHTML = '<span style="color:#c00;">Error applying coupon. Please try again.</span>';
+        })
+        .finally(() => {
+          applyBtn.disabled = false;
+          applyBtn.textContent = 'Apply';
+        });
+      }
+
+      // Attach event listeners
+      if (applyBtn) {
+        applyBtn.addEventListener('click', applyCoupon);
+      }
+      
+      if (couponInput) {
+        couponInput.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            applyCoupon();
+          }
+        });
+      }
+    })();
+
     shippingSelect?.addEventListener('change', function() {
       updateTotal();
       updatePaymentRequestShipping();
