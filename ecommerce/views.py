@@ -176,8 +176,14 @@ def _cap_quantity(requested_total: int, available: int) -> int:
 
 
 
-def _process_coupon(coupon_code: str, subtotal: Decimal) -> tuple[Decimal, Decimal, Optional[str], Optional[str]]:
-    """Process coupon code and return (new_subtotal, discount, coupon_applied, coupon_error)."""
+def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = True) -> tuple[Decimal, Decimal, Optional[str], Optional[str]]:
+    """Process coupon code and return (new_subtotal, discount, coupon_applied, coupon_error).
+    
+    Args:
+        coupon_code: The coupon code to process
+        subtotal: The subtotal amount
+        apply_usage: If True, increment used_count (for actual order). If False, just validate (for preview).
+    """
     discount = Decimal("0.00")
     coupon_applied = None
     coupon_error = None
@@ -188,8 +194,9 @@ def _process_coupon(coupon_code: str, subtotal: Decimal) -> tuple[Decimal, Decim
             new_subtotal = coupon.apply(subtotal)
             discount = subtotal - new_subtotal
             subtotal = new_subtotal
-            coupon.used_count += 1
-            coupon.save(update_fields=["used_count"])
+            if apply_usage:
+                coupon.used_count += 1
+                coupon.save(update_fields=["used_count"])
             coupon_applied = coupon.code
         else:
             coupon_error = "Invalid or expired coupon."
@@ -1443,7 +1450,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 return redirect("checkout")
 
 
-        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal)
+        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True)
 
         # Shipping logic: Canada and Australia require shipping, other countries can have free shipping
         shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
@@ -1668,7 +1675,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             return redirect("guest_checkout")
 
 
-        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal)
+        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True)
 
 
         shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
@@ -2310,6 +2317,60 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
             'success': True, 
             'message': f'Your promo code is: {promo_code_to_send}. Use it at checkout for {discount_display}!'
         })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def validate_coupon(request: HttpRequest) -> JsonResponse:
+    """AJAX endpoint to validate coupon code and return discount info without applying usage."""
+    from decimal import Decimal
+    
+    coupon_code = (request.POST.get('coupon_code', '') or '').strip().upper()
+    subtotal_str = request.POST.get('subtotal', '0')
+    
+    try:
+        subtotal = Decimal(str(subtotal_str))
+    except (ValueError, TypeError):
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid subtotal'
+        }, status=400)
+    
+    if not coupon_code:
+        return JsonResponse({
+            'success': False,
+            'error': 'Coupon code is required'
+        }, status=400)
+    
+    # Process coupon without applying usage (just for preview)
+    new_subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=False)
+    
+    if coupon_error:
+        return JsonResponse({
+            'success': False,
+            'error': coupon_error
+        }, status=400)
+    
+    if coupon_applied:
+        coupon = Coupon.objects.filter(code=coupon_applied).first()
+        discount_display = ""
+        if coupon and coupon.percent_off:
+            discount_display = f"{coupon.percent_off}% OFF"
+        elif coupon and coupon.amount_off:
+            discount_display = f"${coupon.amount_off} OFF"
+        
+        return JsonResponse({
+            'success': True,
+            'coupon_code': coupon_applied,
+            'discount': str(discount),
+            'new_subtotal': str(new_subtotal),
+            'discount_display': discount_display
+        })
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Invalid coupon code'
+    }, status=400)
 
 
 def robots_txt(request: HttpRequest) -> HttpResponse:

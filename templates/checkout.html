@@ -341,9 +341,11 @@
                 <label for="coupon">Promo code</label>
                 <div class="coupon-row">
                   <input id="coupon" name="coupon" type="text" placeholder="Enter promo code" value="{{ coupon_code|default:'' }}">
+                  <button type="button" id="apply-coupon-btn" class="btn btn-dark" style="white-space: nowrap;">Apply</button>
                 </div>
-                {% if coupon_error %}<div style="color:#c00; margin-top:6px;">{{ coupon_error }}</div>{% endif %}
-                {% if coupon_applied %}<div style="color:#0a0; margin-top:6px;">Coupon {{ coupon_applied }} applied.</div>{% endif %}
+                <div id="coupon-message" style="margin-top:6px;"></div>
+                {% if coupon_error %}<div id="coupon-error-initial" style="color:#c00; margin-top:6px;">{{ coupon_error }}</div>{% endif %}
+                {% if coupon_applied %}<div id="coupon-success-initial" style="color:#0a0; margin-top:6px;">Coupon {{ coupon_applied }} applied.</div>{% endif %}
               </div>
 
 
@@ -761,6 +763,10 @@
       });
     }
 
+    // Store current discount state
+    let currentDiscount = {{ discount|default:0 }};
+    let appliedCouponCode = null;
+
     function updateTotal() {
       let shippingCost = 0;
       let shippingType = null;
@@ -782,7 +788,7 @@
         }
       }
 
-      const finalSubtotal = subtotal - discount;
+      const finalSubtotal = subtotal - currentDiscount;
       const total = finalSubtotal + shippingCost;
 
       // Use currency converter functions from base.html

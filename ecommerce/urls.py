@@ -43,6 +43,7 @@ path('checkout/guest/', views.guest_checkout_view, name='guest_checkout'),
     path("sitemap.xml", views.sitemap_xml, name="sitemap_xml"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
     path("subscribe-email/", views.subscribe_email, name="subscribe_email"),
+    path("validate-coupon/", views.validate_coupon, name="validate_coupon"),
 ]
 
 
