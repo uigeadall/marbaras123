@@ -37,6 +37,8 @@ db.sqlite3-journal
 # /media  # Commented out to upload media files to Railway
 /staticfiles
 /static
+# Exception: Allow jewerly-popup.png to be committed
+!static/images/jewerly-popup.png
 
 # Environment variables
 .env
