@@ -9,6 +9,12 @@
   <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
   
+  {% comment %}Preconnect to Cloudinary for faster image loading{% endcomment %}
+  {% if CLOUDINARY_CLOUD_NAME %}
+  <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+  <link rel="dns-prefetch" href="https://res.cloudinary.com">
+  {% endif %}
+  
   {% comment %}Open Graph / Facebook{% endcomment %}
   <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
   <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}" />

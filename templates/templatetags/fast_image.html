@@ -1,0 +1,17 @@
+{% if url %}
+  {% if priority %}
+    <link rel="preload" as="image" href="{{ url }}"{% if srcset %} imagesrcset="{{ srcset }}" imagesizes="{{ sizes }}"{% endif %}>
+  {% endif %}
+  <img 
+    src="{{ url }}" 
+    {% if srcset %}srcset="{{ srcset }}" sizes="{{ sizes }}"{% endif %}
+    alt="{{ alt }}"
+    width="{{ width }}"
+    height="{{ height }}"
+    {% if lazy %}loading="lazy"{% else %}loading="eager"{% endif %}
+    {% if priority %}fetchpriority="high"{% endif %}
+    decoding="async"
+    {% if class_name %}class="{{ class_name }}"{% endif %}
+    style="aspect-ratio: {{ width }}/{{ height }}; object-fit: cover;"
+  >
+{% endif %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load image_fast %}
 
 {% block title %}Products - Marbaras{% endblock %}
 
@@ -117,17 +118,12 @@
             <a href="{% url 'product_detail' p.slug %}">
               {% if p.main_image %}
                 {% if forloop.counter <= 5 %}
-                  <link rel="preload" as="image" href="{{ p.main_image.url }}">
-                  <img src="{{ p.main_image.url }}" alt="{{ p.name }}" 
-                       loading="eager" fetchpriority="high" decoding="async"
-                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}';">
+                  {% fast_image p.main_image alt=p.name width=400 height=400 lazy=False priority=True %}
                 {% else %}
-                  <img src="{{ p.main_image.url }}" alt="{{ p.name }}" 
-                       loading="lazy" decoding="async"
-                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}';">
+                  {% fast_image p.main_image alt=p.name width=400 height=400 lazy=True priority=False %}
                 {% endif %}
               {% else %}
-                <img src="{% static 'images/placeholder.jpg' %}" alt="{{ p.name }}" loading="lazy" decoding="async">
+                <img src="{% static 'images/placeholder.jpg' %}" alt="{{ p.name }}" loading="lazy" decoding="async" width="400" height="400">
               {% endif %}
             </a>
             <h3>{{ p.name }}</h3>

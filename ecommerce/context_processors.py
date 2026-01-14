@@ -215,3 +215,11 @@ def show_welcome_discount_button(request):
     has_subscribed = cookies.get('email_popup_subscribed') == 'true'
     
     return {"show_welcome_discount_button": not has_subscribed}
+
+
+def cloudinary_config(request):
+    """
+    Return Cloudinary configuration for use in templates.
+    """
+    from django.conf import settings
+    return {"CLOUDINARY_CLOUD_NAME": getattr(settings, "CLOUDINARY_CLOUD_NAME", "")}

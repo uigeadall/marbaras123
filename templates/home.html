@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load image_fast %}
 
 {% block title %}Home - Marbaras{% endblock %}
 
@@ -663,18 +664,13 @@
                 <a href="{% url 'product_detail' product.slug %}" class="block">
                   {% if product.main_image %}
                     {% if forloop.counter <= 5 %}
-                      <link rel="preload" as="image" href="{{ product.main_image.url }}">
-                      <img src="{{ product.main_image.url }}" alt="{{ product.name }}" 
-                           loading="eager" fetchpriority="high" decoding="async"
-                           class="w-full aspect-square object-cover">
+                      {% fast_image product.main_image alt=product.name width=400 height=400 class_name="w-full aspect-square object-cover" lazy=False priority=True %}
                     {% else %}
-                      <img src="{{ product.main_image.url }}" alt="{{ product.name }}" 
-                           loading="lazy" decoding="async"
-                           class="w-full aspect-square object-cover">
+                      {% fast_image product.main_image alt=product.name width=400 height=400 class_name="w-full aspect-square object-cover" lazy=True priority=False %}
                     {% endif %}
                   {% else %}
                     <img src="{% static 'images/placeholder.jpg' %}" alt="No Image" loading="lazy" decoding="async"
-                         class="w-full aspect-square object-cover">
+                         class="w-full aspect-square object-cover" width="400" height="400">
                   {% endif %}
                 </a>
 

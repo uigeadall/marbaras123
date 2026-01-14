@@ -183,6 +183,7 @@ TEMPLATES = [
                 "ecommerce.context_processors.meta_pixel_id",
                 "ecommerce.context_processors.google_analytics_id",
                 "ecommerce.context_processors.show_welcome_discount_button",
+                "ecommerce.context_processors.cloudinary_config",
             ],
         },
     },
