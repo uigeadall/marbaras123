@@ -625,6 +625,9 @@ STRIPE_SECRET_KEY = _clean_stripe_key(env("STRIPE_SECRET_KEY", ""))
 META_PIXEL_ID = env("META_PIXEL_ID", "")
 
 # Google Analytics (GA4)
+GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")
+
+# Google Analytics (GA4)
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "")  # Format: G-XXXXXXXXXX
 STRIPE_PUBLISHABLE_KEY = _clean_stripe_key(env("STRIPE_PUBLISHABLE_KEY", ""))
 STRIPE_WEBHOOK_SECRET = _clean_stripe_key(env("STRIPE_WEBHOOK_SECRET", ""))
