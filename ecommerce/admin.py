@@ -621,8 +621,9 @@ class FavoriteAdmin(admin.ModelAdmin):
     
     @admin.display(description='SKU', ordering='product__sku')
     def product_sku(self, obj):
-        return obj.product.sku or '-'
-    product_sku.short_description = 'SKU'
+        if obj.product:
+            return obj.product.sku or '-'
+        return '-'
 
 
 admin.site.register(Discount)
