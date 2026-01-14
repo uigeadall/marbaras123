@@ -619,7 +619,7 @@ class FavoriteAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at',)
     date_hierarchy = 'created_at'
     
-    @admin.display(description='SKU', ordering='product__sku')
+    @admin.display(description='SKU')
     def product_sku(self, obj):
         if obj.product:
             return obj.product.sku or '-'
