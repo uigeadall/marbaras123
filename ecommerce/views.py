@@ -2060,6 +2060,95 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     return response
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def subscribe_email(request: HttpRequest) -> JsonResponse:
+    """Handle email subscription from popup and send welcome email with promo code."""
+    import secrets
+    import string
+    from django.utils import timezone
+    from datetime import timedelta
+    from ecommerce.models import Coupon
+    from ecommerce.utils.emailing import send_welcome_email_with_promo
+    
+    email = request.POST.get('email', '').strip().lower()
+    
+    if not email:
+        return JsonResponse({'success': False, 'message': 'Email is required'}, status=400)
+    
+    # Validate email format
+    from django.core.validators import validate_email
+    from django.core.exceptions import ValidationError
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({'success': False, 'message': 'Invalid email address'}, status=400)
+    
+    # Generate unique promo code
+    code_base = 'WELCOME5'
+    code = code_base
+    counter = 1
+    
+    # Ensure code is unique
+    while Coupon.objects.filter(code=code).exists():
+        code = f"{code_base}{counter}"
+        counter += 1
+    
+    # Create coupon (5% discount, valid for 30 days, one-time use)
+    try:
+        coupon = Coupon.objects.create(
+            code=code,
+            percent_off=5.00,
+            active=True,
+            starts_at=timezone.now(),
+            ends_at=timezone.now() + timedelta(days=30),
+            usage_limit=1,
+            used_count=0
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating coupon: {e}")
+        return JsonResponse({'success': False, 'message': 'Error creating promo code'}, status=500)
+    
+    # Create a temporary user object for email sending (or use email directly)
+    # We'll create a simple user-like object
+    class EmailUser:
+        def __init__(self, email):
+            self.email = email
+            self.username = email.split('@')[0]
+    
+    email_user = EmailUser(email)
+    base_url = request.build_absolute_uri('/').rstrip('/')
+    
+    # Send welcome email with promo code
+    try:
+        result = send_welcome_email_with_promo(email_user, base_url, coupon.code)
+        if result:
+            return JsonResponse({
+                'success': True, 
+                'message': f'Check your email! Your 5% discount code ({coupon.code}) has been sent.'
+            })
+        else:
+            # Coupon was created but email failed - still return success but log it
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Email failed for {email} but coupon {coupon.code} was created")
+            return JsonResponse({
+                'success': True, 
+                'message': f'Your promo code is: {coupon.code}. Use it at checkout for 5% off!'
+            })
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error sending welcome email: {e}")
+        # Still return success with the code since coupon was created
+        return JsonResponse({
+            'success': True, 
+            'message': f'Your promo code is: {coupon.code}. Use it at checkout for 5% off!'
+        })
+
+
 def robots_txt(request: HttpRequest) -> HttpResponse:
     """Generate robots.txt file."""
     base_url = f"{request.scheme}://{request.get_host}"

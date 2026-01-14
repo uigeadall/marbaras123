@@ -1,0 +1,16 @@
+Welcome to Marbaras!
+
+Hello!
+
+Thank you for subscribing to Marbaras! We're excited to welcome you to our family.
+
+Your exclusive discount code: {{ promo_code }}
+
+Get 5% OFF your order!
+
+How to use: Enter this code at checkout to get 5% off your order. Valid for 30 days, one-time use only.
+
+Shop now: {{ base_url }}{% url 'home' %}?all=true
+
+Best regards,
+The Marbaras Team

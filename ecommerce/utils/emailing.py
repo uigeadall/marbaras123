@@ -123,6 +123,46 @@ def send_welcome_email(user, base_url) -> bool:
         log.exception("Exception details:")
         return False
 
+def send_welcome_email_with_promo(user, base_url, promo_code) -> bool:
+    """Send welcome email with promo code to email subscriber. Returns True on success, False on failure."""
+    try:
+        email = getattr(user, "email", None)
+        if not email:
+            log.warning("Welcome email with promo skipped, no email: %s", user)
+            return False
+
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
+        ctx = {
+            "user": user, 
+            "base_url": base_url,
+            "promo_code": promo_code
+        }
+
+        log.info("📧 ATTEMPTING TO SEND WELCOME EMAIL WITH PROMO CODE")
+        log.info("  To: %s", email)
+        log.info("  Promo Code: %s", promo_code)
+
+        try:
+            subject = "🎁 Welcome to Marbaras - Your 5% Discount Code!"
+            text = render_to_string("emails/welcome_promo.txt", ctx)
+            html = render_to_string("emails/welcome_promo.html", ctx)
+            msg = EmailMultiAlternatives(subject, text, from_email, [email])
+            msg.attach_alternative(html, "text/html")
+            
+            result = msg.send(fail_silently=False)
+            log.info("  ✅ Welcome email with promo sent successfully")
+            return True
+        except Exception as smtp_error:
+            log.error("❌ SMTP Error when sending welcome email with promo to %s:", email)
+            log.error("  Error: %s", str(smtp_error))
+            log.exception("  Full exception traceback:")
+            return False
+    except Exception as e:
+        log.error("❌ Unexpected error in send_welcome_email_with_promo for %s: %s", getattr(user, "email", "unknown"), e)
+        log.exception("Exception details:")
+        return False
+
+
 def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
     """Send order confirmation email to customer."""
     # Prefer an explicit order email (e.g., shipping email), else fallback to user's email.

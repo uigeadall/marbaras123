@@ -758,6 +758,164 @@
 
   {% block extra_js %}{% endblock %}
 
+  <!-- Email Popup Modal -->
+  <div id="email-popup-modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); overflow: auto;">
+    <div style="position: relative; background-color: #fff; margin: 10% auto; padding: 30px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+      <span 
+        id="email-popup-close" 
+        style="position: absolute; top: 15px; right: 20px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1;"
+        onclick="closeEmailPopup()"
+        onmouseover="this.style.color='#000'"
+        onmouseout="this.style.color='#aaa'">
+        &times;
+      </span>
+      <div style="text-align: center;">
+        <h2 style="margin-top: 0; margin-bottom: 10px; font-size: 1.8rem; font-weight: 700; color: #111827;">🎁 Special Offer!</h2>
+        <p style="color: #666; margin-bottom: 20px; font-size: 1rem;">Subscribe to get a <strong style="color: #dc2626;">5% discount code</strong> delivered to your inbox!</p>
+        <form id="email-popup-form" onsubmit="submitEmailPopup(event)">
+          <input 
+            type="email" 
+            id="email-popup-input" 
+            placeholder="Enter your email address" 
+            required
+            style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 1rem; margin-bottom: 15px; box-sizing: border-box;"
+          >
+          <div id="email-popup-message" style="margin-bottom: 15px; font-size: 0.9rem;"></div>
+          <button 
+            type="submit"
+            id="email-popup-submit"
+            style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.3s;"
+            onmouseover="this.style.background='#5568d3'"
+            onmouseout="this.style.background='#667eea'">
+            Get My Discount Code
+          </button>
+        </form>
+        <p style="margin-top: 15px; color: #999; font-size: 0.85rem;">We respect your privacy. Unsubscribe at any time.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Email Popup Functions
+    function showEmailPopup() {
+      const modal = document.getElementById('email-popup-modal');
+      if (modal) {
+        modal.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function closeEmailPopup() {
+      const modal = document.getElementById('email-popup-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = 'auto';
+        // Set cookie to remember user closed the popup
+        document.cookie = 'email_popup_closed=true; path=/; max-age=2592000'; // 30 days
+      }
+    }
+
+    function submitEmailPopup(event) {
+      event.preventDefault();
+      const emailInput = document.getElementById('email-popup-input');
+      const submitBtn = document.getElementById('email-popup-submit');
+      const messageDiv = document.getElementById('email-popup-message');
+      const email = emailInput.value.trim();
+
+      if (!email) {
+        messageDiv.innerHTML = '<span style="color: #dc2626;">Please enter a valid email address.</span>';
+        return;
+      }
+
+      // Disable button and show loading
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+      messageDiv.innerHTML = '';
+
+      // Send email to server
+      fetch('{% url "subscribe_email" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: `email=${encodeURIComponent(email)}`
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          messageDiv.innerHTML = '<span style="color: #28a745;">✅ ' + data.message + '</span>';
+          emailInput.disabled = true;
+          submitBtn.textContent = 'Code Sent!';
+          // Close popup after 3 seconds
+          setTimeout(() => {
+            closeEmailPopup();
+            // Set cookie to remember user subscribed
+            document.cookie = 'email_popup_subscribed=true; path=/; max-age=2592000'; // 30 days
+          }, 3000);
+        } else {
+          messageDiv.innerHTML = '<span style="color: #dc2626;">❌ ' + (data.message || 'An error occurred. Please try again.') + '</span>';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Get My Discount Code';
+        }
+      })
+      .catch(error => {
+        messageDiv.innerHTML = '<span style="color: #dc2626;">❌ An error occurred. Please try again later.</span>';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Get My Discount Code';
+      });
+    }
+
+    // Check if popup should be shown
+    function checkEmailPopup() {
+      // Check cookies
+      const cookies = document.cookie.split(';');
+      let popupClosed = false;
+      let popupSubscribed = false;
+      
+      for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'email_popup_closed') popupClosed = true;
+        if (name === 'email_popup_subscribed') popupSubscribed = true;
+      }
+
+      // Don't show if user closed it or subscribed
+      if (popupClosed || popupSubscribed) {
+        return;
+      }
+
+      // Show popup after 2 seconds
+      setTimeout(() => {
+        showEmailPopup();
+      }, 2000);
+    }
+
+    // Initialize popup check when page loads
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', checkEmailPopup);
+    } else {
+      checkEmailPopup();
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('email-popup-modal');
+      if (event.target === modal) {
+        closeEmailPopup();
+      }
+    }
+
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        const modal = document.getElementById('email-popup-modal');
+        if (modal && modal.style.display === 'block') {
+          closeEmailPopup();
+        }
+      }
+    });
+  </script>
+
 </body>
 </html>
 
