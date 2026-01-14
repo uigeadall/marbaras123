@@ -1355,16 +1355,16 @@ class CouponAdmin(admin.ModelAdmin):
             )
             self.message_user(
                 request,
-                f'✅ Successfully generated {len(codes)} coupons with 5% discount!',
+                f'Successfully generated {len(codes)} coupons with 5% discount!',
                 messages.SUCCESS
             )
         except Exception as e:
             self.message_user(
                 request,
-                f'❌ Error generating coupons: {str(e)}',
+                f'Error generating coupons: {str(e)}',
                 messages.ERROR
             )
-    generate_5_percent_coupons.short_description = "Generate 200 new 5% discount coupons"
+    generate_5_percent_coupons.short_description = "Generate 200 new 5 percent discount coupons"
     readonly_fields = ("send_coupon_button",)
     
     fieldsets = (
