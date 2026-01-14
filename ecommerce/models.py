@@ -741,6 +741,21 @@ class LegalPage(models.Model):
         super().save(*args, **kwargs)
 
 
+class EmailSubscription(models.Model):
+    """Track email subscriptions and which coupon was sent to each email."""
+    email = models.EmailField(db_index=True, unique=True)
+    coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True, related_name='email_subscriptions')
+    subscribed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        verbose_name = "Email Subscription"
+        verbose_name_plural = "Email Subscriptions"
+        ordering = ["-subscribed_at"]
+    
+    def __str__(self):
+        return f"{self.email} - {self.coupon.code if self.coupon else 'No coupon'}"
+
+
 class BannerImage(models.Model):
     """Banner images/videos for the home page carousel."""
     # Get storage dynamically to ensure Cloudinary is used if configured

@@ -14,7 +14,7 @@ import csv
 import json
 
 from .models import (
-    BlogPost, BannerImage, LegalPage,
+    BlogPost, BannerImage, LegalPage, EmailSubscription,
     Category, Product, ProductImage, ProductVariant,
     CartItem, Order, OrderItem, Favorite, Discount, ShippingOption, Coupon, ProductBundleItem
 )

@@ -2065,7 +2065,7 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
 def subscribe_email(request: HttpRequest) -> JsonResponse:
     """Handle email subscription from popup and send welcome email with promo code from existing coupons."""
     from django.utils import timezone
-    from ecommerce.models import Coupon
+    from ecommerce.models import Coupon, EmailSubscription
     from ecommerce.utils.emailing import send_welcome_email_with_promo
     
     email = request.POST.get('email', '').strip().lower()
@@ -2080,6 +2080,28 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
         validate_email(email)
     except ValidationError:
         return JsonResponse({'success': False, 'message': 'Invalid email address'}, status=400)
+    
+    # Check if email already subscribed
+    existing_subscription = EmailSubscription.objects.filter(email=email).first()
+    if existing_subscription:
+        # Email already subscribed - return the coupon code they already received
+        coupon = existing_subscription.coupon
+        if coupon:
+            discount_display = ""
+            if coupon.percent_off:
+                discount_display = f"{coupon.percent_off}% OFF"
+            elif coupon.amount_off:
+                discount_display = f"${coupon.amount_off} OFF"
+            
+            return JsonResponse({
+                'success': False, 
+                'message': f'You have already subscribed! Check your email for your discount code ({coupon.code}).'
+            }, status=400)
+        else:
+            return JsonResponse({
+                'success': False, 
+                'message': 'You have already subscribed with this email address.'
+            }, status=400)
     
     # Find an available coupon (active, not expired, not fully used)
     # Prefer coupons with 5% discount, but accept any available coupon
@@ -2114,6 +2136,18 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
             'message': 'Sorry, no promo codes available at the moment. Please try again later.'
         }, status=404)
     
+    # Create email subscription record
+    try:
+        subscription = EmailSubscription.objects.create(
+            email=email,
+            coupon=coupon
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating email subscription: {e}")
+        return JsonResponse({'success': False, 'message': 'Error processing subscription'}, status=500)
+    
     # Create a temporary user object for email sending
     class EmailUser:
         def __init__(self, email):
@@ -2139,10 +2173,10 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
                 'message': f'Check your email! Your discount code ({coupon.code}) has been sent.'
             })
         else:
-            # Email failed but coupon exists - still return success with the code
+            # Email failed but subscription was created - still return success with the code
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Email failed for {email} but coupon {coupon.code} is available")
+            logger.warning(f"Email failed for {email} but subscription was created with coupon {coupon.code}")
             return JsonResponse({
                 'success': True, 
                 'message': f'Your promo code is: {coupon.code}. Use it at checkout for {discount_display}!'
@@ -2151,7 +2185,7 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error sending welcome email: {e}")
-        # Still return success with the code since coupon exists
+        # Still return success with the code since subscription was created
         return JsonResponse({
             'success': True, 
             'message': f'Your promo code is: {coupon.code}. Use it at checkout for {discount_display}!'
