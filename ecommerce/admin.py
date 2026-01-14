@@ -1332,6 +1332,36 @@ class CouponAdmin(admin.ModelAdmin):
     search_fields = ("code",)
     list_filter = ("active",)
     actions = ["send_coupon_email"]
+    readonly_fields = ("send_coupon_button",)
+    
+    fieldsets = (
+        ("Coupon Information", {
+            "fields": ("code", "percent_off", "amount_off", "active")
+        }),
+        ("Validity", {
+            "fields": ("starts_at", "ends_at")
+        }),
+        ("Usage", {
+            "fields": ("usage_limit", "used_count")
+        }),
+        ("Send Coupon", {
+            "fields": ("send_coupon_button",),
+            "description": "Send this coupon code to a customer via email"
+        }),
+    )
+    
+    def send_coupon_button(self, obj):
+        """Display button to send coupon via email."""
+        if obj.pk:
+            from django.urls import reverse
+            from django.utils.html import format_html
+            url = reverse('admin:ecommerce_coupon_send', args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button" style="background: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">📧 Send Coupon via Email</a>',
+                url
+            )
+        return "Save coupon first to send via email"
+    send_coupon_button.short_description = "Send Coupon"
     
     def get_urls(self):
         urls = super().get_urls()
