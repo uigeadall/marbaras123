@@ -1421,11 +1421,33 @@
         }
       }
       
-      // Calculate initial total (subtotal + selected shipping if any)
-      const initialTotal = Math.round(totalAmount * 100) + (selectedShippingOption ? selectedShippingOption.amount : 0);
+      // Check if coupon is already applied
+      const couponInput = document.getElementById('coupon');
+      const appliedCoupon = couponInput?.value?.trim().toUpperCase() || null;
+      let finalSubtotal = totalAmount;
+      
+      // If coupon is applied, get the discounted subtotal from the display
+      if (appliedCoupon) {
+        const subtotalDisplay = document.getElementById('subtotal-display');
+        if (subtotalDisplay) {
+          const discountedSubtotal = parseFloat(subtotalDisplay.getAttribute('data-eur-price'));
+          if (!isNaN(discountedSubtotal) && discountedSubtotal > 0) {
+            finalSubtotal = discountedSubtotal;
+            console.log('🎟️ Coupon applied, using discounted subtotal:', finalSubtotal);
+          }
+        }
+      }
+      
+      // Convert final subtotal to current currency
+      const finalSubtotalInCurrency = finalSubtotal * rate;
+      
+      // Calculate initial total (subtotal after discount + selected shipping if any)
+      const shippingCostInCurrency = selectedShippingOption ? (selectedShippingOption.amount / 100) : 0;
+      const initialTotal = Math.round(finalSubtotalInCurrency * 100) + (selectedShippingOption ? selectedShippingOption.amount : 0);
       console.log('📦 Initial total (subtotal + shipping):', initialTotal / 100);
-      console.log('📦 Subtotal:', totalAmount);
-      console.log('📦 Shipping cost:', selectedShippingOption ? selectedShippingOption.amount / 100 : 0);
+      console.log('📦 Subtotal (after discount):', finalSubtotal);
+      console.log('📦 Subtotal in currency:', finalSubtotalInCurrency);
+      console.log('📦 Shipping cost:', shippingCostInCurrency);
       console.log('📦 Selected shipping option before Payment Request:', window.selectedShippingOptionForPayment);
       
       // DEBUG: Log dropdown state before creating Payment Request
