@@ -612,17 +612,17 @@ admin.site.register(OrderItem)
 
 @admin.register(Favorite)
 class FavoriteAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'product', 'product_sku', 'created_at')
+    list_display = ('id', 'user', 'product', 'product_serial_number', 'created_at')
     list_filter = ('created_at',)
     search_fields = ('user__username', 'user__email', 'product__name', 'product__sku', 'product__serial_number')
     list_select_related = ('user', 'product')
     readonly_fields = ('created_at',)
     date_hierarchy = 'created_at'
     
-    @admin.display(description='SKU')
-    def product_sku(self, obj):
+    @admin.display(description='Serial Number')
+    def product_serial_number(self, obj):
         if obj.product:
-            return obj.product.sku or '-'
+            return obj.product.serial_number or '-'
         return '-'
 
 
