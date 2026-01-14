@@ -106,14 +106,20 @@ def _cart_items_for(request: HttpRequest) -> Iterable[CartItem]:
             CartItem.objects
             .filter(user=request.user)
             .select_related("product", "variant")
-            .prefetch_related(Prefetch("product__images", queryset=ProductImage.objects.all()))
+            .prefetch_related(
+                Prefetch("product__images", queryset=ProductImage.objects.all()),
+                "product__categories"
+            )
         )
     _ensure_session(request)
     return (
         CartItem.objects
         .filter(session_key=request.session.session_key)
         .select_related("product", "variant")
-        .prefetch_related(Prefetch("product__images", queryset=ProductImage.objects.all()))
+        .prefetch_related(
+            Prefetch("product__images", queryset=ProductImage.objects.all()),
+            "product__categories"
+        )
     )
 
 
@@ -198,8 +204,14 @@ def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = Tru
             ).first()
             
             if sale_category:
-                for item in cart_items:
-                    if sale_category in item.product.categories.all():
+                # Convert cart_items to list to ensure we can iterate multiple times
+                cart_items_list = list(cart_items) if not isinstance(cart_items, list) else cart_items
+                
+                for item in cart_items_list:
+                    # Get all category IDs for this product (using prefetched categories)
+                    product_category_ids = [cat.id for cat in item.product.categories.all()]
+                    
+                    if sale_category.id in product_category_ids:
                         coupon_error = "Coupons cannot be applied to products in Sale category."
                         return subtotal, discount, coupon_applied, coupon_error
         
