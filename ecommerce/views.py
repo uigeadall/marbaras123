@@ -2111,6 +2111,7 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     now = timezone.now()
     
     # Find any available coupon (EXCLUDE "WELCOME5" - it's a legacy code)
+    # PREFER 5% discount coupons for email subscriptions
     # Prefer coupons that haven't been used yet (used_count = 0)
     
     # First, let's check all coupons for debugging
@@ -2127,10 +2128,24 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     )
     logger.info(f"Coupons with valid dates: {valid_date_coupons.count()}")
     
-    available_coupons = valid_date_coupons.filter(
+    # FIRST: Try to find 5% discount coupons (preferred for email subscriptions)
+    available_5_percent = valid_date_coupons.filter(
+        percent_off=5.00
+    ).filter(
         Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
-    )
-    logger.info(f"Coupons with available usage: {available_coupons.count()}")
+    ).order_by('used_count', '-id')
+    
+    logger.info(f"Available 5% coupons: {available_5_percent.count()}")
+    
+    coupon = available_5_percent.first()
+    
+    # If no 5% coupon found, try any available coupon
+    if not coupon:
+        available_coupons = valid_date_coupons.filter(
+            Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
+        ).order_by('used_count', '-id')
+        logger.info(f"Coupons with available usage (any %): {available_coupons.count()}")
+        coupon = available_coupons.first()
     
     # Log details of first 10 coupons for debugging
     for c in all_coupons[:10]:
