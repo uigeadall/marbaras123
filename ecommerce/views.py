@@ -2416,8 +2416,12 @@ def validate_coupon(request: HttpRequest) -> JsonResponse:
             'error': 'Coupon code is required'
         }, status=400)
     
+    # Get cart items to check for Sale category products
+    cart_items = _cart_items_for(request)
+    
     # Process coupon without applying usage (just for preview)
-    new_subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=False)
+    # IMPORTANT: Pass cart_items to check for Sale category products
+    new_subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=False, cart_items=cart_items)
     
     if coupon_error:
         return JsonResponse({
