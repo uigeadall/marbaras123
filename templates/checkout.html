@@ -764,6 +764,8 @@
     // Store current discount state
     let currentDiscount = {{ discount|default:0 }};
     let appliedCouponCode = null;
+    // Store original subtotal (before any discounts)
+    const originalSubtotal = {{ subtotal|default:0 }};
 
     function updateTotal() {
       let shippingCost = 0;
@@ -873,8 +875,19 @@
           return;
         }
 
-        // Get current subtotal from the display element
-        const currentSubtotal = parseFloat(subtotalDisplay.getAttribute('data-eur-price')) || subtotal;
+        // Prevent multiple clicks
+        if (applyBtn.disabled) {
+          return;
+        }
+
+        // If same coupon is already applied, don't do anything
+        if (appliedCouponCode === couponCode) {
+          couponMessage.innerHTML = `<span style="color:#0a0;">✓ Coupon ${couponCode} is already applied!</span>`;
+          return;
+        }
+
+        // Always use original subtotal (before any discounts) for coupon calculation
+        const currentSubtotal = originalSubtotal;
 
         // Disable button during request
         applyBtn.disabled = true;
