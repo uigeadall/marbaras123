@@ -176,19 +176,33 @@ def _cap_quantity(requested_total: int, available: int) -> int:
 
 
 
-def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = True) -> tuple[Decimal, Decimal, Optional[str], Optional[str]]:
+def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = True, cart_items: Optional[Iterable[CartItem]] = None) -> tuple[Decimal, Decimal, Optional[str], Optional[str]]:
     """Process coupon code and return (new_subtotal, discount, coupon_applied, coupon_error).
     
     Args:
         coupon_code: The coupon code to process
         subtotal: The subtotal amount
         apply_usage: If True, increment used_count (for actual order). If False, just validate (for preview).
+        cart_items: Optional cart items to check for Sale category products.
     """
     discount = Decimal("0.00")
     coupon_applied = None
     coupon_error = None
     
     if coupon_code:
+        # Check if cart contains products in Sale category
+        if cart_items:
+            from ecommerce.models import Category
+            sale_category = Category.objects.filter(
+                Q(name__iexact='Sale') | Q(name__icontains='разпродажба')
+            ).first()
+            
+            if sale_category:
+                for item in cart_items:
+                    if sale_category in item.product.categories.all():
+                        coupon_error = "Coupons cannot be applied to products in Sale category."
+                        return subtotal, discount, coupon_applied, coupon_error
+        
         coupon = Coupon.objects.filter(code=coupon_code).first()
         if coupon and coupon.is_valid_now():
             new_subtotal = coupon.apply(subtotal)
@@ -1450,7 +1464,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 return redirect("checkout")
 
 
-        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True)
+        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True, cart_items=cart_items)
 
         # Shipping logic: Canada and Australia require shipping, other countries can have free shipping
         shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
@@ -1675,7 +1689,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             return redirect("guest_checkout")
 
 
-        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True)
+        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True, cart_items=cart_items)
 
 
         shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
