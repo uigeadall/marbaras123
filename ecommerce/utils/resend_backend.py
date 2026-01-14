@@ -60,6 +60,10 @@ class ResendBackend(BaseEmailBackend):
                 "subject": message.subject,
             }
             
+            # Add Reply-To header if present (allows direct replies to customer)
+            if hasattr(message, 'reply_to') and message.reply_to:
+                email_data["reply_to"] = message.reply_to if isinstance(message.reply_to, list) else [message.reply_to]
+            
             # Add CC and BCC if present
             if message.cc:
                 email_data["cc"] = message.cc
@@ -91,6 +95,8 @@ class ResendBackend(BaseEmailBackend):
             log.info("    From: %s", email_data["from"])
             log.info("    To: %s", email_data["to"])
             log.info("    Subject: %s", email_data["subject"])
+            if "reply_to" in email_data:
+                log.info("    Reply-To: %s", email_data["reply_to"])
             
             response = requests.post(
                 self.api_url,

@@ -62,6 +62,11 @@ class SendGridBackend(BaseEmailBackend):
                 "subject": message.subject,
             }
             
+            # Add Reply-To header if present (allows direct replies to customer)
+            if hasattr(message, 'reply_to') and message.reply_to:
+                reply_to_list = message.reply_to if isinstance(message.reply_to, list) else [message.reply_to]
+                email_data["reply_to"] = {"email": reply_to_list[0]} if reply_to_list else None
+            
             # Add CC and BCC if present
             if message.cc:
                 email_data["personalizations"][0]["cc"] = [{"email": email} for email in message.cc]
@@ -92,6 +97,8 @@ class SendGridBackend(BaseEmailBackend):
             log.info("    From: %s", email_data["from"]["email"])
             log.info("    To: %s", [email["email"] for email in email_data["personalizations"][0]["to"]])
             log.info("    Subject: %s", email_data["subject"])
+            if "reply_to" in email_data and email_data["reply_to"]:
+                log.info("    Reply-To: %s", email_data["reply_to"]["email"])
             
             response = requests.post(
                 self.api_url,

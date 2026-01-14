@@ -2521,7 +2521,7 @@ def privacy(request: HttpRequest) -> HttpResponse:
 
 def contact(request: HttpRequest) -> HttpResponse:
     from django.contrib import messages
-    from django.core.mail import send_mail
+    from django.core.mail import EmailMessage
     from django.conf import settings
     
     if request.method == "POST":
@@ -2535,7 +2535,7 @@ def contact(request: HttpRequest) -> HttpResponse:
         # Honeypot check - if website field is filled, it's spam
         if website:
             # Silently ignore spam submissions (don't show any message)
-            log.warning(f"Spam contact form submission detected from {email} (honeypot triggered)")
+            logger.warning(f"Spam contact form submission detected from {email} (honeypot triggered)")
             return render(request, "legal/contact.html")
         
         # Validate required fields
@@ -2553,7 +2553,7 @@ def contact(request: HttpRequest) -> HttpResponse:
             for error in errors:
                 messages.error(request, error)
         else:
-            # Send email to marbaras.store@gmail.com
+            # Send email to marbaras.store@gmail.com with Reply-To header set to customer's email
             contact_email = "marbaras.store@gmail.com"
             email_subject = f"Contact Form: {subject}" if subject else f"Contact Form Message from {name}"
             
@@ -2569,19 +2569,22 @@ Message:
 
 ---
 This message was sent from the contact form on marbaras.com
+You can reply directly to this email to respond to {name} ({email})
 """
             
             try:
-                send_mail(
+                # Use EmailMessage to set Reply-To header
+                email_msg = EmailMessage(
                     subject=email_subject,
-                    message=email_body,
+                    body=email_body,
                     from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"),
-                    recipient_list=[contact_email],
-                    fail_silently=False,
+                    to=[contact_email],
+                    reply_to=[email],  # Set Reply-To to customer's email so you can reply directly
                 )
+                email_msg.send(fail_silently=False)
                 messages.success(request, "Thank you for your message! We'll get back to you within 1-2 business days.")
             except Exception as e:
-                log.error(f"Failed to send contact form email: {e}")
+                logger.error(f"Failed to send contact form email: {e}")
                 messages.error(request, "Sorry, there was an error sending your message. Please try again later or email us directly at marbaras.store@gmail.com")
     
     return render(request, "legal/contact.html")
