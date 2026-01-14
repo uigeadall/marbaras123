@@ -2150,31 +2150,71 @@ def subscribe_email(request: HttpRequest) -> JsonResponse:
     coupon = all_available.first()
     
     if not coupon:
-        logger.error(f"❌ No available coupon found for email subscription: {email}")
-        logger.error(f"   Active coupons: {active_coupons.count()}")
-        logger.error(f"   Valid date coupons: {valid_date_coupons.count()}")
-        logger.error(f"   Available usage coupons: {available_coupons.count()}")
-        logger.error(f"   Current time: {now}")
+        logger.warning(f"⚠️ No coupons with valid dates found. Trying to auto-update expired coupons...")
         
-        # Try to find any coupon without usage limit as fallback
-        fallback_coupons = Coupon.objects.filter(
-            active=True,
-            usage_limit__isnull=True
-        ).exclude(
-            code__iexact="WELCOME5"
-        ).filter(
-            Q(starts_at__isnull=True) | Q(starts_at__lte=now),
-            Q(ends_at__isnull=True) | Q(ends_at__gte=now)
-        ).order_by('-id')
+        # Try to find active coupons that are expired but not used
+        expired_but_unused = active_coupons.filter(
+            Q(ends_at__lt=now) | Q(ends_at__isnull=True),
+            Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
+        ).exclude(code__iexact="WELCOME5")
         
-        if fallback_coupons.exists():
-            coupon = fallback_coupons.first()
-            logger.info(f"✅ Using fallback coupon (no usage limit): {coupon.code}")
+        if expired_but_unused.exists():
+            # Auto-update dates for expired but unused coupons
+            new_ends_at = now + timezone.timedelta(days=365)
+            updated_count = expired_but_unused.update(
+                starts_at=now,
+                ends_at=new_ends_at
+            )
+            logger.info(f"✅ Auto-updated {updated_count} expired coupons with new dates")
+            
+            # Now try to find available coupons again
+            all_available = Coupon.objects.filter(
+                active=True
+            ).exclude(
+                code__iexact="WELCOME5"
+            ).filter(
+                Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+                Q(ends_at__isnull=True) | Q(ends_at__gte=now)
+            ).filter(
+                Q(usage_limit__isnull=True) | Q(used_count__lt=F('usage_limit'))
+            ).order_by('used_count', '-id')
+            
+            coupon = all_available.first()
+            
+            if coupon:
+                logger.info(f"✅ Found coupon after auto-update: {coupon.code}")
+            else:
+                logger.error(f"❌ Still no available coupon after auto-update")
+                return JsonResponse({
+                    'success': False, 
+                    'message': 'Sorry, no promo codes available at the moment. Please try again later.'
+                }, status=404)
         else:
-            return JsonResponse({
-                'success': False, 
-                'message': 'Sorry, no promo codes available at the moment. Please try again later.'
-            }, status=404)
+            # Try to find any coupon without usage limit as fallback
+            fallback_coupons = Coupon.objects.filter(
+                active=True,
+                usage_limit__isnull=True
+            ).exclude(
+                code__iexact="WELCOME5"
+            ).order_by('-id')
+            
+            if fallback_coupons.exists():
+                coupon = fallback_coupons.first()
+                # Update dates for fallback coupon
+                coupon.starts_at = now
+                coupon.ends_at = now + timezone.timedelta(days=365)
+                coupon.save(update_fields=['starts_at', 'ends_at'])
+                logger.info(f"✅ Using fallback coupon (no usage limit) and updated dates: {coupon.code}")
+            else:
+                logger.error(f"❌ No available coupon found for email subscription: {email}")
+                logger.error(f"   Active coupons: {active_coupons.count()}")
+                logger.error(f"   Valid date coupons: {valid_date_coupons.count()}")
+                logger.error(f"   Available usage coupons: {available_coupons.count()}")
+                logger.error(f"   Current time: {now}")
+                return JsonResponse({
+                    'success': False, 
+                    'message': 'Sorry, no promo codes available at the moment. Please try again later.'
+                }, status=404)
     
     logger.info(f"Selected coupon for {email}: {coupon.code} (ID: {coupon.id})")
     
