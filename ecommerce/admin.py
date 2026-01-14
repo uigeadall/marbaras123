@@ -1331,6 +1331,111 @@ class CouponAdmin(admin.ModelAdmin):
     list_display = ("code", "percent_off", "amount_off", "active", "starts_at", "ends_at", "used_count", "usage_limit")
     search_fields = ("code",)
     list_filter = ("active",)
+    actions = ["send_coupon_email"]
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('send-coupon/<int:coupon_id>/', self.admin_site.admin_view(self.send_coupon_view), name='ecommerce_coupon_send'),
+        ]
+        return custom_urls + urls
+    
+    def send_coupon_view(self, request, coupon_id):
+        """View to send coupon via email."""
+        from django.shortcuts import get_object_or_404, render, redirect
+        from django.contrib import messages
+        from ecommerce.models import Coupon, EmailSubscription
+        from ecommerce.utils.emailing import send_welcome_email_with_promo
+        
+        coupon = get_object_or_404(Coupon, pk=coupon_id)
+        
+        if request.method == 'POST':
+            email = request.POST.get('email', '').strip().lower()
+            
+            if not email:
+                messages.error(request, 'Email is required')
+                return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
+            
+            # Validate email
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
+            try:
+                validate_email(email)
+            except ValidationError:
+                messages.error(request, 'Invalid email address')
+                return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
+            
+            # Check if email already subscribed
+            existing_subscription = EmailSubscription.objects.filter(email=email).first()
+            if existing_subscription:
+                messages.warning(request, f'Email {email} already has a subscription with coupon {existing_subscription.coupon.code if existing_subscription.coupon else "N/A"}')
+                return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
+            
+            # Create email subscription record
+            try:
+                subscription = EmailSubscription.objects.create(
+                    email=email,
+                    coupon=coupon
+                )
+            except Exception as e:
+                messages.error(request, f'Error creating subscription: {str(e)}')
+                return redirect('admin:ecommerce_coupon_send', coupon_id=coupon_id)
+            
+            # Create temporary user object
+            class EmailUser:
+                def __init__(self, email):
+                    self.email = email
+                    self.username = email.split('@')[0]
+            
+            email_user = EmailUser(email)
+            base_url = request.build_absolute_uri('/').rstrip('/')
+            
+            # Get discount display
+            discount_display = ""
+            if coupon.percent_off:
+                discount_display = f"{coupon.percent_off}% OFF"
+            elif coupon.amount_off:
+                discount_display = f"${coupon.amount_off} OFF"
+            
+            # Send email
+            try:
+                result = send_welcome_email_with_promo(email_user, base_url, coupon.code, discount_display)
+                if result:
+                    messages.success(request, f'✅ Successfully sent coupon {coupon.code} to {email}')
+                else:
+                    messages.warning(request, f'⚠️ Email sending failed, but subscription was created. Coupon code: {coupon.code}')
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error sending coupon email: {e}")
+                messages.error(request, f'Error sending email: {str(e)}. Subscription created with code: {coupon.code}')
+            
+            return redirect('admin:ecommerce_coupon_change', coupon_id)
+        
+        # GET request - show form
+        discount_display = ""
+        if coupon.percent_off:
+            discount_display = f"{coupon.percent_off}% OFF"
+        elif coupon.amount_off:
+            discount_display = f"${coupon.amount_off} OFF"
+        
+        return render(request, 'admin/ecommerce/coupon/send_coupon.html', {
+            'coupon': coupon,
+            'discount_display': discount_display,
+            'opts': self.model._meta,
+            'title': f'Send Coupon {coupon.code}',
+        })
+    
+    def send_coupon_email(self, request, queryset):
+        """Admin action to send selected coupons via email."""
+        if queryset.count() != 1:
+            messages.error(request, 'Please select exactly one coupon to send.')
+            return
+        
+        coupon = queryset.first()
+        return redirect('admin:ecommerce_coupon_send', coupon_id=coupon.id)
+    
+    send_coupon_email.short_description = "Send coupon via email"
 
 
 class BannerImageAdminForm(forms.ModelForm):
