@@ -1029,6 +1029,7 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "rose_gold_plated_images": rose_gold_plated_images,
         "has_gold_plated": len(gold_plated_images) > 0 or len(rose_gold_plated_images) > 0,
         "has_zodiac_variants": has_zodiac_variants,
+        "has_earring_hoop_variants": has_earring_hoop_variants,
         "filtered_variants": filtered_variants,
         "comments": comments,
         "favorite_ids": (

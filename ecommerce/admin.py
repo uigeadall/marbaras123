@@ -235,6 +235,31 @@ class ProductAdmin(admin.ModelAdmin):
             self.message_user(request, "All zodiac variants already exist for selected products.", messages.INFO)
     create_zodiac_variants_action.short_description = "♈ Create 12 zodiac sign variants (selected products)"
     
+    def create_earring_hoop_variants_action(self, request, queryset):
+        """Admin action to create earring hoop size variants for selected products."""
+        from ecommerce.models import ProductVariant, EARRING_HOOP_SIZE_CHOICES
+        
+        created_count = 0
+        for product in queryset:
+            for size_value, size_display in EARRING_HOOP_SIZE_CHOICES:
+                # Check if variant already exists
+                variant, created = ProductVariant.objects.get_or_create(
+                    product=product,
+                    variant_type='earring_hoop_size',
+                    size=size_value,
+                    defaults={
+                        'stock': product.stock if hasattr(product, 'stock') else 0,
+                    }
+                )
+                if created:
+                    created_count += 1
+        
+        if created_count > 0:
+            self.message_user(request, f"Successfully created {created_count} earring hoop size variants for {queryset.count()} product(s).", messages.SUCCESS)
+        else:
+            self.message_user(request, "All earring hoop size variants already exist for selected products.", messages.INFO)
+    create_earring_hoop_variants_action.short_description = "💍 Create earring hoop size variants (selected products)"
+    
     def increase_prices_view(self, request):
         """View for price increase form and processing."""
         # Get product IDs from session or use all products
@@ -454,12 +479,18 @@ class ProductAdmin(admin.ModelAdmin):
                 has_variant_type_field = False
             
             if has_variant_type_field:
-                # Get both ring sizes and zodiac signs
+                # Get ring sizes, earring hoop sizes, and zodiac signs
                 ring_size_variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                earring_hoop_variants = product.variants.filter(variant_type='earring_hoop_size').order_by('size')
                 zodiac_variants = product.variants.filter(variant_type='zodiac_sign').order_by('size')
-                # Combine both types, prioritizing ring sizes first
-                variants = list(ring_size_variants) + list(zodiac_variants)
-                variant_type = 'zodiac_sign' if zodiac_variants.exists() and not ring_size_variants.exists() else 'ring_size'
+                # Combine all types, prioritizing ring sizes first, then earring hoop sizes, then zodiac signs
+                variants = list(ring_size_variants) + list(earring_hoop_variants) + list(zodiac_variants)
+                if zodiac_variants.exists() and not ring_size_variants.exists() and not earring_hoop_variants.exists():
+                    variant_type = 'zodiac_sign'
+                elif earring_hoop_variants.exists() and not ring_size_variants.exists():
+                    variant_type = 'earring_hoop_size'
+                else:
+                    variant_type = 'ring_size'
             else:
                 # Fallback: if variant_type doesn't exist, get all variants (assuming they're ring sizes)
                 variants = list(product.variants.all().order_by('size'))
