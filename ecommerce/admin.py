@@ -443,11 +443,27 @@ class ProductAdmin(admin.ModelAdmin):
             else:
                 current_stock = product.stock
             
+            # Check if product has variants (ring sizes)
+            variants = product.variants.filter(variant_type='ring_size').order_by('size')
+            has_variants = variants.exists()
+            
             # Handle different actions
             if action == 'view':
                 # Just return current stock info
                 from django.urls import reverse
                 product_url = reverse('admin:ecommerce_product_change', args=[product.id])
+                
+                # If product has variants, return variant information
+                variants_data = []
+                if has_variants:
+                    for v in variants:
+                        variants_data.append({
+                            'id': v.id,
+                            'size': v.size,
+                            'stock': v.stock,
+                            'sku': v.sku or ''
+                        })
+                
                 return JsonResponse({
                     'success': True,
                     'action': 'view',
@@ -457,6 +473,8 @@ class ProductAdmin(admin.ModelAdmin):
                     'variant_size': variant.size if variant else None,
                     'current_stock': current_stock,
                     'quantity': 0,
+                    'has_variants': has_variants,
+                    'variants': variants_data,
                     'message': f'Current stock: {current_stock}'
                 })
             

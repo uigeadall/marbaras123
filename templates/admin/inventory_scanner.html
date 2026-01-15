@@ -413,7 +413,11 @@
         
         if (action === 'view') {
             actionMessage = '📊 Current Stock Information';
-            stockDisplay = `<div class="stock-info" style="font-size: 24px; color: #17a2b8;">Current Stock: ${data.current_stock}</div>`;
+            if (data.has_variants && data.variants && data.variants.length > 0) {
+                stockDisplay = `<div class="stock-info" style="font-size: 20px; color: #17a2b8; margin-bottom: 15px;">Product has ${data.variants.length} ring sizes</div>`;
+            } else {
+                stockDisplay = `<div class="stock-info" style="font-size: 24px; color: #17a2b8;">Current Stock: ${data.current_stock}</div>`;
+            }
         } else if (action === 'add') {
             actionMessage = `✅ Stock Increased Successfully! (+${quantity})`;
             stockDisplay = `<div class="stock-info" style="color: #28a745;">Previous: ${data.current_stock} → New: ${data.new_stock}</div>`;
@@ -422,15 +426,137 @@
             stockDisplay = `<div class="stock-info" style="color: #dc3545;">Previous: ${data.current_stock} → New: ${data.new_stock}</div>`;
         }
         
+        // Build variants HTML if product has variants
+        let variantsHTML = '';
+        if (data.has_variants && data.variants && data.variants.length > 0) {
+            variantsHTML = '<div style="margin-top: 20px;"><strong style="display: block; margin-bottom: 10px;">Ring Sizes:</strong><div class="variants-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-top: 10px;">';
+            data.variants.forEach(v => {
+                const stockColor = v.stock > 0 ? '#28a745' : '#dc3545';
+                variantsHTML += `
+                    <div class="variant-item" style="border: 2px solid ${stockColor}; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.2s;" 
+                         onclick="selectVariant(${v.id}, '${v.size}', ${v.stock})"
+                         onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.2)'"
+                         onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
+                        <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px;">${v.size}</div>
+                        <div style="font-size: 14px; color: ${stockColor}; font-weight: 600;">Stock: ${v.stock}</div>
+                    </div>
+                `;
+            });
+            variantsHTML += '</div></div>';
+        }
+        
         resultBox.innerHTML = `
             <strong>${actionMessage}</strong>
             <div class="product-info">
                 <strong>${data.product_name}</strong>
                 ${variantInfo}
                 ${stockDisplay}
-                <a href="${data.product_url}" target="_blank">View Product →</a>
+                ${variantsHTML}
+                <a href="${data.product_url}" target="_blank" style="display: inline-block; margin-top: 15px;">View Product →</a>
             </div>
         `;
+    }
+    
+    function selectVariant(variantId, size, currentStock) {
+        // Set the selected variant and show action buttons
+        const resultBox = document.getElementById('resultBox');
+        const quantityInput = document.getElementById('quantityInput');
+        quantityInput.focus();
+        
+        // Highlight selected variant
+        document.querySelectorAll('.variant-item').forEach(item => {
+            item.style.border = '2px solid #ddd';
+        });
+        event.currentTarget.style.border = '2px solid #667eea';
+        event.currentTarget.style.boxShadow = '0 0 10px rgba(102, 126, 234, 0.5)';
+        
+        // Store selected variant for add/remove actions
+        window.selectedVariantId = variantId;
+        window.selectedVariantSize = size;
+        window.selectedVariantStock = currentStock;
+        
+        // Show action buttons for this variant
+        const actionButtons = `
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #667eea;">
+                <p style="margin-bottom: 10px; font-weight: 600;">Selected: Size ${size} (Stock: ${currentStock})</p>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="scan-button add" onclick="updateVariantStock('add', ${variantId})" style="flex: 1; padding: 10px;">➕ Add Stock</button>
+                    <button type="button" class="scan-button remove" onclick="updateVariantStock('remove', ${variantId})" style="flex: 1; padding: 10px;">➖ Remove Stock</button>
+                </div>
+            </div>
+        `;
+        
+        resultBox.innerHTML += actionButtons;
+    }
+    
+    function updateVariantStock(action, variantId) {
+        const quantityInput = document.getElementById('quantityInput');
+        const quantity = parseInt(quantityInput.value) || 1;
+        const barcodeInput = document.getElementById('barcodeInput');
+        const barcode = barcodeInput.value.trim();
+        
+        if (!barcode) {
+            showError('Please scan or enter a barcode first');
+            return;
+        }
+        
+        if (action !== 'view' && (!quantity || quantity < 1)) {
+            showError('Please enter a valid quantity (minimum 1)');
+            quantityInput.focus();
+            return;
+        }
+        
+        if (isProcessing) {
+            return;
+        }
+        
+        isProcessing = true;
+        const buttons = document.querySelectorAll('.scan-button');
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            if (btn.classList.contains(action)) {
+                btn.textContent = 'Processing...';
+            }
+        });
+        
+        // Show loading
+        resultBox.className = 'result-box';
+        resultBox.style.display = 'block';
+        const actionText = action === 'add' ? `Adding ${quantity} to` : `Removing ${quantity} from`;
+        resultBox.innerHTML = `<p>${actionText} variant...</p>`;
+        
+        // Send request with variant_id
+        fetch('{% url "admin:ecommerce_product_inventory_scanner" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: 'barcode=' + encodeURIComponent(barcode) + '&action=' + encodeURIComponent(action) + '&quantity=' + encodeURIComponent(quantity) + '&variant_id=' + encodeURIComponent(variantId)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSuccess(data, action);
+                setTimeout(() => {
+                    barcodeInput.value = '';
+                    barcodeInput.focus();
+                }, 1500);
+            } else {
+                showError(data.error || 'Error updating variant stock');
+            }
+        })
+        .catch(error => {
+            showError('Error: ' + error.message);
+        })
+        .finally(() => {
+            isProcessing = false;
+            buttons.forEach(btn => {
+                btn.disabled = false;
+                if (btn.classList.contains('add')) btn.textContent = '➕ Add Stock';
+                if (btn.classList.contains('remove')) btn.textContent = '➖ Remove Stock';
+            });
+        });
     }
     
     function showError(message) {
