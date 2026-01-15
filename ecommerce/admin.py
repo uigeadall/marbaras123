@@ -112,7 +112,7 @@ class PriceDecreaseForm(forms.Form):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
-    actions = ['increase_prices_action', 'decrease_prices_action', 'create_zodiac_variants_action']
+    actions = ['increase_prices_action', 'decrease_prices_action', 'create_zodiac_variants_action', 'create_earring_hoop_variants_action']
     
     def get_list_display(self, request):
         """Dynamically get list_display to handle missing sale_expires_at field."""

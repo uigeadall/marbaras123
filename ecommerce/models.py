@@ -16,6 +16,10 @@ RING_SIZE_CHOICES = [(s, s) for s in [
     "48","49","50","51","52","53","54","55","56","57","58","59","60","61","62","63","64","65","66"
 ]]
 
+EARRING_HOOP_SIZE_CHOICES = [(s, s) for s in [
+    "10mm", "12mm", "14mm", "16mm", "18mm", "20mm", "22mm", "25mm", "30mm", "35mm", "40mm", "45mm", "50mm"
+]]
+
 ZODIAC_SIGN_CHOICES = [
     ("Aries", "Aries ♈"),
     ("Taurus", "Taurus ♉"),
@@ -325,13 +329,14 @@ class ProductVariant(models.Model):
     """Size/variant for ring-type products or other variants like zodiac signs."""
     VARIANT_TYPE_CHOICES = [
         ('ring_size', 'Ring Size'),
+        ('earring_hoop_size', 'Earring Hoop Size'),
         ('zodiac_sign', 'Zodiac Sign'),
         ('other', 'Other'),
     ]
     
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants', db_index=True)
     variant_type = models.CharField(max_length=20, choices=VARIANT_TYPE_CHOICES, default='ring_size', db_index=True)
-    size = models.CharField(max_length=20, blank=True, null=True, help_text="Ring size (for ring variants) or zodiac sign (for zodiac variants)")
+    size = models.CharField(max_length=20, blank=True, null=True, help_text="Ring size (for ring variants), earring hoop size (for earring variants), or zodiac sign (for zodiac variants)")
     price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     stock = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)], db_index=True)
     sku = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
@@ -347,6 +352,8 @@ class ProductVariant(models.Model):
             raise ValidationError("Ring size variants are allowed only for ring products.")
         if self.variant_type == 'ring_size' and self.size and self.size not in [choice[0] for choice in RING_SIZE_CHOICES]:
             raise ValidationError(f"Invalid ring size: {self.size}. Must be one of {[c[0] for c in RING_SIZE_CHOICES]}")
+        if self.variant_type == 'earring_hoop_size' and self.size and self.size not in [choice[0] for choice in EARRING_HOOP_SIZE_CHOICES]:
+            raise ValidationError(f"Invalid earring hoop size: {self.size}. Must be one of {[c[0] for c in EARRING_HOOP_SIZE_CHOICES]}")
 
     def save(self, *args, **kwargs):
         self.full_clean()

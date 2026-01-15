@@ -857,18 +857,24 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     
     # Check if product has zodiac variants and filter variants accordingly
     has_zodiac_variants = False
+    has_earring_hoop_variants = False
     filtered_variants = list(product.variants.all())
     
     if has_variant_type_field and product.variants.exists():
         try:
-            # Check if product has zodiac sign variants
+            # Check if product has different variant types
             zodiac_variants = product.variants.filter(variant_type='zodiac_sign')
             ring_size_variants = product.variants.filter(variant_type='ring_size')
+            earring_hoop_variants = product.variants.filter(variant_type='earring_hoop_size')
             
             if zodiac_variants.exists():
                 has_zodiac_variants = True
                 # If product has zodiac variants, show only zodiac variants
                 filtered_variants = list(zodiac_variants.order_by('size'))
+            elif earring_hoop_variants.exists():
+                has_earring_hoop_variants = True
+                # If product has earring hoop size variants, show only earring hoop variants
+                filtered_variants = list(earring_hoop_variants.order_by('size'))
             elif ring_size_variants.exists():
                 # If product has ring size variants, show only ring size variants
                 filtered_variants = list(ring_size_variants.order_by('size'))

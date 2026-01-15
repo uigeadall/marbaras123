@@ -1108,11 +1108,13 @@
                   <span class="variant-label">
                     {% if has_zodiac_variants %}
                       Select Zodiac Sign
+                    {% elif has_earring_hoop_variants %}
+                      Select Hoop Size
                     {% else %}
                       Select size
                     {% endif %}
                   </span>
-                  <div id="sizeGrid" class="size-grid{% if has_zodiac_variants %} zodiac-grid{% endif %}" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% else %}Ring sizes{% endif %}">
+                  <div id="sizeGrid" class="size-grid{% if has_zodiac_variants %} zodiac-grid{% endif %}" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% elif has_earring_hoop_variants %}Earring hoop sizes{% else %}Ring sizes{% endif %}">
                     {% for v in filtered_variants %}
                       {% if v.stock > 0 %}
                         <button
