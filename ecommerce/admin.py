@@ -479,16 +479,41 @@ class ProductAdmin(admin.ModelAdmin):
                 })
             
             elif action == 'add':
+                # Check if we need to handle variant_id from request
+                variant_id = request.POST.get('variant_id', None)
+                target_variant = None
+                
+                if variant_id:
+                    try:
+                        target_variant = ProductVariant.objects.get(id=variant_id, product=product)
+                    except ProductVariant.DoesNotExist:
+                        pass
+                elif variant:
+                    target_variant = variant
+                
                 # Increase stock by quantity
                 with transaction.atomic():
-                    if variant:
-                        variant.stock += quantity
-                        variant.save(update_fields=['stock'])
-                        new_stock = variant.stock
+                    if target_variant:
+                        target_variant.stock += quantity
+                        target_variant.save(update_fields=['stock'])
+                        new_stock = target_variant.stock
+                        variant_size = target_variant.size
                     else:
                         product.stock += quantity
                         product.save(update_fields=['stock'])
                         new_stock = product.stock
+                        variant_size = None
+                
+                # Get updated variants list
+                variants_data = []
+                variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                for v in variants:
+                    variants_data.append({
+                        'id': v.id,
+                        'size': v.size,
+                        'stock': v.stock,
+                        'sku': v.sku or ''
+                    })
                 
                 from django.urls import reverse
                 product_url = reverse('admin:ecommerce_product_change', args=[product.id])
@@ -498,36 +523,63 @@ class ProductAdmin(admin.ModelAdmin):
                     'product_id': product.id,
                     'product_name': product.name,
                     'product_url': product_url,
-                    'variant_size': variant.size if variant else None,
+                    'variant_size': variant_size,
                     'current_stock': current_stock,
                     'new_stock': new_stock,
                     'quantity': quantity,
+                    'has_variants': variants.exists(),
+                    'variants': variants_data,
                     'message': f'Stock increased by {quantity}! New stock: {new_stock}'
                 })
             
             elif action == 'remove':
+                # Check if we need to handle variant_id from request
+                variant_id = request.POST.get('variant_id', None)
+                target_variant = None
+                
+                if variant_id:
+                    try:
+                        target_variant = ProductVariant.objects.get(id=variant_id, product=product)
+                    except ProductVariant.DoesNotExist:
+                        pass
+                elif variant:
+                    target_variant = variant
+                
                 # Decrease stock by quantity
                 with transaction.atomic():
-                    if variant:
-                        if variant.stock >= quantity:
-                            variant.stock -= quantity
-                            variant.save(update_fields=['stock'])
-                            new_stock = variant.stock
+                    if target_variant:
+                        if target_variant.stock >= quantity:
+                            target_variant.stock -= quantity
+                            target_variant.save(update_fields=['stock'])
+                            new_stock = target_variant.stock
+                            variant_size = target_variant.size
                         else:
                             return JsonResponse({
                                 'success': False,
-                                'error': f'Product "{product.name}" (Size: {variant.size}) has only {variant.stock} in stock, cannot remove {quantity}!'
+                                'error': f'Product "{product.name}" (Size: {target_variant.size}) has only {target_variant.stock} in stock, cannot remove {quantity}!'
                             }, status=400)
                     else:
                         if product.stock >= quantity:
                             product.stock -= quantity
                             product.save(update_fields=['stock'])
                             new_stock = product.stock
+                            variant_size = None
                         else:
                             return JsonResponse({
                                 'success': False,
                                 'error': f'Product "{product.name}" has only {product.stock} in stock, cannot remove {quantity}!'
                             }, status=400)
+                
+                # Get updated variants list
+                variants_data = []
+                variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                for v in variants:
+                    variants_data.append({
+                        'id': v.id,
+                        'size': v.size,
+                        'stock': v.stock,
+                        'sku': v.sku or ''
+                    })
                 
                 from django.urls import reverse
                 product_url = reverse('admin:ecommerce_product_change', args=[product.id])
@@ -537,10 +589,12 @@ class ProductAdmin(admin.ModelAdmin):
                     'product_id': product.id,
                     'product_name': product.name,
                     'product_url': product_url,
-                    'variant_size': variant.size if variant else None,
+                    'variant_size': variant_size,
                     'current_stock': current_stock,
                     'new_stock': new_stock,
                     'quantity': quantity,
+                    'has_variants': variants.exists(),
+                    'variants': variants_data,
                     'message': f'Stock decreased by {quantity}! New stock: {new_stock}'
                 })
             else:
