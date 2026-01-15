@@ -205,6 +205,36 @@ class ProductAdmin(admin.ModelAdmin):
         return redirect('admin:ecommerce_product_increase_prices')
     increase_prices_action.short_description = "📈 Increase prices by percentage (selected products)"
     
+    def create_zodiac_variants_action(self, request, queryset):
+        """Admin action to create 12 zodiac sign variants for selected products."""
+        from ecommerce.models import ProductVariant
+        
+        zodiac_signs = [
+            "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+            "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+        ]
+        
+        created_count = 0
+        for product in queryset:
+            for sign in zodiac_signs:
+                # Check if variant already exists
+                variant, created = ProductVariant.objects.get_or_create(
+                    product=product,
+                    variant_type='zodiac_sign',
+                    size=sign,
+                    defaults={
+                        'stock': product.stock if hasattr(product, 'stock') else 0,
+                    }
+                )
+                if created:
+                    created_count += 1
+        
+        if created_count > 0:
+            self.message_user(request, f"Successfully created {created_count} zodiac sign variants for {queryset.count()} product(s).", messages.SUCCESS)
+        else:
+            self.message_user(request, "All zodiac variants already exist for selected products.", messages.INFO)
+    create_zodiac_variants_action.short_description = "♈ Create 12 zodiac sign variants (selected products)"
+    
     def increase_prices_view(self, request):
         """View for price increase form and processing."""
         # Get product IDs from session or use all products
