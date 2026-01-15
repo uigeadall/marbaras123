@@ -511,7 +511,11 @@ class ProductAdmin(admin.ModelAdmin):
                 
                 # Get updated variants list
                 variants_data = []
-                variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                try:
+                    variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                except Exception:
+                    # Fallback: if variant_type doesn't exist, get all variants
+                    variants = product.variants.all().order_by('size')
                 for v in variants:
                     variants_data.append({
                         'id': v.id,

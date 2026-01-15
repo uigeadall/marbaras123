@@ -1099,9 +1099,9 @@
                           data-stock="{{ v.stock }}"
                           data-price="{{ v.effective_price|default:v.price_override|default:product.get_discounted_price }}"
                           title="In stock ({{ v.stock }})"
-                        >{{ v.display_name|default:v.size }}</button>
+                        >{% if v.display_name %}{{ v.display_name }}{% else %}{{ v.size }}{% endif %}</button>
                       {% else %}
-                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{{ v.display_name|default:v.size }}</span>
+                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{% if v.display_name %}{{ v.display_name }}{% else %}{{ v.size }}{% endif %}</span>
                       {% endif %}
                     {% endfor %}
                   </div>
