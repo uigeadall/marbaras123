@@ -1081,13 +1081,15 @@
               {% if product.variants.count %}
                 <div class="variant-wrap">
                   <span class="variant-label">
-                    {% if product.variants.first.variant_type == 'zodiac_sign' %}
-                      Select Zodiac Sign
-                    {% else %}
-                      Select size
-                    {% endif %}
+                    {% with first_variant=product.variants.first %}
+                      {% if first_variant.variant_type == 'zodiac_sign' %}
+                        Select Zodiac Sign
+                      {% else %}
+                        Select size
+                      {% endif %}
+                    {% endwith %}
                   </span>
-                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="{% if product.variants.first.variant_type == 'zodiac_sign' %}Zodiac signs{% else %}Ring sizes{% endif %}">
+                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="Ring sizes">
                     {% for v in product.variants.all %}
                       {% if v.stock > 0 %}
                         <button
@@ -1099,9 +1101,9 @@
                           data-stock="{{ v.stock }}"
                           data-price="{{ v.effective_price|default:v.price_override|default:product.get_discounted_price }}"
                           title="In stock ({{ v.stock }})"
-                        >{% if v.display_name %}{{ v.display_name }}{% else %}{{ v.size }}{% endif %}</button>
+                        >{{ v.size }}</button>
                       {% else %}
-                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{% if v.display_name %}{{ v.display_name }}{% else %}{{ v.size }}{% endif %}</span>
+                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{{ v.size }}</span>
                       {% endif %}
                     {% endfor %}
                   </div>
