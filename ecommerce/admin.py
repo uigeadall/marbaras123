@@ -476,11 +476,21 @@ class ProductAdmin(admin.ModelAdmin):
                 variants_data = []
                 if has_variants:
                     for v in variants:
+                        # Get display name for zodiac signs
+                        display_name = v.size or ''
+                        if has_variant_type_field and hasattr(v, 'variant_type') and v.variant_type == 'zodiac_sign':
+                            try:
+                                display_name = v.display_name or v.size or ''
+                            except Exception:
+                                display_name = v.size or ''
+                        
                         variants_data.append({
                             'id': v.id,
                             'size': v.size,
+                            'display_name': display_name,
                             'stock': v.stock,
-                            'sku': v.sku or ''
+                            'sku': v.sku or '',
+                            'variant_type': getattr(v, 'variant_type', 'ring_size') if has_variant_type_field else 'ring_size'
                         })
                 
                 return JsonResponse({
@@ -493,6 +503,7 @@ class ProductAdmin(admin.ModelAdmin):
                     'current_stock': current_stock,
                     'quantity': 0,
                     'has_variants': has_variants,
+                    'variant_type': variant_type if has_variants else None,
                     'variants': variants_data,
                     'message': f'Current stock: {current_stock}'
                 })
