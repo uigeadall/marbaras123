@@ -376,6 +376,8 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                // Store scan result for variant type detection
+                window.lastScanResult = data;
                 showSuccess(data, action);
                 // Clear input and focus for next scan (only for add/remove, not view)
                 if (action !== 'view') {
@@ -414,7 +416,8 @@
         if (action === 'view') {
             actionMessage = '📊 Current Stock Information';
             if (data.has_variants && data.variants && data.variants.length > 0) {
-                stockDisplay = `<div class="stock-info" style="font-size: 20px; color: #17a2b8; margin-bottom: 15px;">Product has ${data.variants.length} ring sizes</div>`;
+                const variantLabel = data.variant_type === 'zodiac_sign' ? 'zodiac signs' : 'ring sizes';
+                stockDisplay = `<div class="stock-info" style="font-size: 20px; color: #17a2b8; margin-bottom: 15px;">Product has ${data.variants.length} ${variantLabel}</div>`;
             } else {
                 stockDisplay = `<div class="stock-info" style="font-size: 24px; color: #17a2b8;">Current Stock: ${data.current_stock}</div>`;
             }
@@ -429,15 +432,19 @@
         // Build variants HTML if product has variants
         let variantsHTML = '';
         if (data.has_variants && data.variants && data.variants.length > 0) {
-            variantsHTML = '<div style="margin-top: 20px;"><strong style="display: block; margin-bottom: 10px;">Ring Sizes:</strong><div class="variants-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-top: 10px;">';
+            const variantLabel = data.variant_type === 'zodiac_sign' ? 'Zodiac Signs' : 'Ring Sizes';
+            const gridCols = data.variant_type === 'zodiac_sign' ? 'repeat(auto-fill, minmax(100px, 1fr))' : 'repeat(auto-fill, minmax(80px, 1fr))';
+            variantsHTML = `<div style="margin-top: 20px;"><strong style="display: block; margin-bottom: 10px;">${variantLabel}:</strong><div class="variants-grid" style="display: grid; grid-template-columns: ${gridCols}; gap: 10px; margin-top: 10px;">`;
             data.variants.forEach(v => {
                 const stockColor = v.stock > 0 ? '#28a745' : '#dc3545';
+                const displayText = v.display_name || v.size || '';
+                const escapedDisplayText = displayText.replace(/'/g, "\\'");
                 variantsHTML += `
                     <div class="variant-item" style="border: 2px solid ${stockColor}; border-radius: 8px; padding: 10px; text-align: center; cursor: pointer; transition: all 0.2s;" 
-                         onclick="selectVariant(${v.id}, '${v.size}', ${v.stock})"
+                         onclick="selectVariant(${v.id}, '${escapedDisplayText}', ${v.stock})"
                          onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.2)'"
                          onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'">
-                        <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px;">${v.size}</div>
+                        <div style="font-weight: bold; font-size: ${data.variant_type === 'zodiac_sign' ? '14px' : '16px'}; margin-bottom: 5px; line-height: 1.2;">${displayText}</div>
                         <div style="font-size: 14px; color: ${stockColor}; font-weight: 600;">Stock: ${v.stock}</div>
                     </div>
                 `;
@@ -476,9 +483,10 @@
         window.selectedVariantStock = currentStock;
         
         // Show action buttons for this variant
+        const variantLabel = window.selectedVariantType === 'zodiac_sign' ? 'Sign' : 'Size';
         const actionButtons = `
             <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #667eea;">
-                <p style="margin-bottom: 10px; font-weight: 600;">Selected: Size ${size} (Stock: ${currentStock})</p>
+                <p style="margin-bottom: 10px; font-weight: 600;">Selected: ${variantLabel} ${size} (Stock: ${currentStock})</p>
                 <div style="display: flex; gap: 10px;">
                     <button type="button" class="scan-button add" onclick="updateVariantStock('add', ${variantId})" style="flex: 1; padding: 10px;">➕ Add Stock</button>
                     <button type="button" class="scan-button remove" onclick="updateVariantStock('remove', ${variantId})" style="flex: 1; padding: 10px;">➖ Remove Stock</button>

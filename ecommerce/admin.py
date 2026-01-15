@@ -443,14 +443,28 @@ class ProductAdmin(admin.ModelAdmin):
             else:
                 current_stock = product.stock
             
-            # Check if product has variants (ring sizes)
+            # Check if product has variants (ring sizes or zodiac signs)
             # Check if variant_type field exists (for backward compatibility)
+            from django.db import connection
             try:
-                variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                with connection.cursor() as cursor:
+                    cursor.execute("SHOW COLUMNS FROM ecommerce_productvariant LIKE 'variant_type'")
+                    has_variant_type_field = cursor.fetchone() is not None
             except Exception:
+                has_variant_type_field = False
+            
+            if has_variant_type_field:
+                # Get both ring sizes and zodiac signs
+                ring_size_variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                zodiac_variants = product.variants.filter(variant_type='zodiac_sign').order_by('size')
+                # Combine both types, prioritizing ring sizes first
+                variants = list(ring_size_variants) + list(zodiac_variants)
+                variant_type = 'zodiac_sign' if zodiac_variants.exists() and not ring_size_variants.exists() else 'ring_size'
+            else:
                 # Fallback: if variant_type doesn't exist, get all variants (assuming they're ring sizes)
-                variants = product.variants.all().order_by('size')
-            has_variants = variants.exists()
+                variants = list(product.variants.all().order_by('size'))
+                variant_type = 'ring_size'
+            has_variants = len(variants) > 0
             
             # Handle different actions
             if action == 'view':
