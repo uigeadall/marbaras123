@@ -606,21 +606,47 @@ class ProductAdmin(admin.ModelAdmin):
                 
                 # Get updated variants list
                 variants_data = []
+                from django.db import connection
                 try:
-                    variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                    with connection.cursor() as cursor:
+                        cursor.execute("SHOW COLUMNS FROM ecommerce_productvariant LIKE 'variant_type'")
+                        has_variant_type_field = cursor.fetchone() is not None
                 except Exception:
-                    # Fallback: if variant_type doesn't exist, get all variants
-                    variants = product.variants.all().order_by('size')
+                    has_variant_type_field = False
+                
+                if has_variant_type_field:
+                    ring_size_variants = product.variants.filter(variant_type='ring_size').order_by('size')
+                    zodiac_variants = product.variants.filter(variant_type='zodiac_sign').order_by('size')
+                    variants = list(ring_size_variants) + list(zodiac_variants)
+                else:
+                    variants = list(product.variants.all().order_by('size'))
+                
                 for v in variants:
+                    display_name = v.size or ''
+                    if has_variant_type_field and hasattr(v, 'variant_type') and v.variant_type == 'zodiac_sign':
+                        try:
+                            display_name = v.display_name or v.size or ''
+                        except Exception:
+                            display_name = v.size or ''
+                    
                     variants_data.append({
                         'id': v.id,
                         'size': v.size,
+                        'display_name': display_name,
                         'stock': v.stock,
-                        'sku': v.sku or ''
+                        'sku': v.sku or '',
+                        'variant_type': getattr(v, 'variant_type', 'ring_size') if has_variant_type_field else 'ring_size'
                     })
                 
                 from django.urls import reverse
                 product_url = reverse('admin:ecommerce_product_change', args=[product.id])
+                
+                # Determine variant type for response
+                response_variant_type = 'ring_size'
+                if has_variant_type_field:
+                    if product.variants.filter(variant_type='zodiac_sign').exists():
+                        response_variant_type = 'zodiac_sign'
+                
                 return JsonResponse({
                     'success': True,
                     'action': 'remove',
@@ -631,7 +657,8 @@ class ProductAdmin(admin.ModelAdmin):
                     'current_stock': current_stock,
                     'new_stock': new_stock,
                     'quantity': quantity,
-                    'has_variants': variants.exists(),
+                    'has_variants': len(variants) > 0,
+                    'variant_type': response_variant_type if len(variants) > 0 else None,
                     'variants': variants_data,
                     'message': f'Stock decreased by {quantity}! New stock: {new_stock}'
                 })

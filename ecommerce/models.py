@@ -360,6 +360,10 @@ class ProductVariant(models.Model):
     def display_name(self) -> str:
         """Return display name for the variant."""
         if self.variant_type == 'zodiac_sign':
+            # Look up the display name from ZODIAC_SIGN_CHOICES
+            for sign_value, sign_display in ZODIAC_SIGN_CHOICES:
+                if sign_value == self.size:
+                    return sign_display
             return self.size or ''
         return self.size or ''
 
