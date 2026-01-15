@@ -213,18 +213,33 @@
 
   .size-grid { display: flex; flex-wrap: wrap; gap: 10px; }
   .size-grid.zodiac-grid { 
-    display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
-    gap: 10px; 
+    display: grid !important; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 12px; 
+    width: 100%;
+  }
+  @media (max-width: 768px) {
+    .size-grid.zodiac-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+  }
+  @media (max-width: 480px) {
+    .size-grid.zodiac-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
   }
   .size-pill {
     position: relative; min-width: 48px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
     background: #fff; font-size: .92rem; text-align: center; cursor: pointer; user-select: none; line-height: 1;
   }
   .size-pill.zodiac-pill {
-    min-width: 100px; 
-    padding: 10px 12px; 
-    font-size: 14px;
+    min-width: auto; 
+    width: 100%;
+    padding: 12px 8px; 
+    font-size: 13px;
+    font-weight: 500;
   }
   .size-pill:hover { border-color: #bbb; }
   .size-pill.selected { border-color: #111; background: #f5f5f5; box-shadow: 0 0 0 2px rgba(0,0,0,.04) inset; }
