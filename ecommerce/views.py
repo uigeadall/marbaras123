@@ -528,7 +528,12 @@ def home(request: HttpRequest) -> HttpResponse:
         # Get random products for "Handpicked This Month" section
         editors_choice = list(
             Product.objects.select_related("category")
-            .prefetch_related(Prefetch("images", queryset=ProductImage.objects.all()))
+            .prefetch_related(
+                Prefetch(
+                    "images", 
+                    queryset=ProductImage.objects.filter(version_type='silver').order_by('id')
+                )
+            )
             .order_by('?')[:10]  # Random order
         )
         cache.set(cache_key_editors, editors_choice, five_minutes + 10)  # Cache for 5 min + 10 sec buffer
@@ -643,9 +648,15 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
     sort = request.GET.get("sort")
 
     # Use categories ManyToManyField if available, fallback to category ForeignKey
+    # Prefetch images with version_type='silver' first, then others
     products = Product.objects.filter(
         Q(categories=category) | Q(category=category)
-    ).select_related("category").prefetch_related(Prefetch("images", queryset=ProductImage.objects.all())).distinct()
+    ).select_related("category").prefetch_related(
+        Prefetch(
+            "images", 
+            queryset=ProductImage.objects.filter(version_type='silver').order_by('id')
+        )
+    ).distinct()
     
     # Log product count for debugging
     product_count = products.count()

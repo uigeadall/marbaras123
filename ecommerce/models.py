@@ -254,17 +254,42 @@ class Product(models.Model):
     @property
     def main_image(self):
         """Return the main product image - either the direct image field or the first ProductImage."""
+        # First check direct image field
         if self.image:
-            return self.image
+            try:
+                # Verify the image file actually exists
+                if hasattr(self.image, 'url'):
+                    return self.image
+            except Exception:
+                pass
+        
         # Try to get the first ProductImage (cached if prefetched)
         if hasattr(self, '_prefetched_objects_cache') and 'images' in self._prefetched_objects_cache:
             images = self._prefetched_objects_cache['images']
             if images:
-                return images[0].image
+                for img in images:
+                    if hasattr(img, 'image') and img.image:
+                        try:
+                            # Verify the image file actually exists
+                            if hasattr(img.image, 'url'):
+                                return img.image
+                        except Exception:
+                            continue
+        
         # Fallback to query if not prefetched
-        first_image = self.images.first()
-        if first_image:
-            return first_image.image
+        try:
+            first_image = self.images.filter(version_type='silver').first()
+            if not first_image:
+                first_image = self.images.first()
+            if first_image and hasattr(first_image, 'image') and first_image.image:
+                try:
+                    if hasattr(first_image.image, 'url'):
+                        return first_image.image
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
         return None
 
     def __str__(self) -> str:

@@ -93,8 +93,21 @@ def fast_image(image_field, alt='', width=None, height=None, class_name='', lazy
         }
     
     try:
-        base_url = image_field.url if hasattr(image_field, 'url') else ''
-    except Exception:
+        if hasattr(image_field, 'url'):
+            base_url = image_field.url
+        elif hasattr(image_field, 'name') and image_field.name:
+            # Try to get URL from storage if url attribute doesn't exist
+            try:
+                from django.core.files.storage import default_storage
+                base_url = default_storage.url(image_field.name)
+            except Exception:
+                base_url = ''
+        else:
+            base_url = ''
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error getting image URL: {e}")
         base_url = ''
     
     if not base_url:
