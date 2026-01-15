@@ -855,15 +855,26 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     except Exception:
         has_variant_type_field = False
     
-    # Check if product has zodiac variants
+    # Check if product has zodiac variants and filter variants accordingly
     has_zodiac_variants = False
+    filtered_variants = list(product.variants.all())
+    
     if has_variant_type_field and product.variants.exists():
         try:
-            first_variant = product.variants.first()
-            if hasattr(first_variant, 'variant_type') and first_variant.variant_type == 'zodiac_sign':
+            # Check if product has zodiac sign variants
+            zodiac_variants = product.variants.filter(variant_type='zodiac_sign')
+            ring_size_variants = product.variants.filter(variant_type='ring_size')
+            
+            if zodiac_variants.exists():
                 has_zodiac_variants = True
+                # If product has zodiac variants, show only zodiac variants
+                filtered_variants = list(zodiac_variants.order_by('size'))
+            elif ring_size_variants.exists():
+                # If product has ring size variants, show only ring size variants
+                filtered_variants = list(ring_size_variants.order_by('size'))
         except Exception:
-            pass
+            # Fallback: use all variants if variant_type check fails
+            filtered_variants = list(product.variants.all().order_by('size'))
     
     rating_form = None
     categories = _get_categories()
@@ -1012,6 +1023,7 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "rose_gold_plated_images": rose_gold_plated_images,
         "has_gold_plated": len(gold_plated_images) > 0 or len(rose_gold_plated_images) > 0,
         "has_zodiac_variants": has_zodiac_variants,
+        "filtered_variants": filtered_variants,
         "comments": comments,
         "favorite_ids": (
             list(Favorite.objects.filter(user=request.user).values_list("product_id", flat=True))

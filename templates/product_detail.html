@@ -1078,7 +1078,7 @@
                 {% endif %}
               </div>
 
-              {% if product.variants.count %}
+              {% if filtered_variants|length > 0 %}
                 <div class="variant-wrap">
                   <span class="variant-label">
                     {% if has_zodiac_variants %}
@@ -1087,8 +1087,8 @@
                       Select size
                     {% endif %}
                   </span>
-                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% else %}Ring sizes{% endif %}">
-                    {% for v in product.variants.all %}
+                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% else %}Ring sizes{% endif %}" style="{% if has_zodiac_variants %}grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));{% endif %}">
+                    {% for v in filtered_variants %}
                       {% if v.stock > 0 %}
                         <button
                           type="button"
@@ -1099,9 +1099,10 @@
                           data-stock="{{ v.stock }}"
                           data-price="{{ v.effective_price|default:v.price_override|default:product.get_discounted_price }}"
                           title="In stock ({{ v.stock }})"
-                        >{% if has_zodiac_variants and v.display_name %}{{ v.display_name }}{% else %}{{ v.size }}{% endif %}</button>
+                          style="{% if has_zodiac_variants %}min-width: 100px; padding: 10px 12px; font-size: 14px;{% endif %}"
+                        >{% if has_zodiac_variants %}{{ v.display_name|default:v.size }}{% else %}{{ v.size }}{% endif %}</button>
                       {% else %}
-                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{% if has_zodiac_variants and v.display_name %}{{ v.display_name }}{% else %}{{ v.size }}{% endif %}</span>
+                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock" style="{% if has_zodiac_variants %}min-width: 100px; padding: 10px 12px; font-size: 14px;{% endif %}">{% if has_zodiac_variants %}{{ v.display_name|default:v.size }}{% else %}{{ v.size }}{% endif %}</span>
                       {% endif %}
                     {% endfor %}
                   </div>
