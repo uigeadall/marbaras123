@@ -32,7 +32,7 @@ class ProductImageInline(admin.TabularInline):
 class ProductVariantInline(admin.TabularInline):
     model = ProductVariant
     extra = 1
-    fields = ("size", "stock", "price_override", "sku")
+    fields = ("variant_type", "size", "stock", "price_override", "sku")
 
 class ProductBundleItemInline(admin.TabularInline):
     model = ProductBundleItem
@@ -112,7 +112,7 @@ class PriceDecreaseForm(forms.Form):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
-    actions = ['increase_prices_action', 'decrease_prices_action']
+    actions = ['increase_prices_action', 'decrease_prices_action', 'create_zodiac_variants_action']
     
     def get_list_display(self, request):
         """Dynamically get list_display to handle missing sale_expires_at field."""

@@ -16,6 +16,21 @@ RING_SIZE_CHOICES = [(s, s) for s in [
     "48","49","50","51","52","53","54","55","56","57","58","59","60","61","62","63","64","65","66"
 ]]
 
+ZODIAC_SIGN_CHOICES = [
+    ("Aries", "Aries ♈"),
+    ("Taurus", "Taurus ♉"),
+    ("Gemini", "Gemini ♊"),
+    ("Cancer", "Cancer ♋"),
+    ("Leo", "Leo ♌"),
+    ("Virgo", "Virgo ♍"),
+    ("Libra", "Libra ♎"),
+    ("Scorpio", "Scorpio ♏"),
+    ("Sagittarius", "Sagittarius ♐"),
+    ("Capricorn", "Capricorn ♑"),
+    ("Aquarius", "Aquarius ♒"),
+    ("Pisces", "Pisces ♓"),
+]
+
 
 class Category(models.Model):
     """Product category (e.g., Rings, Necklaces, etc.) with support for sub-categories."""
@@ -282,22 +297,31 @@ class ProductBundleItem(models.Model):
 
 
 class ProductVariant(models.Model):
-    """Size/variant only for ring-type products."""
+    """Size/variant for ring-type products or other variants like zodiac signs."""
+    VARIANT_TYPE_CHOICES = [
+        ('ring_size', 'Ring Size'),
+        ('zodiac_sign', 'Zodiac Sign'),
+        ('other', 'Other'),
+    ]
+    
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants', db_index=True)
-    size = models.CharField(max_length=10, choices=RING_SIZE_CHOICES)
+    variant_type = models.CharField(max_length=20, choices=VARIANT_TYPE_CHOICES, default='ring_size', db_index=True)
+    size = models.CharField(max_length=20, blank=True, null=True, help_text="Ring size (for ring variants) or zodiac sign (for zodiac variants)")
     price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     stock = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)], db_index=True)
     sku = models.CharField(max_length=64, blank=True, null=True, unique=True, db_index=True)
 
     class Meta:
-        unique_together = (('product', 'size'),)
-        ordering = ['product_id', 'size']
+        unique_together = (('product', 'variant_type', 'size'),)
+        ordering = ['product_id', 'variant_type', 'size']
         verbose_name = "Product Variant"
         verbose_name_plural = "Product Variants"
 
     def clean(self):
-        if self.product_id and not self.product.is_ring:
-            raise ValidationError("Sizes/variants are allowed only for ring products.")
+        if self.variant_type == 'ring_size' and self.product_id and not self.product.is_ring:
+            raise ValidationError("Ring size variants are allowed only for ring products.")
+        if self.variant_type == 'ring_size' and self.size and self.size not in [choice[0] for choice in RING_SIZE_CHOICES]:
+            raise ValidationError(f"Invalid ring size: {self.size}. Must be one of {[c[0] for c in RING_SIZE_CHOICES]}")
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -306,8 +330,17 @@ class ProductVariant(models.Model):
     @property
     def effective_price(self) -> Decimal:
         return self.price_override if self.price_override is not None else self.product.get_discounted_price()
+    
+    @property
+    def display_name(self) -> str:
+        """Return display name for the variant."""
+        if self.variant_type == 'zodiac_sign':
+            return self.size or ''
+        return self.size or ''
 
     def __str__(self) -> str:
+        if self.variant_type == 'zodiac_sign':
+            return f"{self.product.name} — {self.size}"
         return f"{self.product.name} — size {self.size}"
 
 

@@ -1080,8 +1080,14 @@
 
               {% if product.variants.count %}
                 <div class="variant-wrap">
-                  <span class="variant-label">Select size</span>
-                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="Ring sizes">
+                  <span class="variant-label">
+                    {% if product.variants.first.variant_type == 'zodiac_sign' %}
+                      Select Zodiac Sign
+                    {% else %}
+                      Select size
+                    {% endif %}
+                  </span>
+                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="{% if product.variants.first.variant_type == 'zodiac_sign' %}Zodiac signs{% else %}Ring sizes{% endif %}">
                     {% for v in product.variants.all %}
                       {% if v.stock > 0 %}
                         <button
@@ -1093,9 +1099,9 @@
                           data-stock="{{ v.stock }}"
                           data-price="{{ v.effective_price|default:v.price_override|default:product.get_discounted_price }}"
                           title="In stock ({{ v.stock }})"
-                        >{{ v.size }}</button>
+                        >{{ v.display_name|default:v.size }}</button>
                       {% else %}
-                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{{ v.size }}</span>
+                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{{ v.display_name|default:v.size }}</span>
                       {% endif %}
                     {% endfor %}
                   </div>
