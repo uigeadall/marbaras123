@@ -772,10 +772,18 @@ def product_list(request: HttpRequest) -> HttpResponse:
 
 
 def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    # Check if variant_type field exists (for backward compatibility before migration)
+    try:
+        # Try to order by variant_type and size if field exists
+        variants_qs = ProductVariant.objects.order_by("variant_type", "size")
+    except Exception:
+        # Fallback to size only if variant_type doesn't exist yet
+        variants_qs = ProductVariant.objects.order_by("size")
+    
     product_qs = (
         Product.objects.select_related("category").prefetch_related(
             Prefetch("images", queryset=ProductImage.objects.all().order_by('id')),
-            Prefetch("variants", queryset=ProductVariant.objects.order_by("size")),
+            Prefetch("variants", queryset=variants_qs),
         )
     )
     product = get_object_or_404(product_qs, slug=slug)

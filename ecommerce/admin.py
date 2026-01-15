@@ -444,7 +444,12 @@ class ProductAdmin(admin.ModelAdmin):
                 current_stock = product.stock
             
             # Check if product has variants (ring sizes)
-            variants = product.variants.filter(variant_type='ring_size').order_by('size')
+            # Check if variant_type field exists (for backward compatibility)
+            try:
+                variants = product.variants.filter(variant_type='ring_size').order_by('size')
+            except Exception:
+                # Fallback: if variant_type doesn't exist, get all variants (assuming they're ring sizes)
+                variants = product.variants.all().order_by('size')
             has_variants = variants.exists()
             
             # Handle different actions
