@@ -212,9 +212,19 @@
   .variant-label { font-weight: bold; display: block; margin-bottom: 8px; }
 
   .size-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .size-grid.zodiac-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
+    gap: 10px; 
+  }
   .size-pill {
     position: relative; min-width: 48px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
     background: #fff; font-size: .92rem; text-align: center; cursor: pointer; user-select: none; line-height: 1;
+  }
+  .size-pill.zodiac-pill {
+    min-width: 100px; 
+    padding: 10px 12px; 
+    font-size: 14px;
   }
   .size-pill:hover { border-color: #bbb; }
   .size-pill.selected { border-color: #111; background: #f5f5f5; box-shadow: 0 0 0 2px rgba(0,0,0,.04) inset; }
@@ -1087,22 +1097,21 @@
                       Select size
                     {% endif %}
                   </span>
-                  <div id="sizeGrid" class="size-grid" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% else %}Ring sizes{% endif %}" style="{% if has_zodiac_variants %}grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));{% endif %}">
+                  <div id="sizeGrid" class="size-grid{% if has_zodiac_variants %} zodiac-grid{% endif %}" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% else %}Ring sizes{% endif %}">
                     {% for v in filtered_variants %}
                       {% if v.stock > 0 %}
                         <button
                           type="button"
-                          class="size-pill"
+                          class="size-pill{% if has_zodiac_variants %} zodiac-pill{% endif %}"
                           role="radio"
                           aria-checked="false"
                           data-variant-id="{{ v.id }}"
                           data-stock="{{ v.stock }}"
                           data-price="{{ v.effective_price|default:v.price_override|default:product.get_discounted_price }}"
                           title="In stock ({{ v.stock }})"
-                          style="{% if has_zodiac_variants %}min-width: 100px; padding: 10px 12px; font-size: 14px;{% endif %}"
                         >{% if has_zodiac_variants %}{{ v.display_name|default:v.size }}{% else %}{{ v.size }}{% endif %}</button>
                       {% else %}
-                        <span class="size-pill out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock" style="{% if has_zodiac_variants %}min-width: 100px; padding: 10px 12px; font-size: 14px;{% endif %}">{% if has_zodiac_variants %}{{ v.display_name|default:v.size }}{% else %}{{ v.size }}{% endif %}</span>
+                        <span class="size-pill{% if has_zodiac_variants %} zodiac-pill{% endif %} out" role="radio" aria-checked="false" aria-disabled="true" title="Out of stock">{% if has_zodiac_variants %}{{ v.display_name|default:v.size }}{% else %}{{ v.size }}{% endif %}</span>
                       {% endif %}
                     {% endfor %}
                   </div>
