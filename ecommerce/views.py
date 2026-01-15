@@ -845,6 +845,26 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     product_images = silver_images
 
     logger.debug(f"Total images for product {product.pk}: silver={len(silver_images)}, gold_plated={len(gold_plated_images)}, rose_gold_plated={len(rose_gold_plated_images)}")
+    
+    # Check if variant_type field exists for template (for backward compatibility)
+    from django.db import connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SHOW COLUMNS FROM ecommerce_productvariant LIKE 'variant_type'")
+            has_variant_type_field = cursor.fetchone() is not None
+    except Exception:
+        has_variant_type_field = False
+    
+    # Check if product has zodiac variants
+    has_zodiac_variants = False
+    if has_variant_type_field and product.variants.exists():
+        try:
+            first_variant = product.variants.first()
+            if hasattr(first_variant, 'variant_type') and first_variant.variant_type == 'zodiac_sign':
+                has_zodiac_variants = True
+        except Exception:
+            pass
+    
     rating_form = None
     categories = _get_categories()
 
@@ -991,6 +1011,7 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "gold_plated_images": gold_plated_images,
         "rose_gold_plated_images": rose_gold_plated_images,
         "has_gold_plated": len(gold_plated_images) > 0 or len(rose_gold_plated_images) > 0,
+        "has_zodiac_variants": has_zodiac_variants,
         "comments": comments,
         "favorite_ids": (
             list(Favorite.objects.filter(user=request.user).values_list("product_id", flat=True))
