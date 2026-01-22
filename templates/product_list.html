@@ -83,8 +83,8 @@
           <li>
             <a href="{% url 'products_by_category' category.slug %}?sort={{ request.GET.sort|default:'' }}"
                class="{% if category.name|lower == 'sale' %}sale-category{% elif selected_category and selected_category.id == category.id %}active{% endif %}"
-               {% if category.name|lower == 'amber' or category.name|lower == 'maestro italy' %}style="padding-left: 1.5rem;"{% endif %}>
-              {% if category.name|lower == 'amber' or category.name|lower == 'maestro italy' %}-{{ category.name|lower }}{% else %}{{ category.name|upper }}{% endif %}
+               {% if category.parent %}style="padding-left: 1.5rem;"{% endif %}>
+              {% if category.parent %}-{{ category.name|lower }}{% else %}{{ category.name|upper }}{% endif %}
             </a>
           </li>
         {% endfor %}
