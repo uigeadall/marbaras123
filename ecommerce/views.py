@@ -382,11 +382,14 @@ def _get_categories():
         for cat in all_categories:
             cat_name_lower = cat.name.lower()
             
-            # Check if it's a Sale category
+            # Check if it's a Sale category - skip adding it to parent_categories now
+            # We'll add it at the end separately
             if cat_name_lower == 'sale':
                 sale_category = cat
                 if sale_category.id not in subcategories_dict:
                     subcategories_dict[sale_category.id] = []
+                # Skip adding Sale to parent_categories - we'll add it at the end
+                continue
             
             # Check if category has a parent (is a subcategory)
             if cat.parent:
@@ -415,7 +418,7 @@ def _get_categories():
             if parent.id in subcategories_dict:
                 categories.extend(subcategories_dict[parent.id])
         
-        # Add Sale category at the end if it exists
+        # Add Sale category at the end if it exists (only once)
         if sale_category:
             categories.append(sale_category)
             if sale_category.id in subcategories_dict:
