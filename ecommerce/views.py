@@ -699,15 +699,11 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
         else []
     )
 
-    # Get sub-categories for the selected category (hardcoded for now since parent field doesn't exist in DB)
+    # Get sub-categories for the selected category using parent field
     subcategories = []
     if category:
-        cat_name_lower = category.name.lower()
-        if cat_name_lower == 'collections':
-            # Get amber and maestro italy as subcategories
-            subcategories = list(Category.objects.only('id', 'name', 'slug').filter(
-                name__in=['Amber', 'Maestro Italy']
-            ).order_by('name'))
+        # Get all categories that have this category as parent
+        subcategories = list(Category.objects.filter(parent=category).order_by('name'))
     
     context = {
         "products": products,
