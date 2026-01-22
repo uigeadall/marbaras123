@@ -642,11 +642,22 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
     logger.info(f"Final category selected: ID {category.pk}, Name: '{category.name}', Slug: '{category.slug}'")
     sort = request.GET.get("sort")
 
+    # Get all subcategories for this category (categories with this category as parent)
+    subcategories = Category.objects.filter(parent=category).values_list('id', flat=True)
+    subcategory_ids = list(subcategories)
+    
+    # Build query to include products from the category AND its subcategories
+    category_filter = Q(categories=category) | Q(category=category)
+    
+    # Add subcategories to the filter
+    if subcategory_ids:
+        subcategory_filter = Q(categories__id__in=subcategory_ids) | Q(category_id__in=subcategory_ids)
+        category_filter = category_filter | subcategory_filter
+        logger.info(f"Found {len(subcategory_ids)} subcategories: {subcategory_ids}")
+    
     # Use categories ManyToManyField if available, fallback to category ForeignKey
     # Prefetch images with version_type='silver' first, then others
-    products = Product.objects.filter(
-        Q(categories=category) | Q(category=category)
-    ).select_related("category").prefetch_related(
+    products = Product.objects.filter(category_filter).select_related("category").prefetch_related(
         Prefetch(
             "images", 
             queryset=ProductImage.objects.filter(version_type='silver').order_by('id')
@@ -655,7 +666,7 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
     
     # Log product count for debugging
     product_count = products.count()
-    logger.info(f"Found {product_count} products for category '{category.name}'")
+    logger.info(f"Found {product_count} products for category '{category.name}' (including {len(subcategory_ids)} subcategories)")
     
     products = products.annotate(_eff_price=Coalesce("discount_price", "price"))
     if sort == "price_asc":
