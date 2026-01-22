@@ -40,7 +40,31 @@ class Category(models.Model):
     """Product category (e.g., Rings, Necklaces, etc.) with support for sub-categories."""
     name = models.CharField(max_length=100, db_index=True)
     slug = models.SlugField(blank=True, db_index=True)
-    image = models.ImageField(upload_to="categories/", blank=True, null=True, help_text="Image for sub-category display")
+    
+    # Use HybridMediaStorage to prevent "No space left on device" errors
+    @staticmethod
+    def _get_storage():
+        from django.conf import settings
+        # Always try to use HybridMediaStorage if Cloudinary credentials are available
+        if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
+            try:
+                from ecommerce.storage import HybridMediaStorage
+                return HybridMediaStorage()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to initialize HybridMediaStorage: {e}")
+        # Fallback to default storage if Cloudinary is not available
+        from django.core.files.storage import default_storage
+        return default_storage
+    
+    image = models.ImageField(
+        upload_to="categories/",
+        blank=True,
+        null=True,
+        storage=_get_storage(),
+        help_text="Image for sub-category display"
+    )
     parent = models.ForeignKey(
         'self',
         on_delete=models.CASCADE,
@@ -753,7 +777,29 @@ class BlogPost(models.Model):
     slug = models.SlugField(unique=True, blank=True, db_index=True)
     content = models.TextField()
     excerpt = models.TextField(max_length=500, blank=True, help_text="Short summary for preview")
-    image = models.ImageField(upload_to="blog/", blank=True, null=True, help_text="Featured image for blog post")
+    
+    # Use HybridMediaStorage to prevent "No space left on device" errors
+    @staticmethod
+    def _get_storage():
+        from django.conf import settings
+        if hasattr(settings, 'CLOUDINARY_CLOUD_NAME') and settings.CLOUDINARY_CLOUD_NAME:
+            try:
+                from ecommerce.storage import HybridMediaStorage
+                return HybridMediaStorage()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to initialize HybridMediaStorage: {e}")
+        from django.core.files.storage import default_storage
+        return default_storage
+    
+    image = models.ImageField(
+        upload_to="blog/",
+        blank=True,
+        null=True,
+        storage=_get_storage(),
+        help_text="Featured image for blog post"
+    )
     video_file = models.FileField(
         upload_to="blog/videos/", 
         blank=True, 
