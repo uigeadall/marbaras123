@@ -371,16 +371,10 @@ def _get_categories():
     cached_ids = cache.get(cache_key)
     
     if cached_ids is None:
-        # Get all categories - use only() to avoid parent field issues
-        all_categories = list(Category.objects.only('id', 'name', 'slug').all())
+        # Get all categories with parent field to properly identify subcategories
+        all_categories = list(Category.objects.select_related('parent').all())
         
-        # Define subcategories that should appear under their parent categories
-        subcategories = {
-            'amber': 'Collections',
-            'maestro italy': 'Collections',
-        }
-        
-        # Separate parent categories, subcategories, and Sale category
+        # Separate parent categories (those without a parent) and subcategories
         parent_categories = []
         subcategories_dict = {}
         sale_category = None
@@ -388,23 +382,21 @@ def _get_categories():
         for cat in all_categories:
             cat_name_lower = cat.name.lower()
             
+            # Check if it's a Sale category
             if cat_name_lower == 'sale':
                 sale_category = cat
                 if sale_category.id not in subcategories_dict:
                     subcategories_dict[sale_category.id] = []
-            elif cat_name_lower in subcategories:
-                # This is a subcategory - find its parent
-                parent_name = subcategories[cat_name_lower]
-                parent = next((c for c in all_categories if c.name.lower() == parent_name.lower()), None)
-                if parent:
-                    if parent.id not in subcategories_dict:
-                        subcategories_dict[parent.id] = []
-                    subcategories_dict[parent.id].append(cat)
-                else:
-                    # Parent not found, treat as regular category
-                    parent_categories.append(cat)
+            
+            # Check if category has a parent (is a subcategory)
+            if cat.parent:
+                # This is a subcategory - add it under its parent
+                parent_id = cat.parent.id
+                if parent_id not in subcategories_dict:
+                    subcategories_dict[parent_id] = []
+                subcategories_dict[parent_id].append(cat)
             else:
-                # Regular parent category
+                # This is a parent category (no parent field)
                 parent_categories.append(cat)
                 if cat.id not in subcategories_dict:
                     subcategories_dict[cat.id] = []
@@ -433,8 +425,8 @@ def _get_categories():
         category_ids = [cat.id for cat in categories]
         cache.set(cache_key, category_ids, 3600)
     else:
-        # Retrieve categories by IDs in the correct order
-        categories = list(Category.objects.only('id', 'name', 'slug').filter(id__in=cached_ids).all())
+        # Retrieve categories by IDs in the correct order with parent field
+        categories = list(Category.objects.select_related('parent').filter(id__in=cached_ids).all())
         # Create a dict for quick lookup
         categories_dict = {cat.id: cat for cat in categories}
         # Rebuild the list in the correct order, ensuring all categories are included
