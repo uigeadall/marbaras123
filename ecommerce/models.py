@@ -257,6 +257,8 @@ class Product(models.Model):
     @property
     def is_ring(self) -> bool:
         """Heuristic: category slug or name indicates a ring."""
+        if not self.category:
+            return False
         slug = (self.category.slug or "").lower()
         name = (self.category.name or "").lower()
         return slug == "rings" or "ring" in name or "пръстен" in name
@@ -372,8 +374,18 @@ class ProductVariant(models.Model):
         verbose_name_plural = "Product Variants"
 
     def clean(self):
-        if self.variant_type == 'ring_size' and self.product_id and not self.product.is_ring:
-            raise ValidationError("Ring size variants are allowed only for ring products.")
+        # Only validate ring_size restriction if product is saved and has a category
+        if self.variant_type == 'ring_size' and self.product_id:
+            try:
+                # Refresh product from DB to ensure we have latest category
+                product = Product.objects.get(pk=self.product_id)
+                # Only validate if product has a category set
+                if product.category and not product.is_ring:
+                    raise ValidationError("Ring size variants are allowed only for ring products.")
+            except Product.DoesNotExist:
+                # Product doesn't exist yet, skip validation
+                pass
+        
         if self.variant_type == 'ring_size' and self.size and self.size not in [choice[0] for choice in RING_SIZE_CHOICES]:
             raise ValidationError(f"Invalid ring size: {self.size}. Must be one of {[c[0] for c in RING_SIZE_CHOICES]}")
         if self.variant_type == 'earring_hoop_size' and self.size and self.size not in [choice[0] for choice in EARRING_HOOP_SIZE_CHOICES]:
