@@ -160,10 +160,6 @@ class Product(models.Model):
         validators=[RegexValidator(r"^[\w\-\.]+$")]
     )
     brand = models.CharField(max_length=50, blank=True, null=True)
-    is_gold_plated = models.BooleanField(
-        default=False,
-        help_text="Check if this product is gold plated. When checked, gold plated images will be shown. When unchecked, normal images will be shown."
-    )
 
     cart_add_count = models.PositiveIntegerField(default=0, db_index=True)
     stock = models.PositiveIntegerField(default=0, db_index=True)
@@ -308,9 +304,7 @@ class Product(models.Model):
         
         # Fallback to query if not prefetched
         try:
-            first_image = self.images.filter(version_type='silver').first()
-            if not first_image:
-                first_image = self.images.first()
+            first_image = self.images.first()
             if first_image and hasattr(first_image, 'image') and first_image.image:
                 try:
                     if hasattr(first_image.image, 'url'):
@@ -417,12 +411,6 @@ class ProductVariant(models.Model):
 
 
 class ProductImage(models.Model):
-    VERSION_CHOICES = [
-        ('silver', 'Silver'),
-        ('gold_plated', 'Gold Plated'),
-        ('rose_gold_plated', 'Rose Gold Plated'),
-    ]
-    
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE, db_index=True)
     
     # Get storage dynamically to ensure Cloudinary is used if configured
@@ -447,25 +435,13 @@ class ProductImage(models.Model):
         upload_to='products/multiple/',
         storage=_get_storage()
     )
-    version_type = models.CharField(
-        max_length=20,
-        choices=VERSION_CHOICES,
-        default='silver',
-        help_text="Select the version type for this image: Silver, Gold Plated, or Rose Gold Plated"
-    )
-    # Keep is_gold_plated for backward compatibility (will be migrated)
-    is_gold_plated = models.BooleanField(
-        default=False,
-        help_text="[DEPRECATED] Use version_type instead. Check if this image is for the gold plated version."
-    )
 
     class Meta:
         verbose_name = "Product Image"
         verbose_name_plural = "Product Images"
 
     def __str__(self) -> str:
-        version = self.get_version_type_display()
-        return f"{self.product.name} image ({version})"
+        return f"{self.product.name} image"
 
 
 class Rating(models.Model):

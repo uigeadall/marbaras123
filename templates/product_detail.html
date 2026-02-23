@@ -922,59 +922,28 @@
         <div class="content-wrapper">
           <div class="flex">
             <div class="image-section">
-              {% if silver_images or has_gold_plated %}
+              {% if product_images %}
                 <div class="thumbs-col" id="thumbsCol">
-                  {% for img in silver_images|slice:":5" %}
+                  {% for img in product_images|slice:":5" %}
                     <img
                       src="{{ img.image.url }}"
-                      alt="{{ product.name }} - Silver Image {{ forloop.counter }}"
+                      alt="{{ product.name }} - Image {{ forloop.counter }}"
                       data-image-url="{{ img.image.url }}"
-                      data-version-type="silver"
                       onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
                       role="button"
                       tabindex="0"
-                      aria-label="View {{ product.name }} silver image {{ forloop.counter }}"
-                      class="thumbnail-img silver-image"
+                      aria-label="View {{ product.name }} image {{ forloop.counter }}"
+                      class="thumbnail-img"
                     >
                   {% endfor %}
-                  {% if has_gold_plated %}
-                    {% for img in gold_plated_images|slice:":5" %}
-                      <img
-                        src="{{ img.image.url }}"
-                        alt="{{ product.name }} - Gold Plated Image {{ forloop.counter }}"
-                        data-image-url="{{ img.image.url }}"
-                        data-version-type="gold_plated"
-                        onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
-                        role="button"
-                        tabindex="0"
-                        aria-label="View {{ product.name }} gold plated image {{ forloop.counter }}"
-                        class="thumbnail-img gold-plated-image"
-                        style="display: none;"
-                      >
-                    {% endfor %}
-                    {% for img in rose_gold_plated_images|slice:":5" %}
-                      <img
-                        src="{{ img.image.url }}"
-                        alt="{{ product.name }} - Rose Gold Plated Image {{ forloop.counter }}"
-                        data-image-url="{{ img.image.url }}"
-                        data-version-type="rose_gold_plated"
-                        onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
-                        role="button"
-                        tabindex="0"
-                        aria-label="View {{ product.name }} rose gold plated image {{ forloop.counter }}"
-                        class="thumbnail-img rose-gold-plated-image"
-                        style="display: none;"
-                      >
-                    {% endfor %}
-                  {% endif %}
                 </div>
               {% endif %}
               <div class="main-preview-wrapper" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
                 <div class="main-preview" style="width: 100%;">
                   {% if product.main_image %}
                     <img id="mainImage" src="{{ product.main_image.url }}" alt="{{ product.name }}">
-                  {% elif silver_images %}
-                    <img id="mainImage" src="{{ silver_images.0.image.url }}" alt="{{ product.name }}">
+                  {% elif product_images %}
+                    <img id="mainImage" src="{{ product_images.0.image.url }}" alt="{{ product.name }}">
                   {% else %}
                     <img id="mainImage" src="{% static 'images/placeholder.jpg' %}" alt="No image">
                   {% endif %}
@@ -997,24 +966,6 @@
                       onmouseout="this.style.opacity='1'"
                     >
                   {% endfor %}
-                  {% if has_gold_plated %}
-                    {% for img in gold_plated_images|slice:"5:" %}
-                      <img
-                        src="{{ img.image.url }}"
-                        alt="{{ product.name }} - Gold Plated Image {{ forloop.counter|add:5 }}"
-                        data-image-url="{{ img.image.url }}"
-                        data-is-gold-plated="true"
-                        onerror="this.onerror=null; this.src='{% static 'images/placeholder.jpg' %}'"
-                        role="button"
-                        tabindex="0"
-                        aria-label="View {{ product.name }} gold plated image {{ forloop.counter|add:5 }}"
-                        class="thumbnail-img gold-plated-image"
-                        style="display: none; width: 70px; height: 70px; object-fit: cover; border: none; cursor: pointer; transition: opacity .2s, outline-color .2s; outline: 2px solid transparent;"
-                        onmouseover="this.style.opacity='0.85'"
-                        onmouseout="this.style.opacity='1'"
-                      >
-                    {% endfor %}
-                  {% endif %}
                 </div>
                 {% endif %}
               </div>
@@ -1023,49 +974,6 @@
             <div class="info-section">
               <h1>{{ product.name }}</h1>
               
-              <!-- Silver / Gold Plated / Rose Gold Plated Version Buttons -->
-              {% if has_gold_plated %}
-              <div class="version-selector" style="margin-top: 16px; margin-bottom: 20px; width: 100%;">
-                <div class="version-buttons" style="display: flex; gap: 24px; align-items: flex-start; justify-content: center; width: 100%;">
-                  <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                    <span style="font-size: 12px; font-weight: 600; color: #333; text-align: center;">Silver</span>
-                    <button type="button" id="silverVersionBtn" class="version-btn active" 
-                            style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #f5f5f5 0%, #d3d3d3 50%, #a8a8a8 100%); border: 3px solid #000; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; transform: scale(1.05);"
-                            onclick="switchVersion('silver')"
-                            title="Silver"
-                            aria-label="Silver version"
-                            onmouseover="this.style.transform='scale(1.08)'"
-                            onmouseout="if(this.classList.contains('active')) this.style.transform='scale(1.05)'; else this.style.transform='scale(1)'">
-                      <span style="position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.6), transparent 60%); pointer-events: none;"></span>
-                    </button>
-                  </div>
-                  <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                    <span style="font-size: 12px; font-weight: 600; color: #333; text-align: center;">Gold</span>
-                    <button type="button" id="goldPlatedVersionBtn" class="version-btn" 
-                            style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #ffeb3b 0%, #ffc107 30%, #ff9800 60%, #f57c00 100%); border: 3px solid #e5e7eb; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.4); position: relative; transform: scale(1);"
-                            onclick="switchVersion('gold')"
-                            title="Gold Plated"
-                            aria-label="Gold Plated version"
-                            onmouseover="this.style.transform='scale(1.05)'"
-                            onmouseout="if(this.classList.contains('active')) this.style.transform='scale(1.05)'; else this.style.transform='scale(1)'">
-                      <span style="position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.7), transparent 60%); pointer-events: none;"></span>
-                    </button>
-                  </div>
-                  <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                    <span style="font-size: 12px; font-weight: 600; color: #333; text-align: center;">Rose Gold</span>
-                    <button type="button" id="roseGoldPlatedVersionBtn" class="version-btn" 
-                            style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #f8d7da 0%, #f1aeb5 30%, #e89ca3 60%, #d88a92 100%); border: 3px solid #e5e7eb; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; transform: scale(1);"
-                            onclick="switchVersion('rose_gold')"
-                            title="Rose Gold Plated"
-                            aria-label="Rose Gold Plated version"
-                            onmouseover="this.style.transform='scale(1.05)'"
-                            onmouseout="if(this.classList.contains('active')) this.style.transform='scale(1.05)'; else this.style.transform='scale(1)'">
-                      <span style="position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.6), transparent 60%); pointer-events: none;"></span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {% endif %}
               
               {% if is_sale and sale_expires_at %}
               <div id="sale-timer" class="sale-timer-container" data-expires-at="{{ sale_expires_at|date:'c' }}" data-product-id="{{ product.id }}">
@@ -2647,102 +2555,6 @@
     }
   });
 
-  // Silver / Gold Plated / Rose Gold Plated Version Switch Functionality
-  window.switchVersion = function(version) {
-    const silverBtn = document.getElementById('silverVersionBtn');
-    const goldBtn = document.getElementById('goldPlatedVersionBtn');
-    const roseGoldBtn = document.getElementById('roseGoldPlatedVersionBtn');
-    const silverImages = document.querySelectorAll('.silver-image');
-    const goldPlatedImages = document.querySelectorAll('.gold-plated-image');
-    const roseGoldPlatedImages = document.querySelectorAll('.rose-gold-plated-image');
-    const mainImage = document.getElementById('mainImage');
-    
-    if (!silverBtn || !goldBtn) return;
-    
-    // Update button styles - active button has black border and scale effect, inactive has gray border
-    const buttons = [silverBtn, goldBtn];
-    if (roseGoldBtn) buttons.push(roseGoldBtn);
-    
-    buttons.forEach(btn => {
-      if (!btn) return;
-      btn.classList.remove('active');
-      btn.style.borderColor = '#e5e7eb';
-      btn.style.borderWidth = '3px';
-      btn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-      btn.style.transform = 'scale(1)';
-    });
-    
-    if (version === 'silver' && silverBtn) {
-      silverBtn.classList.add('active');
-      silverBtn.style.borderColor = '#000';
-      silverBtn.style.borderWidth = '3px';
-      silverBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
-      silverBtn.style.transform = 'scale(1.05)';
-    } else if (version === 'gold' && goldBtn) {
-      goldBtn.classList.add('active');
-      goldBtn.style.borderColor = '#000';
-      goldBtn.style.borderWidth = '3px';
-      goldBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
-      goldBtn.style.transform = 'scale(1.05)';
-    } else if (version === 'rose_gold' && roseGoldBtn) {
-      roseGoldBtn.classList.add('active');
-      roseGoldBtn.style.borderColor = '#000';
-      roseGoldBtn.style.borderWidth = '3px';
-      roseGoldBtn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
-      roseGoldBtn.style.transform = 'scale(1.05)';
-    }
-    
-    // Show/hide thumbnails
-    silverImages.forEach(img => {
-      img.style.display = version === 'silver' ? '' : 'none';
-    });
-    goldPlatedImages.forEach(img => {
-      img.style.display = version === 'gold' ? '' : 'none';
-    });
-    if (roseGoldPlatedImages.length > 0) {
-      roseGoldPlatedImages.forEach(img => {
-        img.style.display = version === 'rose_gold' ? '' : 'none';
-      });
-    }
-    
-    // Update main image
-    let visibleThumbs = [];
-    if (version === 'silver') {
-      visibleThumbs = Array.from(silverImages);
-    } else if (version === 'gold') {
-      visibleThumbs = Array.from(goldPlatedImages);
-    } else if (version === 'rose_gold') {
-      visibleThumbs = Array.from(roseGoldPlatedImages);
-    }
-    
-    if (visibleThumbs.length > 0) {
-      const firstVisible = visibleThumbs.find(img => img.style.display !== 'none');
-      if (firstVisible && mainImage) {
-        mainImage.src = firstVisible.getAttribute('data-image-url') || firstVisible.src;
-      }
-    }
-    
-    // Update active thumbnail
-    const allThumbs = document.querySelectorAll('#thumbsCol .thumbnail-img');
-    allThumbs.forEach((thumb, index) => {
-      const versionType = thumb.getAttribute('data-version-type');
-      if (versionType === version) {
-        if (index === 0 || thumb.style.display !== 'none') {
-          thumb.setAttribute('aria-current', 'true');
-        }
-      } else {
-        thumb.removeAttribute('aria-current');
-      }
-    });
-  };
-  
-  // Initialize: show silver images by default
-  (function() {
-    const silverBtn = document.getElementById('silverVersionBtn');
-    if (silverBtn) {
-      switchVersion('silver');
-    }
-  })();
 
 </script>
 {% endblock %}

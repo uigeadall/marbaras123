@@ -526,7 +526,7 @@ def home(request: HttpRequest) -> HttpResponse:
             .prefetch_related(
                 Prefetch(
                     "images", 
-                    queryset=ProductImage.objects.filter(version_type='silver').order_by('id')
+                    queryset=ProductImage.objects.order_by('id')
                 )
             )
             .order_by('?')[:10]  # Random order
@@ -656,11 +656,11 @@ def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
         logger.info(f"Found {len(subcategory_ids)} subcategories: {subcategory_ids}")
     
     # Use categories ManyToManyField if available, fallback to category ForeignKey
-    # Prefetch images with version_type='silver' first, then others
+    # Prefetch images
     products = Product.objects.filter(category_filter).select_related("category").prefetch_related(
         Prefetch(
             "images", 
-            queryset=ProductImage.objects.filter(version_type='silver').order_by('id')
+            queryset=ProductImage.objects.order_by('id')
         )
     ).distinct()
     
@@ -793,60 +793,33 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     comments = Comment.objects.filter(product=product).order_by("-created_at")
 
 
-    # Get all images (silver, gold plated, rose gold plated)
-    # We'll filter them on the frontend with JavaScript based on user selection
+    # Get all product images
     all_product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
     
-    # Separate images by version type
-    # Support both new version_type field and old is_gold_plated field for backward compatibility
-    silver_images = []
-    gold_plated_images = []
-    rose_gold_plated_images = []
-    
-    for img in all_product_images:
-        # Use version_type if available, otherwise fall back to is_gold_plated
-        if hasattr(img, 'version_type') and img.version_type:
-            if img.version_type == 'silver':
-                silver_images.append(img)
-            elif img.version_type == 'gold_plated':
-                gold_plated_images.append(img)
-            elif img.version_type == 'rose_gold_plated':
-                rose_gold_plated_images.append(img)
-        else:
-            # Backward compatibility: use is_gold_plated
-            if img.is_gold_plated:
-                gold_plated_images.append(img)
-            else:
-                silver_images.append(img)
-    
-    normal_images = silver_images  # Keep for backward compatibility
-
     logger.debug(f"Product {product.pk} ({product.name}): Found {len(all_product_images)} ProductImage records")
     
-    # Handle main product image
+    # Handle main product image - add it if it doesn't exist in product images
+    product_images = []
     if product.image:
         main_image_path = product.image.name
-        # Check if main image exists in silver images
+        # Check if main image exists in product images
         image_exists = any(
             hasattr(img, 'image') and img.image.name == main_image_path
-            for img in silver_images
+            for img in all_product_images
         )
         if not image_exists:
-            # Add main image to silver images if it doesn't exist
-            main_img_obj = SimpleNamespace(image=product.image, version_type='silver', is_gold_plated=False)
-            silver_images.insert(0, main_img_obj)
-            logger.debug(f"Added main image {main_image_path} to silver_images list")
-
-    # Filter out images without valid image attribute
-    silver_images = [img for img in silver_images if hasattr(img, 'image') and img.image]
-    gold_plated_images = [img for img in gold_plated_images if hasattr(img, 'image') and img.image]
-    rose_gold_plated_images = [img for img in rose_gold_plated_images if hasattr(img, 'image') and img.image]
-    normal_images = silver_images  # Keep for backward compatibility
+            # Add main image as first image if it doesn't exist
+            main_img_obj = SimpleNamespace(image=product.image)
+            product_images.append(main_img_obj)
+            logger.debug(f"Added main image {main_image_path} to product_images list")
     
-    # Set default product_images to silver_images (will be shown by default)
-    product_images = silver_images
-
-    logger.debug(f"Total images for product {product.pk}: silver={len(silver_images)}, gold_plated={len(gold_plated_images)}, rose_gold_plated={len(rose_gold_plated_images)}")
+    # Add all product images
+    product_images.extend(all_product_images)
+    
+    # Filter out images without valid image attribute
+    product_images = [img for img in product_images if hasattr(img, 'image') and img.image]
+    
+    logger.debug(f"Total images for product {product.pk}: {len(product_images)}")
     
     # Check if variant_type field exists for template (for backward compatibility)
     from django.db import connection
@@ -1025,11 +998,6 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     context = {
         "product": product,
         "product_images": product_images,
-        "normal_images": normal_images,
-        "silver_images": silver_images,
-        "gold_plated_images": gold_plated_images,
-        "rose_gold_plated_images": rose_gold_plated_images,
-        "has_gold_plated": len(gold_plated_images) > 0 or len(rose_gold_plated_images) > 0,
         "has_zodiac_variants": has_zodiac_variants,
         "has_earring_hoop_variants": has_earring_hoop_variants,
         "filtered_variants": filtered_variants,
