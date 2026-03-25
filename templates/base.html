@@ -5,6 +5,30 @@
   <meta charset="UTF-8" />
   <title>{% block title %}Marbaras{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {% comment %}Meta Pixel early: load before heavy scripts so PageView fires reliably (Pixel Helper / Events Manager){% endcomment %}
+  {% if META_PIXEL_ID %}
+  <link rel="preconnect" href="https://connect.facebook.net" crossorigin>
+  <link rel="dns-prefetch" href="https://connect.facebook.net">
+  <link rel="preconnect" href="https://www.facebook.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.facebook.com">
+  <!-- Meta Pixel Code -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '{{ META_PIXEL_ID|escapejs }}');
+    fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'PageView');
+  </script>
+  <noscript><img height="1" width="1" style="display:none" alt=""
+    src="https://www.facebook.com/tr?id={{ META_PIXEL_ID }}&ev=PageView&noscript=1"
+  /></noscript>
+  <!-- End Meta Pixel Code -->
+  {% endif %}
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
   <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
@@ -50,27 +74,6 @@
     gtag('config', '{{ GOOGLE_ANALYTICS_ID }}');
   </script>
   <!-- End Google Analytics -->
-  {% endif %}
-
-  {% comment %}Meta Pixel (Facebook Pixel){% endcomment %}
-  {% if META_PIXEL_ID %}
-  <!-- Meta Pixel Code -->
-  <script>
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '{{ META_PIXEL_ID }}');
-    fbq('track', 'PageView');
-  </script>
-  <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id={{ META_PIXEL_ID }}&ev=PageView&noscript=1"
-  /></noscript>
-  <!-- End Meta Pixel Code -->
   {% endif %}
 
   <script src="https://cdn.tailwindcss.com"></script>

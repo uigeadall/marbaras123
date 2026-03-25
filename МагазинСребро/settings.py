@@ -624,7 +624,9 @@ STRIPE_SECRET_KEY = _clean_stripe_key(env("STRIPE_SECRET_KEY", ""))
 
 # Meta Pixel (Facebook Pixel) Configuration
 # Get your Pixel ID from Facebook Events Manager: https://business.facebook.com/events_manager
-META_PIXEL_ID = env("META_PIXEL_ID", "")
+_META_PIXEL_RAW = (env("META_PIXEL_ID", "") or "").strip().replace(" ", "")
+# Numeric ID only (avoids stray quotes/newlines from env paste → broken init / Helper warnings)
+META_PIXEL_ID = "".join(c for c in _META_PIXEL_RAW if c.isdigit()) if _META_PIXEL_RAW else ""
 
 # Google Analytics (GA4)
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")
