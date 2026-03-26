@@ -1415,6 +1415,73 @@ def _tiktok_pixel_add_to_cart_payload(
     }
 
 
+def _initiate_checkout_pixel_payloads(
+    cart_items: Iterable[CartItem], subtotal: Decimal
+) -> Optional[dict]:
+    """
+    Serializable payload for Meta + TikTok InitiateCheckout on checkout page (GET).
+    Uses cart subtotal as value (shipping finalized on submit).
+    """
+    cur_meta = getattr(settings, "META_PIXEL_CURRENCY", "EUR")
+    cur_tt = getattr(settings, "TIKTOK_PIXEL_CURRENCY", "EUR")
+    content_ids: list[str] = []
+    contents: list[dict] = []
+    tiktok_contents: list[dict] = []
+    num_items = 0
+    for item in cart_items:
+        qty = int(getattr(item, "quantity", 0) or 0)
+        if qty <= 0:
+            continue
+        p = item.product
+        v = getattr(item, "variant", None)
+        if v is not None:
+            unit_dec = Decimal(str(v.effective_price))
+            try:
+                extra = (v.display_name or v.size or "").strip()
+            except Exception:
+                extra = (v.size or "").strip()
+            content_name = f"{p.name} — {extra}" if extra else p.name
+        else:
+            unit_dec = Decimal(str(p.get_discounted_price()))
+            content_name = p.name
+        cid = (
+            str(p.serial_number).strip()
+            if getattr(p, "serial_number", None)
+            else ""
+        ) or str(p.id)
+        num_items += qty
+        item_price = float(unit_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        content_ids.append(cid)
+        contents.append({"id": cid, "quantity": qty, "item_price": item_price})
+        tiktok_contents.append(
+            {
+                "content_id": cid,
+                "content_type": "product",
+                "content_name": content_name,
+                "quantity": qty,
+                "price": item_price,
+            }
+        )
+    if not content_ids:
+        return None
+    val = float(subtotal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    return {
+        "meta": {
+            "content_type": "product",
+            "content_ids": content_ids,
+            "contents": contents,
+            "num_items": num_items,
+            "value": val,
+            "currency": cur_meta,
+        },
+        "tiktok": {
+            "contents": tiktok_contents,
+            "value": val,
+            "currency": cur_tt,
+        },
+    }
+
+
 @require_POST
 def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
@@ -1837,6 +1904,10 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
         delivery_time="5-7 business days"
     )
 
+    initiate_checkout_pixel = None
+    if getattr(settings, "META_PIXEL_ID", "") or getattr(settings, "TIKTOK_PIXEL_ID", ""):
+        initiate_checkout_pixel = _initiate_checkout_pixel_payloads(cart_items, subtotal)
+
     return render(
         request,
         "checkout.html",
@@ -1857,6 +1928,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             "stripe_public_key": stripe_public_key,
             "is_guest": not request.user.is_authenticated,
             "profile_data": profile_data,
+            "initiate_checkout_pixel": initiate_checkout_pixel,
         },
     )
 
@@ -1866,7 +1938,9 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
 @require_http_methods(["GET", "POST"])
 def guest_checkout_view(request: HttpRequest) -> HttpResponse:
     _ensure_session(request)
-    cart_qs = CartItem.objects.filter(session_key=request.session.session_key).select_related("product")
+    cart_qs = CartItem.objects.filter(session_key=request.session.session_key).select_related(
+        "product", "variant"
+    )
     cart_items = cart_qs  # Alias for consistency with checkout_view
 
     if not cart_qs.exists():
@@ -1995,6 +2069,10 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
         messages.error(request, "Payment system configuration error. Please contact support.")
         return redirect("cart_view")
 
+    initiate_checkout_pixel = None
+    if getattr(settings, "META_PIXEL_ID", "") or getattr(settings, "TIKTOK_PIXEL_ID", ""):
+        initiate_checkout_pixel = _initiate_checkout_pixel_payloads(cart_qs, subtotal)
+
     return render(
         request,
         "guest_checkout.html",
@@ -2010,6 +2088,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             "client_secret": intent.client_secret,
             "shipping_options": list(ShippingOption.objects.all().order_by("price", "name").distinct()),
             "stripe_public_key": stripe_public_key,
+            "initiate_checkout_pixel": initiate_checkout_pixel,
         },
     )
 
