@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static l10n %}
 
 {% block title %}{{ product.name }} - Marbaras{% endblock %}
 {% block meta_description %}{{ product.name }} - {{ product.description|truncatewords:25 }} | Premium Silver Jewelry at Marbaras{% endblock %}
@@ -1429,6 +1429,22 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if META_PIXEL_ID %}
+<script>
+  (function () {
+    if (typeof fbq !== 'function') return;
+    var pid = '{{ META_PIXEL_ID|escapejs }}';
+    fbq('trackSingle', pid, 'ViewContent', {
+      content_type: 'product',
+      content_ids: ['{{ product.id }}'],
+      content_name: '{{ product.name|escapejs }}',
+      {% if product.category %}content_category: '{{ product.category.name|escapejs }}',{% endif %}
+      value: {% localize off %}{{ product.get_discounted_price }}{% endlocalize %},
+      currency: 'USD'
+    });
+  })();
+</script>
+{% endif %}
 <script>
   /* Search toggle + cart tooltip */
   function wireSearchToggle(btnId, formId){
