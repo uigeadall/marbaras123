@@ -181,6 +181,7 @@ TEMPLATES = [
                 "ecommerce.context_processors.cart_count",
                 "ecommerce.context_processors.categories",
                 "ecommerce.context_processors.meta_pixel_id",
+                "ecommerce.context_processors.tiktok_pixel_id",
                 "ecommerce.context_processors.google_analytics_id",
                 "ecommerce.context_processors.show_welcome_discount_button",
                 "ecommerce.context_processors.cloudinary_config",
@@ -631,6 +632,17 @@ META_PIXEL_ID = "".join(c for c in _META_PIXEL_RAW if c.isdigit()) if _META_PIXE
 # ISO 4217 for Meta ViewContent / Purchase (e.g. EUR, USD)
 _META_CUR = (env("META_PIXEL_CURRENCY", "EUR") or "EUR").strip().upper()[:3]
 META_PIXEL_CURRENCY = _META_CUR if len(_META_CUR) == 3 and _META_CUR.isalpha() else "EUR"
+
+# TikTok Pixel — TikTok Ads Manager → Events → Web Events → Pixel code
+_TIKTOK_RAW = (env("TIKTOK_PIXEL_ID", "") or "").strip().replace(" ", "")
+TIKTOK_PIXEL_ID = "".join(c for c in _TIKTOK_RAW if c.isalnum()) if _TIKTOK_RAW else ""
+
+_TIKTOK_CUR = (env("TIKTOK_PIXEL_CURRENCY", "") or "").strip().upper()[:3]
+TIKTOK_PIXEL_CURRENCY = (
+    _TIKTOK_CUR
+    if len(_TIKTOK_CUR) == 3 and _TIKTOK_CUR.isalpha()
+    else META_PIXEL_CURRENCY
+)
 
 # Google Analytics (GA4)
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")

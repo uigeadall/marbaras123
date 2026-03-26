@@ -192,6 +192,15 @@ def meta_pixel_id(request):
     }
 
 
+def tiktok_pixel_id(request):
+    """TikTok Pixel ID and currency for ttq (PageView, ViewContent, AddToCart)."""
+    from django.conf import settings
+    return {
+        "TIKTOK_PIXEL_ID": getattr(settings, "TIKTOK_PIXEL_ID", ""),
+        "TIKTOK_PIXEL_CURRENCY": getattr(settings, "TIKTOK_PIXEL_CURRENCY", "EUR"),
+    }
+
+
 def google_analytics_id(request):
     """
     Return Google Analytics ID (GA4) from settings for use in templates.

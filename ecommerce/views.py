@@ -1378,6 +1378,43 @@ def _meta_pixel_add_to_cart_payload(
     }
 
 
+def _tiktok_pixel_add_to_cart_payload(
+    product: Product, variant: Optional[ProductVariant], quantity: int
+) -> dict:
+    """Flat params for TikTok Pixel ttq.track('AddToCart', ...)."""
+    if quantity < 1:
+        quantity = 1
+    if variant is not None:
+        unit_dec = Decimal(str(variant.effective_price))
+        try:
+            extra = (variant.display_name or variant.size or "").strip()
+        except Exception:
+            extra = (variant.size or "").strip()
+        content_name = f"{product.name} — {extra}" if extra else product.name
+    else:
+        unit_dec = Decimal(str(product.get_discounted_price()))
+        content_name = product.name
+    cid = (
+        str(product.serial_number).strip()
+        if getattr(product, "serial_number", None)
+        else ""
+    ) or str(product.id)
+    cur = getattr(settings, "TIKTOK_PIXEL_CURRENCY", "EUR")
+    item_price = float(unit_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    val = float(
+        (unit_dec * Decimal(quantity)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    )
+    return {
+        "content_id": cid,
+        "content_type": "product",
+        "content_name": content_name,
+        "currency": cur,
+        "value": val,
+        "quantity": int(quantity),
+        "price": item_price,
+    }
+
+
 @require_POST
 def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
@@ -1510,6 +1547,10 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
                 payload["meta_pixel"] = _meta_pixel_add_to_cart_payload(
                     product, variant_for_pixel, actually_added
                 )
+            if getattr(settings, "TIKTOK_PIXEL_ID", "") and actually_added > 0:
+                payload["tiktok_pixel"] = _tiktok_pixel_add_to_cart_payload(
+                    product, variant_for_pixel, actually_added
+                )
             return JsonResponse(payload)
         messages.success(request, "✅ Added to cart.")
         payload = {
@@ -1519,6 +1560,10 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
         }
         if getattr(settings, "META_PIXEL_ID", "") and actually_added > 0:
             payload["meta_pixel"] = _meta_pixel_add_to_cart_payload(
+                product, variant_for_pixel, actually_added
+            )
+        if getattr(settings, "TIKTOK_PIXEL_ID", "") and actually_added > 0:
+            payload["tiktok_pixel"] = _tiktok_pixel_add_to_cart_payload(
                 product, variant_for_pixel, actually_added
             )
         return JsonResponse(payload)
