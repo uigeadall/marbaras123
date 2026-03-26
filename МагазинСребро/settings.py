@@ -645,7 +645,8 @@ TIKTOK_PIXEL_CURRENCY = (
     else META_PIXEL_CURRENCY
 )
 
-# Cookie consent banner: load Meta / TikTok / GA only after “Accept all” (set COOKIE_CONSENT_ENABLED=0 to disable)
+# Cookie consent banner: load Meta / TikTok / GA only after “Accept all”.
+# Default ON if unset. Railway: use 1/true or remove the variable. Values 0/false/no turn the banner (and footer “Cookies” link) off entirely.
 COOKIE_CONSENT_ENABLED = env_bool("COOKIE_CONSENT_ENABLED", True)
 
 # Google Analytics (GA4)

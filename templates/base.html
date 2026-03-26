@@ -305,6 +305,261 @@
   </div>
   {% endif %}
 
+  {% if not COOKIE_CONSENT_ENABLED %}
+  <script>
+  (function () {
+    window.marbarasGetCookieConsent = function () { return 'all'; };
+    window.marbarasMarketingAllowed = function () { return true; };
+    window.marbarasWhenMarketingAllowed = function (fn) {
+      if (typeof fn !== 'function') return;
+      try { fn(); } catch (e) {}
+    };
+    window.marbarasOpenCookieBanner = function () {};
+  })();
+  </script>
+  {% else %}
+  <script>
+  (function () {
+    var STORAGE_KEY = 'marbaras_cookie_consent';
+    var COOKIE_NAME = 'marbaras_cookie_consent';
+    function readConsent() {
+      try {
+        return localStorage.getItem(STORAGE_KEY);
+      } catch (e0) {
+        return null;
+      }
+    }
+    function setConsentCookie(value) {
+      document.cookie = COOKIE_NAME + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
+    }
+    function hideBanner() {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (b) {
+        b.style.setProperty('display', 'none', 'important');
+        b.setAttribute('aria-hidden', 'true');
+      }
+    }
+    function showBanner() {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (b) {
+        if (b.parentNode !== document.body) {
+          document.body.appendChild(b);
+        }
+        b.style.setProperty('display', 'flex', 'important');
+        b.style.setProperty('z-index', '2147483647', 'important');
+        b.setAttribute('aria-hidden', 'false');
+      }
+    }
+    window.marbarasOpenCookieBanner = function () {
+      showBanner();
+    };
+    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+    window.marbarasMarketingLoaded = false;
+
+    window.marbarasLoadMarketingPixels = function () {
+      if (window.__marbarasMarketingPixelsInjected) return;
+      var cfgEl = document.getElementById('marbaras-marketing-config');
+      if (!cfgEl) return;
+      var cfg;
+      try {
+        cfg = JSON.parse(cfgEl.textContent || '{}');
+      } catch (e) {
+        return;
+      }
+      window.__marbarasMarketingPixelsInjected = true;
+
+      if (cfg.metaPixelId) {
+        var pid = cfg.metaPixelId;
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        try { fbq('set', 'autoConfig', false, pid); } catch (e1) {}
+        fbq('init', pid);
+        if (!window.__marbarasPageViewSent) {
+          window.__marbarasPageViewSent = true;
+          fbq('trackSingle', pid, 'PageView');
+        }
+      }
+
+      if (cfg.tiktokPixelId) {
+        var tid = cfg.tiktokPixelId;
+        !function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t0,e){t0[e]=function(){t0.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t0){for(var e=ttq._i[t0]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};
+        ttq.load(tid);
+        if (!window.__marbarasTikTokPageSent) {
+          window.__marbarasTikTokPageSent = true;
+          ttq.page();
+        }
+      }
+
+      if (cfg.gaId) {
+        var ga = cfg.gaId;
+        var gs = document.createElement('script');
+        gs.async = true;
+        gs.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ga);
+        document.head.appendChild(gs);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        window.gtag = gtag;
+        gtag('js', new Date());
+        gtag('config', ga);
+      }
+
+      window.marbarasMarketingLoaded = true;
+      var cbs = window.marbarasMarketingReadyCallbacks || [];
+      window.marbarasMarketingReadyCallbacks = [];
+      cbs.forEach(function (fn) {
+        try { fn(); } catch (e2) {}
+      });
+    };
+
+    var cfgPresent = !!document.getElementById('marbaras-marketing-config');
+    var consent = readConsent();
+
+    if (consent === 'all' && cfgPresent) {
+      try {
+        window.marbarasLoadMarketingPixels();
+      } catch (ePixels) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('marbaras: marketing pixels', ePixels);
+        }
+      }
+    }
+
+    function saveNoMarketingConsent(value) {
+      try { localStorage.setItem(STORAGE_KEY, value); } catch (e4) {}
+      setConsentCookie(value);
+      hideBanner();
+    }
+
+    window.marbarasApplyCookieChoice = function (action) {
+      if (action === 'accept') {
+        try { localStorage.setItem(STORAGE_KEY, 'all'); } catch (e5) {}
+        setConsentCookie('all');
+        try {
+          window.marbarasLoadMarketingPixels();
+        } catch (eLoad) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('marbaras: loadMarketingPixels', eLoad);
+          }
+        }
+        hideBanner();
+        return;
+      }
+      if (action === 'reject') {
+        saveNoMarketingConsent('denied');
+        return;
+      }
+      if (action === 'essential' || action === 'dismiss') {
+        saveNoMarketingConsent('essential');
+      }
+    };
+
+    function wireFooterCookieLink() {
+      var fl = document.getElementById('marbaras-footer-cookie-link');
+      if (!fl || fl.dataset.marbarasCookieWired === '1') return;
+      fl.dataset.marbarasCookieWired = '1';
+      function openFromFooter(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showBanner();
+      }
+      fl.addEventListener('click', openFromFooter, true);
+      fl.addEventListener('touchend', function (e) {
+        if (e.target !== fl && !fl.contains(e.target)) return;
+        openFromFooter(e);
+      }, { passive: false, capture: true });
+    }
+
+    function finishMarbarasCookieBannerUi() {
+      if (window.__marbarasCookieBannerUiDone) return;
+      var el = document.getElementById('marbaras-cookie-banner');
+      if (!el) return;
+      window.__marbarasCookieBannerUiDone = true;
+      if (el.parentNode !== document.body) {
+        document.body.appendChild(el);
+      }
+      if (!readConsent()) {
+        showBanner();
+      }
+      function wireCookieBarButton(domId, choice) {
+        var node = document.getElementById(domId);
+        if (!node || node.dataset.marbarasCookieBarBtn === '1') return;
+        node.dataset.marbarasCookieBarBtn = '1';
+        var busy = false;
+        function onActivate(e) {
+          if (busy) return;
+          busy = true;
+          try {
+            if (e.cancelable) e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.marbarasApplyCookieChoice === 'function') {
+              window.marbarasApplyCookieChoice(choice);
+            }
+          } finally {
+            window.setTimeout(function () { busy = false; }, 400);
+          }
+        }
+        node.addEventListener('click', onActivate, true);
+        node.addEventListener('touchend', function (e) {
+          if (e.target !== node && !node.contains(e.target)) return;
+          onActivate(e);
+        }, { passive: false, capture: true });
+      }
+      wireCookieBarButton('marbaras-cookie-reject', 'reject');
+      wireCookieBarButton('marbaras-cookie-essential', 'essential');
+      wireCookieBarButton('marbaras-cookie-accept', 'accept');
+      wireCookieBarButton('marbaras-cookie-dismiss', 'dismiss');
+      wireFooterCookieLink();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', finishMarbarasCookieBannerUi);
+    } else {
+      finishMarbarasCookieBannerUi();
+    }
+    window.addEventListener('load', function () {
+      if (!document.getElementById('marbaras-cookie-banner')) return;
+      if (!window.__marbarasCookieBannerUiDone) {
+        finishMarbarasCookieBannerUi();
+      } else {
+        wireFooterCookieLink();
+      }
+    });
+
+    window.marbarasGetCookieConsent = function () {
+      return readConsent();
+    };
+    window.marbarasMarketingAllowed = function () {
+      if (!cfgPresent) return false;
+      return readConsent() === 'all';
+    };
+    window.marbarasWhenMarketingAllowed = function (fn) {
+      if (typeof fn !== 'function' || !cfgPresent) return;
+      window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+      var c = readConsent();
+      if (c === 'all' && window.marbarasMarketingLoaded) {
+        try { fn(); } catch (e7) {}
+        return;
+      }
+      window.marbarasMarketingReadyCallbacks.push(fn);
+      if (c === 'all' && !window.marbarasMarketingLoaded) {
+        try {
+          window.marbarasLoadMarketingPixels();
+        } catch (ePx) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('marbaras: marketing pixels', ePx);
+          }
+        }
+      }
+    };
+  })();
+  </script>
+  {% endif %}
+
   <!-- Mobile Menu Overlay -->
   <div id="mobileMenuOverlay" class="mobile-menu-overlay lg:hidden" aria-hidden="true"></div>
 
@@ -980,256 +1235,6 @@
     };
   })();
   </script>
-
-  {% if not COOKIE_CONSENT_ENABLED %}
-  <script>
-  (function () {
-    window.marbarasGetCookieConsent = function () { return 'all'; };
-    window.marbarasMarketingAllowed = function () { return true; };
-    window.marbarasWhenMarketingAllowed = function (fn) {
-      if (typeof fn !== 'function') return;
-      try { fn(); } catch (e) {}
-    };
-    window.marbarasOpenCookieBanner = function () {};
-  })();
-  </script>
-  {% else %}
-  <script>
-  (function () {
-    var STORAGE_KEY = 'marbaras_cookie_consent';
-    var COOKIE_NAME = 'marbaras_cookie_consent';
-    function readConsent() {
-      try {
-        return localStorage.getItem(STORAGE_KEY);
-      } catch (e0) {
-        return null;
-      }
-    }
-    function setConsentCookie(value) {
-      document.cookie = COOKIE_NAME + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
-    }
-    function hideBanner() {
-      var b = document.getElementById('marbaras-cookie-banner');
-      if (b) {
-        b.style.setProperty('display', 'none', 'important');
-        b.setAttribute('aria-hidden', 'true');
-      }
-    }
-    function showBanner() {
-      var b = document.getElementById('marbaras-cookie-banner');
-      if (b) {
-        if (b.parentNode !== document.body) {
-          document.body.appendChild(b);
-        }
-        b.style.setProperty('display', 'flex', 'important');
-        b.style.setProperty('z-index', '2147483647', 'important');
-        b.setAttribute('aria-hidden', 'false');
-      }
-    }
-    window.marbarasOpenCookieBanner = function () {
-      showBanner();
-    };
-    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
-    window.marbarasMarketingLoaded = false;
-
-    window.marbarasLoadMarketingPixels = function () {
-      if (window.__marbarasMarketingPixelsInjected) return;
-      var cfgEl = document.getElementById('marbaras-marketing-config');
-      if (!cfgEl) return;
-      var cfg;
-      try {
-        cfg = JSON.parse(cfgEl.textContent || '{}');
-      } catch (e) {
-        return;
-      }
-      window.__marbarasMarketingPixelsInjected = true;
-
-      if (cfg.metaPixelId) {
-        var pid = cfg.metaPixelId;
-        !function(f,b,e,v,n,t,s)
-        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-        n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];
-        s.parentNode.insertBefore(t,s)}(window, document,'script',
-        'https://connect.facebook.net/en_US/fbevents.js');
-        try { fbq('set', 'autoConfig', false, pid); } catch (e1) {}
-        fbq('init', pid);
-        if (!window.__marbarasPageViewSent) {
-          window.__marbarasPageViewSent = true;
-          fbq('trackSingle', pid, 'PageView');
-        }
-      }
-
-      if (cfg.tiktokPixelId) {
-        var tid = cfg.tiktokPixelId;
-        !function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t0,e){t0[e]=function(){t0.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t0){for(var e=ttq._i[t0]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};
-        ttq.load(tid);
-        if (!window.__marbarasTikTokPageSent) {
-          window.__marbarasTikTokPageSent = true;
-          ttq.page();
-        }
-      }
-
-      if (cfg.gaId) {
-        var ga = cfg.gaId;
-        var gs = document.createElement('script');
-        gs.async = true;
-        gs.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ga);
-        document.head.appendChild(gs);
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        window.gtag = gtag;
-        gtag('js', new Date());
-        gtag('config', ga);
-      }
-
-      window.marbarasMarketingLoaded = true;
-      var cbs = window.marbarasMarketingReadyCallbacks || [];
-      window.marbarasMarketingReadyCallbacks = [];
-      cbs.forEach(function (fn) {
-        try { fn(); } catch (e2) {}
-      });
-    };
-
-    var cfgPresent = !!document.getElementById('marbaras-marketing-config');
-    var consent = readConsent();
-
-    if (consent === 'all' && cfgPresent) {
-      try {
-        window.marbarasLoadMarketingPixels();
-      } catch (ePixels) {
-        if (typeof console !== 'undefined' && console.warn) {
-          console.warn('marbaras: marketing pixels', ePixels);
-        }
-      }
-    }
-
-    function saveNoMarketingConsent(value) {
-      try { localStorage.setItem(STORAGE_KEY, value); } catch (e4) {}
-      setConsentCookie(value);
-      hideBanner();
-    }
-
-    window.marbarasApplyCookieChoice = function (action) {
-      if (action === 'accept') {
-        try { localStorage.setItem(STORAGE_KEY, 'all'); } catch (e5) {}
-        setConsentCookie('all');
-        try {
-          window.marbarasLoadMarketingPixels();
-        } catch (eLoad) {
-          if (typeof console !== 'undefined' && console.warn) {
-            console.warn('marbaras: loadMarketingPixels', eLoad);
-          }
-        }
-        hideBanner();
-        return;
-      }
-      if (action === 'reject') {
-        saveNoMarketingConsent('denied');
-        return;
-      }
-      if (action === 'essential' || action === 'dismiss') {
-        saveNoMarketingConsent('essential');
-      }
-    };
-
-    function finishMarbarasCookieBannerUi() {
-      if (window.__marbarasCookieBannerUiDone) return;
-      var el = document.getElementById('marbaras-cookie-banner');
-      if (!el) return;
-      window.__marbarasCookieBannerUiDone = true;
-      if (el.parentNode !== document.body) {
-        document.body.appendChild(el);
-      }
-      if (!readConsent()) {
-        showBanner();
-      }
-      function wireCookieBarButton(domId, choice) {
-        var node = document.getElementById(domId);
-        if (!node || node.dataset.marbarasCookieBarBtn === '1') return;
-        node.dataset.marbarasCookieBarBtn = '1';
-        var busy = false;
-        function onActivate(e) {
-          if (busy) return;
-          busy = true;
-          try {
-            if (e.cancelable) e.preventDefault();
-            e.stopPropagation();
-            if (typeof window.marbarasApplyCookieChoice === 'function') {
-              window.marbarasApplyCookieChoice(choice);
-            }
-          } finally {
-            window.setTimeout(function () { busy = false; }, 400);
-          }
-        }
-        node.addEventListener('click', onActivate, true);
-        node.addEventListener('touchend', function (e) {
-          if (e.target !== node && !node.contains(e.target)) return;
-          onActivate(e);
-        }, { passive: false, capture: true });
-      }
-      wireCookieBarButton('marbaras-cookie-reject', 'reject');
-      wireCookieBarButton('marbaras-cookie-essential', 'essential');
-      wireCookieBarButton('marbaras-cookie-accept', 'accept');
-      wireCookieBarButton('marbaras-cookie-dismiss', 'dismiss');
-      var fl = document.getElementById('marbaras-footer-cookie-link');
-      if (fl && fl.dataset.marbarasCookieWired !== '1') {
-        fl.dataset.marbarasCookieWired = '1';
-        function openFromFooter(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          showBanner();
-        }
-        fl.addEventListener('click', openFromFooter, true);
-        fl.addEventListener('touchend', function (e) {
-          if (e.target !== fl && !fl.contains(e.target)) return;
-          openFromFooter(e);
-        }, { passive: false, capture: true });
-      }
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', finishMarbarasCookieBannerUi);
-    } else {
-      finishMarbarasCookieBannerUi();
-    }
-    window.addEventListener('load', function () {
-      if (!document.getElementById('marbaras-cookie-banner')) return;
-      if (!window.__marbarasCookieBannerUiDone) {
-        finishMarbarasCookieBannerUi();
-      }
-    });
-
-    window.marbarasGetCookieConsent = function () {
-      return readConsent();
-    };
-    window.marbarasMarketingAllowed = function () {
-      if (!cfgPresent) return false;
-      return readConsent() === 'all';
-    };
-    window.marbarasWhenMarketingAllowed = function (fn) {
-      if (typeof fn !== 'function' || !cfgPresent) return;
-      window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
-      var c = readConsent();
-      if (c === 'all' && window.marbarasMarketingLoaded) {
-        try { fn(); } catch (e7) {}
-        return;
-      }
-      window.marbarasMarketingReadyCallbacks.push(fn);
-      if (c === 'all' && !window.marbarasMarketingLoaded) {
-        try {
-          window.marbarasLoadMarketingPixels();
-        } catch (ePx) {
-          if (typeof console !== 'undefined' && console.warn) {
-            console.warn('marbaras: marketing pixels', ePx);
-          }
-        }
-      }
-    };
-  })();
-  </script>
-  {% endif %}
 
   {% block extra_js %}{% endblock %}
 
