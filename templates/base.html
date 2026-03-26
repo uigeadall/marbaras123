@@ -142,6 +142,11 @@
       position: relative;
       z-index: 10;
     }
+    #marbaras-footer-cookie-link {
+      position: relative;
+      z-index: 20;
+      pointer-events: auto !important;
+    }
 
     .cart-tip::after{
       content:""; position:absolute; top:-6px; left:50%; transform:translateX(-50%);
@@ -1059,7 +1064,13 @@
       if (action === 'accept') {
         try { localStorage.setItem(STORAGE_KEY, 'all'); } catch (e5) {}
         setConsentCookie('all');
-        window.marbarasLoadMarketingPixels();
+        try {
+          window.marbarasLoadMarketingPixels();
+        } catch (eLoad) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('marbaras: loadMarketingPixels', eLoad);
+          }
+        }
         hideBanner();
         return;
       }
@@ -1083,44 +1094,32 @@
       if (!readConsent()) {
         showBanner();
       }
-      document.addEventListener(
-        'click',
-        function (e) {
-          var t = e.target;
-          if (t && t.nodeType !== 1) {
-            t = t.parentElement;
+      function wireCookieBarButton(domId, choice) {
+        var node = document.getElementById(domId);
+        if (!node || node.dataset.marbarasCookieBarBtn === '1') return;
+        node.dataset.marbarasCookieBarBtn = '1';
+        function onActivate(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof window.marbarasApplyCookieChoice === 'function') {
+            window.marbarasApplyCookieChoice(choice);
           }
-          if (!t || !t.closest) return;
-          var btn = t.closest('#marbaras-cookie-banner button');
-          if (!btn) return;
-          var id = btn.id;
-          if (id === 'marbaras-cookie-accept') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            window.marbarasApplyCookieChoice('accept');
-          } else if (id === 'marbaras-cookie-reject') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            window.marbarasApplyCookieChoice('reject');
-          } else if (id === 'marbaras-cookie-essential') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            window.marbarasApplyCookieChoice('essential');
-          } else if (id === 'marbaras-cookie-dismiss') {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            window.marbarasApplyCookieChoice('dismiss');
-          }
-        },
-        true
-      );
+        }
+        node.addEventListener('click', onActivate, true);
+      }
+      wireCookieBarButton('marbaras-cookie-reject', 'reject');
+      wireCookieBarButton('marbaras-cookie-essential', 'essential');
+      wireCookieBarButton('marbaras-cookie-accept', 'accept');
+      wireCookieBarButton('marbaras-cookie-dismiss', 'dismiss');
       var fl = document.getElementById('marbaras-footer-cookie-link');
       if (fl && fl.dataset.marbarasCookieWired !== '1') {
         fl.dataset.marbarasCookieWired = '1';
-        fl.addEventListener('click', function (e) {
+        function openFromFooter(e) {
           e.preventDefault();
+          e.stopPropagation();
           showBanner();
-        });
+        }
+        fl.addEventListener('click', openFromFooter, true);
       }
     }
     document.addEventListener('DOMContentLoaded', finishMarbarasCookieBannerUi);
@@ -1158,7 +1157,7 @@
   {% block extra_js %}{% endblock %}
 
   <!-- Email Popup Modal -->
-  <div id="email-popup-modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); overflow: auto;">
+  <div id="email-popup-modal" style="display: none; pointer-events: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); overflow: auto;">
     <div style="position: relative; background-color: #fff; margin: 5% auto; padding: 0; border-radius: 12px; max-width: 600px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: hidden;">
       <span 
         id="email-popup-close" 
@@ -1214,6 +1213,7 @@
       const modal = document.getElementById('email-popup-modal');
       if (modal) {
         modal.style.display = 'block';
+        modal.style.pointerEvents = 'auto';
         document.body.style.overflow = 'hidden';
       }
     }
@@ -1222,6 +1222,7 @@
       const modal = document.getElementById('email-popup-modal');
       if (modal) {
         modal.style.display = 'none';
+        modal.style.pointerEvents = 'none';
         document.body.style.overflow = 'auto';
         // Set cookie to remember user closed the popup
         document.cookie = 'email_popup_closed=true; path=/; max-age=2592000'; // 30 days
@@ -1359,24 +1360,20 @@
       <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
         {% if marketing_pixels_json %}
         <button type="button" id="marbaras-cookie-reject"
-                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition"
-                onclick="if(typeof window.marbarasApplyCookieChoice==='function'){window.marbarasApplyCookieChoice('reject');}return false;">
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
           Reject
         </button>
         <button type="button" id="marbaras-cookie-essential"
-                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition"
-                onclick="if(typeof window.marbarasApplyCookieChoice==='function'){window.marbarasApplyCookieChoice('essential');}return false;">
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
           Essential only
         </button>
         <button type="button" id="marbaras-cookie-accept"
-                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition"
-                onclick="if(typeof window.marbarasApplyCookieChoice==='function'){window.marbarasApplyCookieChoice('accept');}return false;">
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
           Accept all
         </button>
         {% else %}
         <button type="button" id="marbaras-cookie-dismiss"
-                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition"
-                onclick="if(typeof window.marbarasApplyCookieChoice==='function'){window.marbarasApplyCookieChoice('dismiss');}return false;">
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
           Got it
         </button>
         {% endif %}
