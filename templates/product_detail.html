@@ -1434,13 +1434,17 @@
   (function () {
     if (typeof fbq !== 'function') return;
     var pid = '{{ META_PIXEL_ID|escapejs }}';
+    var cid = '{% if product.serial_number %}{{ product.serial_number|escapejs }}{% else %}{{ product.id }}{% endif %}';
+    var price = {% localize off %}{{ product.get_discounted_price }}{% endlocalize %};
+    var cur = '{{ META_PIXEL_CURRENCY|default:"EUR"|escapejs }}';
     fbq('trackSingle', pid, 'ViewContent', {
-      content_type: 'product',
-      content_ids: ['{{ product.id }}'],
+      content_ids: [cid],
       content_name: '{{ product.name|escapejs }}',
-      {% if product.category %}content_category: '{{ product.category.name|escapejs }}',{% endif %}
-      value: {% localize off %}{{ product.get_discounted_price }}{% endlocalize %},
-      currency: 'USD'
+      content_type: 'product',
+      value: price,
+      currency: cur,
+      contents: [{ id: cid, quantity: 1, item_price: price }]
+      {% if product.category %}, content_category: '{{ product.category.name|escapejs }}'{% endif %}
     });
   })();
 </script>

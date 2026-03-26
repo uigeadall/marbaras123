@@ -183,10 +183,13 @@ def categories(request):
 
 def meta_pixel_id(request):
     """
-    Return Meta Pixel ID from settings for use in templates.
+    Return Meta Pixel ID and store currency for templates (PageView, ViewContent, etc.).
     """
     from django.conf import settings
-    return {"META_PIXEL_ID": getattr(settings, "META_PIXEL_ID", "")}
+    return {
+        "META_PIXEL_ID": getattr(settings, "META_PIXEL_ID", ""),
+        "META_PIXEL_CURRENCY": getattr(settings, "META_PIXEL_CURRENCY", "EUR"),
+    }
 
 
 def google_analytics_id(request):

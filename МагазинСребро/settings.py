@@ -628,6 +628,10 @@ _META_PIXEL_RAW = (env("META_PIXEL_ID", "") or "").strip().replace(" ", "")
 # Numeric ID only (avoids stray quotes/newlines from env paste → broken init / Helper warnings)
 META_PIXEL_ID = "".join(c for c in _META_PIXEL_RAW if c.isdigit()) if _META_PIXEL_RAW else ""
 
+# ISO 4217 for Meta ViewContent / Purchase (e.g. EUR, USD)
+_META_CUR = (env("META_PIXEL_CURRENCY", "EUR") or "EUR").strip().upper()[:3]
+META_PIXEL_CURRENCY = _META_CUR if len(_META_CUR) == 3 and _META_CUR.isalpha() else "EUR"
+
 # Google Analytics (GA4)
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")
 STRIPE_PUBLISHABLE_KEY = _clean_stripe_key(env("STRIPE_PUBLISHABLE_KEY", ""))
