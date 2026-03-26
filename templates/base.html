@@ -377,7 +377,11 @@
         <a href="{% url 'terms' %}" class="hover:text-slate-900">Terms</a>
         <a href="{% url 'privacy' %}" class="hover:text-slate-900">Privacy</a>
         {% if COOKIE_CONSENT_ENABLED %}
-        <a href="#" id="marbaras-footer-cookie-link" class="hover:text-slate-900">Cookies</a>
+        <button type="button" id="marbaras-footer-cookie-link"
+                class="hover:text-slate-900 text-slate-600 bg-transparent border-0 p-0 m-0 cursor-pointer text-[11px] leading-tight underline decoration-transparent hover:underline hover:decoration-current"
+                style="font: inherit;">
+          Cookies
+        </button>
         {% endif %}
         <a href="{% url 'contact' %}" class="hover:text-slate-900">Contact</a>
         <a href="https://www.instagram.com/mmarbaras?igsh=NTI4NmYzc215czY4" target="_blank" rel="noopener noreferrer" class="hover:text-slate-900 inline-flex items-center gap-1" aria-label="Follow us on Instagram">
@@ -911,7 +915,7 @@
   })();
   </script>
   {% else %}
-  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite"
+  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
        class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
        style="display: none;">
     <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -960,12 +964,32 @@
     }
     function hideBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
-      if (b) b.style.display = 'none';
+      if (b) {
+        b.style.display = 'none';
+        b.setAttribute('aria-hidden', 'true');
+      }
     }
     function showBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
-      if (b) b.style.display = 'flex';
+      if (b) {
+        b.style.display = 'flex';
+        b.setAttribute('aria-hidden', 'false');
+      }
     }
+    document.addEventListener(
+      'click',
+      function (e) {
+        var t = e.target;
+        if (!t) return;
+        var node = t.nodeType === 1 ? t : t.parentElement;
+        if (!node || !node.closest) return;
+        if (!node.closest('#marbaras-footer-cookie-link')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        showBanner();
+      },
+      true
+    );
     window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
     window.marbarasMarketingLoaded = false;
 
@@ -1088,14 +1112,6 @@
     window.marbarasOpenCookieBanner = function () {
       showBanner();
     };
-
-    var footCookie = document.getElementById('marbaras-footer-cookie-link');
-    if (footCookie) {
-      footCookie.addEventListener('click', function (e) {
-        e.preventDefault();
-        showBanner();
-      });
-    }
   })();
   </script>
   {% endif %}
