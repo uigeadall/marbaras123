@@ -1482,6 +1482,71 @@ def _initiate_checkout_pixel_payloads(
     }
 
 
+def _purchase_pixel_payload_from_order(order: Order) -> Optional[dict]:
+    """Meta + TikTok Purchase payload from a completed Order (line items + total)."""
+    cur_meta = getattr(settings, "META_PIXEL_CURRENCY", "EUR")
+    cur_tt = getattr(settings, "TIKTOK_PIXEL_CURRENCY", "EUR")
+    items = list(order.items.select_related("product", "variant").all())
+    if not items:
+        return None
+    content_ids: list[str] = []
+    contents: list[dict] = []
+    tiktok_contents: list[dict] = []
+    num_items = 0
+    for oi in items:
+        qty = int(oi.quantity or 0)
+        if qty <= 0:
+            continue
+        p = oi.product
+        v = oi.variant
+        if v is not None:
+            unit_dec = Decimal(str(v.effective_price))
+            try:
+                extra = (v.display_name or v.size or "").strip()
+            except Exception:
+                extra = (v.size or "").strip()
+            content_name = f"{p.name} — {extra}" if extra else p.name
+        else:
+            unit_dec = Decimal(str(p.get_discounted_price()))
+            content_name = p.name
+        cid = (
+            str(p.serial_number).strip()
+            if getattr(p, "serial_number", None)
+            else ""
+        ) or str(p.id)
+        num_items += qty
+        item_price = float(unit_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        content_ids.append(cid)
+        contents.append({"id": cid, "quantity": qty, "item_price": item_price})
+        tiktok_contents.append(
+            {
+                "content_id": cid,
+                "content_type": "product",
+                "content_name": content_name,
+                "quantity": qty,
+                "price": item_price,
+            }
+        )
+    if not content_ids:
+        return None
+    val = float(order.total_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    return {
+        "meta": {
+            "content_type": "product",
+            "content_ids": content_ids,
+            "contents": contents,
+            "num_items": num_items,
+            "value": val,
+            "currency": cur_meta,
+        },
+        "tiktok": {
+            "contents": tiktok_contents,
+            "value": val,
+            "currency": cur_tt,
+        },
+    }
+
+
 @require_POST
 def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
@@ -1836,6 +1901,14 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             cart_items.delete()
             transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
 
+        try:
+            px = _purchase_pixel_payload_from_order(order)
+            if px:
+                request.session["marbaras_purchase_pixel"] = px
+                request.session.modified = True
+        except Exception:
+            logger.warning("marbaras_purchase_pixel failed", exc_info=True)
+
         return redirect("order_success")
 
 
@@ -2053,6 +2126,14 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
 
             cart_qs.delete()
             transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
+
+        try:
+            px = _purchase_pixel_payload_from_order(order)
+            if px:
+                request.session["marbaras_purchase_pixel"] = px
+                request.session.modified = True
+        except Exception:
+            logger.warning("marbaras_purchase_pixel failed", exc_info=True)
 
         return redirect("order_success")
 
@@ -2731,7 +2812,12 @@ Sitemap: {base_url}/sitemap.xml
 
 
 def order_success(request: HttpRequest) -> HttpResponse:
-    return render(request, "order_success.html")
+    purchase_pixel = request.session.pop("marbaras_purchase_pixel", None)
+    return render(
+        request,
+        "order_success.html",
+        {"purchase_pixel": purchase_pixel},
+    )
 
 
 def terms(request: HttpRequest) -> HttpResponse:
@@ -3157,6 +3243,7 @@ def blog_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "formatted_content": formatted_content,
         "video_embed_url": video_embed_url,
         "categories": categories,
+        "cart_count": _cart_total_quantity(request),
     }
     return render(request, "blog_detail.html", context)
 

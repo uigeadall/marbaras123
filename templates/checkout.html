@@ -469,6 +469,13 @@
     {# Right: Search / Cart / Auth (same as cart.html) #}
     <aside class="hidden lg:block sticky top-6 self-start w-[180px]">
       <div class="rounded-xl bg-white shadow-sm p-3 space-y-3 text-right">
+        <div class="currency-selector" style="text-align: right;">
+          <select id="currencySelectorDesktop" aria-label="Select currency" style="width: 100%;">
+            <option value="EUR">€ EUR</option>
+            <option value="USD">$ USD</option>
+            <option value="GBP">£ GBP</option>
+          </select>
+        </div>
         <button id="searchToggle" aria-expanded="false" aria-controls="searchWrap"
                 class="w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
           🔎 Search
@@ -488,8 +495,13 @@
 
         <div class="relative">
           <a id="cartLink" href="#" aria-describedby="cartTip"
-             class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
+             class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition relative">
             🛒 Cart
+            {% if cart_count|default:0 > 0 %}
+            <span class="marbaras-cart-badge absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              {{ cart_count }}
+            </span>
+            {% endif %}
           </a>
           <span id="cartTip"
                 class="cart-tip invisible opacity-0 absolute right-0 mt-1
@@ -522,6 +534,10 @@
              class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right hover:brightness-95 transition">
             Register
           </a>
+          <button type="button" onclick="showEmailPopup()"
+                  class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right hover:brightness-95 transition mt-2">
+            🎁 Get 5% Discount
+          </button>
         {% endif %}
       </div>
     </aside>
@@ -1302,6 +1318,13 @@
     const card = elements.create('card');
     card.mount('#card-element');
     console.log('Card element mounted');
+    {% if initiate_checkout_pixel %}
+    card.on('change', function (event) {
+      if (!event.complete || window.__marbarasAddPaymentInfoDispatched) return;
+      window.__marbarasAddPaymentInfoDispatched = true;
+      document.dispatchEvent(new Event('marbarasCardComplete'));
+    });
+    {% endif %}
 
     // Payment Request Button (Apple Pay / Google Pay)
     console.log('=== Creating Payment Request ===');
@@ -2580,6 +2603,45 @@
     window.marbarasMarketingReadyCallbacks.push(marbarasFireInitiateCheckout);
   }
   {% endif %}
+})();
+</script>
+<script>
+(function () {
+  document.addEventListener('marbarasCardComplete', function marbarasOnCardCompleteOnce() {
+    document.removeEventListener('marbarasCardComplete', marbarasOnCardCompleteOnce);
+    function marbarasFireAddPaymentInfo() {
+      if (window.__marbarasAddPaymentInfoSent) return;
+      var el = document.getElementById('marbaras-initiate-checkout-pixel');
+      if (!el) return;
+      var p;
+      try {
+        p = JSON.parse(el.textContent || '{}');
+      } catch (e) {
+        return;
+      }
+      window.__marbarasAddPaymentInfoSent = true;
+      {% if META_PIXEL_ID %}
+      if (p.meta && typeof fbq === 'function') {
+        fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'AddPaymentInfo', p.meta);
+      }
+      {% endif %}
+      {% if TIKTOK_PIXEL_ID %}
+      if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
+        ttq.track('AddPaymentInfo', p.tiktok);
+      }
+      {% endif %}
+    }
+    {% if not COOKIE_CONSENT_ENABLED %}
+    marbarasFireAddPaymentInfo();
+    {% else %}
+    if (window.marbarasMarketingLoaded) {
+      marbarasFireAddPaymentInfo();
+    } else {
+      window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+      window.marbarasMarketingReadyCallbacks.push(marbarasFireAddPaymentInfo);
+    }
+    {% endif %}
+  });
 })();
 </script>
 {% endif %}

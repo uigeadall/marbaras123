@@ -51,3 +51,45 @@
   <a href="{% url 'home' %}" class="home-link">⬅ Go Back to Home</a>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+{% if purchase_pixel %}
+{{ purchase_pixel|json_script:"marbaras-purchase-pixel" }}
+<script>
+(function () {
+  function marbarasFirePurchase() {
+    if (window.__marbarasPurchasePixelSent) return;
+    var el = document.getElementById('marbaras-purchase-pixel');
+    if (!el) return;
+    var p;
+    try {
+      p = JSON.parse(el.textContent || '{}');
+    } catch (e) {
+      return;
+    }
+    window.__marbarasPurchasePixelSent = true;
+    {% if META_PIXEL_ID %}
+    if (p.meta && typeof fbq === 'function') {
+      fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'Purchase', p.meta);
+    }
+    {% endif %}
+    {% if TIKTOK_PIXEL_ID %}
+    if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
+      ttq.track('Purchase', p.tiktok);
+    }
+    {% endif %}
+  }
+  {% if not COOKIE_CONSENT_ENABLED %}
+  marbarasFirePurchase();
+  {% else %}
+  if (window.marbarasMarketingLoaded) {
+    marbarasFirePurchase();
+  } else {
+    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+    window.marbarasMarketingReadyCallbacks.push(marbarasFirePurchase);
+  }
+  {% endif %}
+})();
+</script>
+{% endif %}
+{% endblock %}
