@@ -414,29 +414,29 @@
        style="display: none !important;">
     <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div class="flex-1 min-w-0">
-        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Бисквитки и поверителност</p>
+        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies and privacy</p>
         <p class="m-0 text-slate-600 leading-snug">
-          Използваме задължителни бисквитки за количка, сесия и сигурност.
+          We use essential cookies for your cart, session, and security.
           {% if marketing_pixels_json %}
-          С ваше съгласие зареждаме и аналитика/реклама (Meta, TikTok, Google), за да подобрим магазина и рекламите.
+          With your consent, we also load analytics and advertising (Meta, TikTok, Google) to improve the store and our ads.
           {% endif %}
-          Повече в <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Политика за поверителност</a>.
+          Learn more in our <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Privacy Policy</a>.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
         {% if marketing_pixels_json %}
         <button type="button" id="marbaras-cookie-essential"
                 class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
-          Само необходими
+          Essential only
         </button>
         <button type="button" id="marbaras-cookie-accept"
                 class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
-          Приемам всички
+          Accept all
         </button>
         {% else %}
         <button type="button" id="marbaras-cookie-dismiss"
                 class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
-          Разбрах
+          Got it
         </button>
         {% endif %}
       </div>
