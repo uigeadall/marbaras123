@@ -776,6 +776,19 @@
     window.marbarasAddToCartViaFetch = function (form, onSuccess) {
       if (!form || !form.action) return;
       var fd = new FormData(form);
+      // Fields outside <form> but tied with form="..." are omitted by some browsers' FormData(form).
+      if (form.id) {
+        document.querySelectorAll('[form=' + JSON.stringify(form.id) + ']').forEach(function (el) {
+          if (!el.name || el.disabled) return;
+          var t = (el.type || '').toLowerCase();
+          if (t === 'checkbox' || t === 'radio') {
+            if (!el.checked) return;
+            fd.append(el.name, el.value);
+            return;
+          }
+          fd.set(el.name, el.value);
+        });
+      }
       fetch(form.action, {
         method: 'POST',
         body: fd,
@@ -800,6 +813,7 @@
             alert(msg);
             return;
           }
+          var pixelAddToCartFired = false;
           {% if META_PIXEL_ID %}
           if (typeof fbq === 'function' && res.data.meta_pixel) {
             var m = res.data.meta_pixel;
@@ -811,9 +825,18 @@
               currency: m.currency,
               contents: m.contents,
             });
+            pixelAddToCartFired = true;
           }
           {% endif %}
-          if (typeof onSuccess === 'function') onSuccess(res.data);
+          function runOnSuccess() {
+            if (typeof onSuccess === 'function') onSuccess(res.data);
+          }
+          // Immediate reload cancels the pixel request before it leaves the browser.
+          if (pixelAddToCartFired) {
+            setTimeout(runOnSuccess, 320);
+          } else {
+            runOnSuccess();
+          }
         })
         .catch(function () {
           alert('Network error');
