@@ -1318,6 +1318,42 @@ def remove_from_cart(request: HttpRequest, pk: int) -> HttpResponse:
     return redirect("cart_view")
 
 
+def _meta_pixel_add_to_cart_payload(
+    product: Product, variant: Optional[ProductVariant], quantity: int
+) -> dict:
+    """Parameters for Meta Pixel AddToCart (matches ViewContent style)."""
+    if quantity < 1:
+        quantity = 1
+    if variant is not None:
+        unit_dec = Decimal(str(variant.effective_price))
+        try:
+            extra = (variant.display_name or variant.size or "").strip()
+        except Exception:
+            extra = (variant.size or "").strip()
+        content_name = f"{product.name} — {extra}" if extra else product.name
+    else:
+        unit_dec = Decimal(str(product.get_discounted_price()))
+        content_name = product.name
+    cid = (
+        str(product.serial_number).strip()
+        if getattr(product, "serial_number", None)
+        else ""
+    ) or str(product.id)
+    cur = getattr(settings, "META_PIXEL_CURRENCY", "EUR")
+    item_price = float(unit_dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    val = float(
+        (unit_dec * Decimal(quantity)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    )
+    return {
+        "content_ids": [cid],
+        "content_name": content_name,
+        "content_type": "product",
+        "value": val,
+        "currency": cur,
+        "contents": [{"id": cid, "quantity": int(quantity), "item_price": item_price}],
+    }
+
+
 @require_POST
 def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
@@ -1434,17 +1470,29 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
     if is_bundle_add:
 
+        variant_for_pixel = lookup_filter.get("variant")
         if actually_added < quantity:
-            return JsonResponse({
-                'success': True,
-                'message': f'Maximum {available} available. Quantity set to {capped_total}.',
-                'warning': True
-            })
-        else:
-            return JsonResponse({
-                'success': True,
-                'message': '✅ Added to cart.'
-            })
+            messages.warning(
+                request,
+                f"Maximum {available} available. Quantity set to {capped_total}.",
+            )
+            payload = {
+                "success": True,
+                "message": f"Maximum {available} available. Quantity set to {capped_total}.",
+                "warning": True,
+            }
+            if getattr(settings, "META_PIXEL_ID", "") and actually_added > 0:
+                payload["meta_pixel"] = _meta_pixel_add_to_cart_payload(
+                    product, variant_for_pixel, actually_added
+                )
+            return JsonResponse(payload)
+        messages.success(request, "✅ Added to cart.")
+        payload = {"success": True, "message": "✅ Added to cart."}
+        if getattr(settings, "META_PIXEL_ID", "") and actually_added > 0:
+            payload["meta_pixel"] = _meta_pixel_add_to_cart_payload(
+                product, variant_for_pixel, actually_added
+            )
+        return JsonResponse(payload)
 
 
     bundle_items = request.POST.getlist('bundle_items')

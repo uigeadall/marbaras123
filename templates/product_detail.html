@@ -1853,7 +1853,14 @@
         grid?.focus?.();
         return;
       }
-      
+      e.preventDefault();
+      if (typeof window.marbarasAddToCartViaFetch === 'function') {
+        window.marbarasAddToCartViaFetch(addToCartForm, function () {
+          window.location.reload();
+        });
+      } else {
+        addToCartForm.submit();
+      }
     });
   })();
 
@@ -2490,32 +2497,16 @@
         }
       }
       
-      // Add product to cart and redirect to checkout
+      // Add product to cart (Meta AddToCart + JSON) then go to checkout
       const form = document.getElementById('addToCartForm');
       if (form) {
-        
-        // Submit form to add to cart, then redirect
-        form.addEventListener('submit', function(e) {
-          e.preventDefault();
-          const formData = new FormData(form);
-          
-          fetch(form.action, {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin',
-          }).then(function(response) {
-            if (response.ok || response.redirected) {
-              window.location.href = '{% url "checkout" %}';
-            } else {
-              alert('Failed to add product to cart. Please try again.');
-            }
-          }).catch(function(error) {
-            console.error('Error:', error);
-            alert('An error occurred. Please try again.');
+        if (typeof window.marbarasAddToCartViaFetch === 'function') {
+          window.marbarasAddToCartViaFetch(form, function () {
+            window.location.href = '{% url "checkout" %}';
           });
-        });
-        
-        form.dispatchEvent(new Event('submit'));
+        } else {
+          form.submit();
+        }
       }
     };
       } catch (error) {

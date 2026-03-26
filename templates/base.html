@@ -765,6 +765,57 @@
     })();
   </script>
 
+  <script>
+  (function () {
+    window.marbarasAddToCartViaFetch = function (form, onSuccess) {
+      if (!form || !form.action) return;
+      var fd = new FormData(form);
+      fetch(form.action, {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then(function (r) {
+          return r.text().then(function (t) {
+            var data = null;
+            try {
+              data = JSON.parse(t);
+            } catch (e) {}
+            return { ok: r.ok, status: r.status, data: data };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok || !res.data || !res.data.success) {
+            var msg =
+              res.data && res.data.message
+                ? res.data.message
+                : 'Error adding to cart';
+            alert(msg);
+            return;
+          }
+          {% if META_PIXEL_ID %}
+          if (typeof fbq === 'function' && res.data.meta_pixel) {
+            var m = res.data.meta_pixel;
+            fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'AddToCart', {
+              content_ids: m.content_ids,
+              content_name: m.content_name,
+              content_type: m.content_type || 'product',
+              value: m.value,
+              currency: m.currency,
+              contents: m.contents,
+            });
+          }
+          {% endif %}
+          if (typeof onSuccess === 'function') onSuccess(res.data);
+        })
+        .catch(function () {
+          alert('Network error');
+        });
+    };
+  })();
+  </script>
+
   {% block extra_js %}{% endblock %}
 
   <!-- Email Popup Modal -->
