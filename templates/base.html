@@ -120,6 +120,23 @@
   </script>
 
   <style>
+    /* Cookie banner: above modals/overlays; ensure clicks reach buttons */
+    #marbaras-cookie-banner {
+      position: fixed !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      z-index: 2147483647 !important;
+      isolation: isolate;
+      pointer-events: auto !important;
+    }
+    #marbaras-cookie-banner button,
+    #marbaras-cookie-banner a {
+      pointer-events: auto !important;
+      cursor: pointer;
+      position: relative;
+      z-index: 1;
+    }
 
     .cart-tip::after{
       content:""; position:absolute; top:-6px; left:50%; transform:translateX(-50%);
@@ -425,6 +442,10 @@
       </div>
       <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
         {% if marketing_pixels_json %}
+        <button type="button" id="marbaras-cookie-reject"
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
+          Reject
+        </button>
         <button type="button" id="marbaras-cookie-essential"
                 class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
           Essential only
@@ -447,11 +468,20 @@
     function marbarasShowCookieBannerBar() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
+      if (b.parentNode !== document.body) {
+        document.body.appendChild(b);
+      }
       b.style.setProperty('display', 'flex', 'important');
-      b.style.setProperty('z-index', '2147483646', 'important');
+      b.style.setProperty('z-index', '2147483647', 'important');
       b.setAttribute('aria-hidden', 'false');
     }
     window.marbarasOpenCookieBanner = marbarasShowCookieBannerBar;
+    function reparentCookieBannerToBody() {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (b && b.parentNode !== document.body) {
+        document.body.appendChild(b);
+      }
+    }
     function wireFooterCookieBtn() {
       var btn = document.getElementById('marbaras-footer-cookie-link');
       if (!btn || btn.dataset.marbarasCookieWired === '1') return;
@@ -461,10 +491,14 @@
         marbarasShowCookieBannerBar();
       });
     }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', wireFooterCookieBtn);
-    } else {
+    function marbarasCookieBannerOnReady() {
+      reparentCookieBannerToBody();
       wireFooterCookieBtn();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', marbarasCookieBannerOnReady);
+    } else {
+      marbarasCookieBannerOnReady();
     }
   })();
   </script>
@@ -1001,8 +1035,11 @@
     function showBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (b) {
+        if (b.parentNode !== document.body) {
+          document.body.appendChild(b);
+        }
         b.style.setProperty('display', 'flex', 'important');
-        b.style.setProperty('z-index', '2147483646', 'important');
+        b.style.setProperty('z-index', '2147483647', 'important');
         b.setAttribute('aria-hidden', 'false');
       }
     }
@@ -1080,14 +1117,23 @@
       showBanner();
     }
 
+    var btnRej = document.getElementById('marbaras-cookie-reject');
     var btnEss = document.getElementById('marbaras-cookie-essential');
     var btnAcc = document.getElementById('marbaras-cookie-accept');
     var btnDis = document.getElementById('marbaras-cookie-dismiss');
+    function saveNoMarketingConsent(value) {
+      try { localStorage.setItem(STORAGE_KEY, value); } catch (e4) {}
+      setConsentCookie(value);
+      hideBanner();
+    }
+    if (btnRej) {
+      btnRej.addEventListener('click', function () {
+        saveNoMarketingConsent('denied');
+      });
+    }
     if (btnEss) {
       btnEss.addEventListener('click', function () {
-        try { localStorage.setItem(STORAGE_KEY, 'essential'); } catch (e4) {}
-        setConsentCookie('essential');
-        hideBanner();
+        saveNoMarketingConsent('essential');
       });
     }
     if (btnAcc) {
@@ -1100,9 +1146,7 @@
     }
     if (btnDis) {
       btnDis.addEventListener('click', function () {
-        try { localStorage.setItem(STORAGE_KEY, 'essential'); } catch (e6) {}
-        setConsentCookie('essential');
-        hideBanner();
+        saveNoMarketingConsent('essential');
       });
     }
 
