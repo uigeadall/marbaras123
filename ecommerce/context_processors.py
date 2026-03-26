@@ -201,6 +201,28 @@ def tiktok_pixel_id(request):
     }
 
 
+def cookie_consent_context(request):
+    """
+    When COOKIE_CONSENT_ENABLED, marketing pixels load only after user accepts (client-side).
+    marketing_pixels_json is passed to json_script in base.html.
+    """
+    from django.conf import settings
+    enabled = getattr(settings, "COOKIE_CONSENT_ENABLED", True)
+    ctx = {"COOKIE_CONSENT_ENABLED": enabled}
+    if not enabled:
+        return ctx
+    mid = getattr(settings, "META_PIXEL_ID", "") or None
+    tid = getattr(settings, "TIKTOK_PIXEL_ID", "") or None
+    gid = getattr(settings, "GOOGLE_ANALYTICS_ID", "") or None
+    if mid or tid or gid:
+        ctx["marketing_pixels_json"] = {
+            "metaPixelId": mid,
+            "tiktokPixelId": tid,
+            "gaId": gid,
+        }
+    return ctx
+
+
 def google_analytics_id(request):
     """
     Return Google Analytics ID (GA4) from settings for use in templates.

@@ -1432,32 +1432,44 @@
 {% if META_PIXEL_ID or TIKTOK_PIXEL_ID %}
 <script>
   (function () {
-    var cid = '{% if product.serial_number %}{{ product.serial_number|escapejs }}{% else %}{{ product.id }}{% endif %}';
-    var price = {% localize off %}{{ product.get_discounted_price }}{% endlocalize %};
-    var curMeta = '{{ META_PIXEL_CURRENCY|default:"EUR"|escapejs }}';
-    var curTt = '{{ TIKTOK_PIXEL_CURRENCY|default:"EUR"|escapejs }}';
-    {% if META_PIXEL_ID %}
-    if (typeof fbq === 'function') {
-      fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'ViewContent', {
-        content_ids: [cid],
-        content_name: '{{ product.name|escapejs }}',
-        content_type: 'product',
-        value: price,
-        currency: curMeta,
-        contents: [{ id: cid, quantity: 1, item_price: price }]
-        {% if product.category %}, content_category: '{{ product.category.name|escapejs }}'{% endif %}
-      });
+    function marbarasFireViewContent() {
+      var cid = '{% if product.serial_number %}{{ product.serial_number|escapejs }}{% else %}{{ product.id }}{% endif %}';
+      var price = {% localize off %}{{ product.get_discounted_price }}{% endlocalize %};
+      var curMeta = '{{ META_PIXEL_CURRENCY|default:"EUR"|escapejs }}';
+      var curTt = '{{ TIKTOK_PIXEL_CURRENCY|default:"EUR"|escapejs }}';
+      {% if META_PIXEL_ID %}
+      if (typeof fbq === 'function') {
+        fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'ViewContent', {
+          content_ids: [cid],
+          content_name: '{{ product.name|escapejs }}',
+          content_type: 'product',
+          value: price,
+          currency: curMeta,
+          contents: [{ id: cid, quantity: 1, item_price: price }]
+          {% if product.category %}, content_category: '{{ product.category.name|escapejs }}'{% endif %}
+        });
+      }
+      {% endif %}
+      {% if TIKTOK_PIXEL_ID %}
+      if (typeof ttq !== 'undefined' && ttq.track) {
+        ttq.track('ViewContent', {
+          content_id: cid,
+          content_type: 'product',
+          content_name: '{{ product.name|escapejs }}',
+          value: price,
+          currency: curTt,
+        });
+      }
+      {% endif %}
     }
-    {% endif %}
-    {% if TIKTOK_PIXEL_ID %}
-    if (typeof ttq !== 'undefined' && ttq.track) {
-      ttq.track('ViewContent', {
-        content_id: cid,
-        content_type: 'product',
-        content_name: '{{ product.name|escapejs }}',
-        value: price,
-        currency: curTt,
-      });
+    {% if not COOKIE_CONSENT_ENABLED %}
+    marbarasFireViewContent();
+    {% else %}
+    if (window.marbarasMarketingLoaded) {
+      marbarasFireViewContent();
+    } else {
+      window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+      window.marbarasMarketingReadyCallbacks.push(marbarasFireViewContent);
     }
     {% endif %}
   })();

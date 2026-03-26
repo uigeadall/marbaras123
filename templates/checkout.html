@@ -2548,24 +2548,36 @@
 {{ initiate_checkout_pixel|json_script:"marbaras-initiate-checkout-pixel" }}
 <script>
 (function () {
-  var el = document.getElementById('marbaras-initiate-checkout-pixel');
-  if (!el) return;
-  var p;
-  try {
-    p = JSON.parse(el.textContent || '{}');
-  } catch (e) {
-    return;
+  function marbarasFireInitiateCheckout() {
+    var el = document.getElementById('marbaras-initiate-checkout-pixel');
+    if (!el) return;
+    var p;
+    try {
+      p = JSON.parse(el.textContent || '{}');
+    } catch (e) {
+      return;
+    }
+    if (window.__marbarasInitiateCheckoutSent) return;
+    window.__marbarasInitiateCheckoutSent = true;
+    {% if META_PIXEL_ID %}
+    if (p.meta && typeof fbq === 'function') {
+      fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'InitiateCheckout', p.meta);
+    }
+    {% endif %}
+    {% if TIKTOK_PIXEL_ID %}
+    if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
+      ttq.track('InitiateCheckout', p.tiktok);
+    }
+    {% endif %}
   }
-  if (window.__marbarasInitiateCheckoutSent) return;
-  window.__marbarasInitiateCheckoutSent = true;
-  {% if META_PIXEL_ID %}
-  if (p.meta && typeof fbq === 'function') {
-    fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'InitiateCheckout', p.meta);
-  }
-  {% endif %}
-  {% if TIKTOK_PIXEL_ID %}
-  if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
-    ttq.track('InitiateCheckout', p.tiktok);
+  {% if not COOKIE_CONSENT_ENABLED %}
+  marbarasFireInitiateCheckout();
+  {% else %}
+  if (window.marbarasMarketingLoaded) {
+    marbarasFireInitiateCheckout();
+  } else {
+    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+    window.marbarasMarketingReadyCallbacks.push(marbarasFireInitiateCheckout);
   }
   {% endif %}
 })();

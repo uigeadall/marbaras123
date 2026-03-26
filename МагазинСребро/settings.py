@@ -182,6 +182,7 @@ TEMPLATES = [
                 "ecommerce.context_processors.categories",
                 "ecommerce.context_processors.meta_pixel_id",
                 "ecommerce.context_processors.tiktok_pixel_id",
+                "ecommerce.context_processors.cookie_consent_context",
                 "ecommerce.context_processors.google_analytics_id",
                 "ecommerce.context_processors.show_welcome_discount_button",
                 "ecommerce.context_processors.cloudinary_config",
@@ -643,6 +644,9 @@ TIKTOK_PIXEL_CURRENCY = (
     if len(_TIKTOK_CUR) == 3 and _TIKTOK_CUR.isalpha()
     else META_PIXEL_CURRENCY
 )
+
+# Cookie consent banner: load Meta / TikTok / GA only after “Accept all” (set COOKIE_CONSENT_ENABLED=0 to disable)
+COOKIE_CONSENT_ENABLED = env_bool("COOKIE_CONSENT_ENABLED", True)
 
 # Google Analytics (GA4)
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")

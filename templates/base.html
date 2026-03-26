@@ -5,7 +5,8 @@
   <meta charset="UTF-8" />
   <title>{% block title %}Marbaras{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  {% comment %}Meta Pixel early: load before heavy scripts so PageView fires reliably (Pixel Helper / Events Manager){% endcomment %}
+  {% comment %}Meta / TikTok: immediate load only when cookie consent is off{% endcomment %}
+  {% if not COOKIE_CONSENT_ENABLED %}
   {% if META_PIXEL_ID %}
   <link rel="preconnect" href="https://connect.facebook.net" crossorigin>
   <link rel="dns-prefetch" href="https://connect.facebook.net">
@@ -50,6 +51,10 @@
   </script>
   <!-- End TikTok Pixel -->
   {% endif %}
+  {% endif %}
+  {% if COOKIE_CONSENT_ENABLED and marketing_pixels_json %}
+  {{ marketing_pixels_json|json_script:"marbaras-marketing-config" }}
+  {% endif %}
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
   <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
@@ -84,8 +89,8 @@
   
   {% block extra_meta %}{% endblock %}
 
-  {% comment %}Google Analytics (GA4){% endcomment %}
-  {% if GOOGLE_ANALYTICS_ID %}
+  {% comment %}Google Analytics (GA4) — only before consent mode when consent disabled{% endcomment %}
+  {% if not COOKIE_CONSENT_ENABLED and GOOGLE_ANALYTICS_ID %}
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id={{ GOOGLE_ANALYTICS_ID }}"></script>
   <script>
@@ -889,6 +894,160 @@
     };
   })();
   </script>
+
+  {% if COOKIE_CONSENT_ENABLED %}
+  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite"
+       class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
+       style="display: none;">
+    <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex-1 min-w-0">
+        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Бисквитки и поверителност</p>
+        <p class="m-0 text-slate-600 leading-snug">
+          Използваме задължителни бисквитки за количка, сесия и сигурност.
+          {% if marketing_pixels_json %}
+          С ваше съгласие зареждаме и аналитика/реклама (Meta, TikTok, Google), за да подобрим магазина и рекламите.
+          {% endif %}
+          Повече в <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Политика за поверителност</a>.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        {% if marketing_pixels_json %}
+        <button type="button" id="marbaras-cookie-essential"
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
+          Само необходими
+        </button>
+        <button type="button" id="marbaras-cookie-accept"
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
+          Приемам всички
+        </button>
+        {% else %}
+        <button type="button" id="marbaras-cookie-dismiss"
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
+          Разбрах
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var STORAGE_KEY = 'marbaras_cookie_consent';
+    var COOKIE_NAME = 'marbaras_cookie_consent';
+    function setConsentCookie(value) {
+      document.cookie = COOKIE_NAME + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
+    }
+    function hideBanner() {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (b) b.style.display = 'none';
+    }
+    function showBanner() {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (b) b.style.display = 'flex';
+    }
+    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+    window.marbarasMarketingLoaded = false;
+
+    window.marbarasLoadMarketingPixels = function () {
+      if (window.__marbarasMarketingPixelsInjected) return;
+      var cfgEl = document.getElementById('marbaras-marketing-config');
+      if (!cfgEl) return;
+      var cfg;
+      try {
+        cfg = JSON.parse(cfgEl.textContent || '{}');
+      } catch (e) {
+        return;
+      }
+      window.__marbarasMarketingPixelsInjected = true;
+
+      if (cfg.metaPixelId) {
+        var pid = cfg.metaPixelId;
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        try { fbq('set', 'autoConfig', false, pid); } catch (e1) {}
+        fbq('init', pid);
+        if (!window.__marbarasPageViewSent) {
+          window.__marbarasPageViewSent = true;
+          fbq('trackSingle', pid, 'PageView');
+        }
+      }
+
+      if (cfg.tiktokPixelId) {
+        var tid = cfg.tiktokPixelId;
+        !function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t0,e){t0[e]=function(){t0.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t0){for(var e=ttq._i[t0]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};
+        ttq.load(tid);
+        if (!window.__marbarasTikTokPageSent) {
+          window.__marbarasTikTokPageSent = true;
+          ttq.page();
+        }
+      }
+
+      if (cfg.gaId) {
+        var ga = cfg.gaId;
+        var gs = document.createElement('script');
+        gs.async = true;
+        gs.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ga);
+        document.head.appendChild(gs);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        window.gtag = gtag;
+        gtag('js', new Date());
+        gtag('config', ga);
+      }
+
+      window.marbarasMarketingLoaded = true;
+      var cbs = window.marbarasMarketingReadyCallbacks || [];
+      window.marbarasMarketingReadyCallbacks = [];
+      cbs.forEach(function (fn) {
+        try { fn(); } catch (e2) {}
+      });
+    };
+
+    var cfgPresent = !!document.getElementById('marbaras-marketing-config');
+    var consent = null;
+    try {
+      consent = localStorage.getItem(STORAGE_KEY);
+    } catch (e3) {}
+
+    if (consent === 'all' && cfgPresent) {
+      window.marbarasLoadMarketingPixels();
+    } else if (!consent) {
+      showBanner();
+    }
+
+    var btnEss = document.getElementById('marbaras-cookie-essential');
+    var btnAcc = document.getElementById('marbaras-cookie-accept');
+    var btnDis = document.getElementById('marbaras-cookie-dismiss');
+    if (btnEss) {
+      btnEss.addEventListener('click', function () {
+        try { localStorage.setItem(STORAGE_KEY, 'essential'); } catch (e4) {}
+        setConsentCookie('essential');
+        hideBanner();
+      });
+    }
+    if (btnAcc) {
+      btnAcc.addEventListener('click', function () {
+        try { localStorage.setItem(STORAGE_KEY, 'all'); } catch (e5) {}
+        setConsentCookie('all');
+        window.marbarasLoadMarketingPixels();
+        hideBanner();
+      });
+    }
+    if (btnDis) {
+      btnDis.addEventListener('click', function () {
+        try { localStorage.setItem(STORAGE_KEY, 'essential'); } catch (e6) {}
+        setConsentCookie('essential');
+        hideBanner();
+      });
+    }
+  })();
+  </script>
+  {% endif %}
 
   {% block extra_js %}{% endblock %}
 
