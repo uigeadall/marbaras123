@@ -379,7 +379,8 @@
         {% if COOKIE_CONSENT_ENABLED %}
         <button type="button" id="marbaras-footer-cookie-link"
                 class="hover:text-slate-900 text-slate-600 bg-transparent border-0 p-0 m-0 cursor-pointer text-[11px] leading-tight underline decoration-transparent hover:underline hover:decoration-current"
-                style="font: inherit;">
+                style="font: inherit;"
+                onclick="if (window.marbarasOpenCookieBanner) { window.marbarasOpenCookieBanner(); } return false;">
           Cookies
         </button>
         {% endif %}
@@ -407,6 +408,67 @@
   </div>
 </footer>
 
+  {% if COOKIE_CONSENT_ENABLED %}
+  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
+       class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
+       style="display: none !important;">
+    <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex-1 min-w-0">
+        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Бисквитки и поверителност</p>
+        <p class="m-0 text-slate-600 leading-snug">
+          Използваме задължителни бисквитки за количка, сесия и сигурност.
+          {% if marketing_pixels_json %}
+          С ваше съгласие зареждаме и аналитика/реклама (Meta, TikTok, Google), за да подобрим магазина и рекламите.
+          {% endif %}
+          Повече в <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Политика за поверителност</a>.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
+        {% if marketing_pixels_json %}
+        <button type="button" id="marbaras-cookie-essential"
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
+          Само необходими
+        </button>
+        <button type="button" id="marbaras-cookie-accept"
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
+          Приемам всички
+        </button>
+        {% else %}
+        <button type="button" id="marbaras-cookie-dismiss"
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
+          Разбрах
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    function marbarasShowCookieBannerBar() {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (!b) return;
+      b.style.setProperty('display', 'flex', 'important');
+      b.style.setProperty('z-index', '2147483646', 'important');
+      b.setAttribute('aria-hidden', 'false');
+    }
+    window.marbarasOpenCookieBanner = marbarasShowCookieBannerBar;
+    function wireFooterCookieBtn() {
+      var btn = document.getElementById('marbaras-footer-cookie-link');
+      if (!btn || btn.dataset.marbarasCookieWired === '1') return;
+      btn.dataset.marbarasCookieWired = '1';
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        marbarasShowCookieBannerBar();
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', wireFooterCookieBtn);
+    } else {
+      wireFooterCookieBtn();
+    }
+  })();
+  </script>
+  {% endif %}
 
   <script>
     setTimeout(() => {
@@ -915,39 +977,6 @@
   })();
   </script>
   {% else %}
-  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
-       class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
-       style="display: none;">
-    <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div class="flex-1 min-w-0">
-        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Бисквитки и поверителност</p>
-        <p class="m-0 text-slate-600 leading-snug">
-          Използваме задължителни бисквитки за количка, сесия и сигурност.
-          {% if marketing_pixels_json %}
-          С ваше съгласие зареждаме и аналитика/реклама (Meta, TikTok, Google), за да подобрим магазина и рекламите.
-          {% endif %}
-          Повече в <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Политика за поверителност</a>.
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2 shrink-0">
-        {% if marketing_pixels_json %}
-        <button type="button" id="marbaras-cookie-essential"
-                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
-          Само необходими
-        </button>
-        <button type="button" id="marbaras-cookie-accept"
-                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
-          Приемам всички
-        </button>
-        {% else %}
-        <button type="button" id="marbaras-cookie-dismiss"
-                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
-          Разбрах
-        </button>
-        {% endif %}
-      </div>
-    </div>
-  </div>
   <script>
   (function () {
     var STORAGE_KEY = 'marbaras_cookie_consent';
@@ -965,31 +994,19 @@
     function hideBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (b) {
-        b.style.display = 'none';
+        b.style.setProperty('display', 'none', 'important');
         b.setAttribute('aria-hidden', 'true');
       }
     }
     function showBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (b) {
-        b.style.display = 'flex';
+        b.style.setProperty('display', 'flex', 'important');
+        b.style.setProperty('z-index', '2147483646', 'important');
         b.setAttribute('aria-hidden', 'false');
       }
     }
-    document.addEventListener(
-      'click',
-      function (e) {
-        var t = e.target;
-        if (!t) return;
-        var node = t.nodeType === 1 ? t : t.parentElement;
-        if (!node || !node.closest) return;
-        if (!node.closest('#marbaras-footer-cookie-link')) return;
-        e.preventDefault();
-        e.stopPropagation();
-        showBanner();
-      },
-      true
-    );
+    window.marbarasOpenCookieBanner = showBanner;
     window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
     window.marbarasMarketingLoaded = false;
 
