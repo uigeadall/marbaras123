@@ -376,6 +376,9 @@
       <nav class="flex flex-wrap gap-4 justify-center sm:justify-start items-center">
         <a href="{% url 'terms' %}" class="hover:text-slate-900">Terms</a>
         <a href="{% url 'privacy' %}" class="hover:text-slate-900">Privacy</a>
+        {% if COOKIE_CONSENT_ENABLED %}
+        <a href="#" id="marbaras-footer-cookie-link" class="hover:text-slate-900">Cookies</a>
+        {% endif %}
         <a href="{% url 'contact' %}" class="hover:text-slate-900">Contact</a>
         <a href="https://www.instagram.com/mmarbaras?igsh=NTI4NmYzc215czY4" target="_blank" rel="noopener noreferrer" class="hover:text-slate-900 inline-flex items-center gap-1" aria-label="Follow us on Instagram">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -895,7 +898,19 @@
   })();
   </script>
 
-  {% if COOKIE_CONSENT_ENABLED %}
+  {% if not COOKIE_CONSENT_ENABLED %}
+  <script>
+  (function () {
+    window.marbarasGetCookieConsent = function () { return 'all'; };
+    window.marbarasMarketingAllowed = function () { return true; };
+    window.marbarasWhenMarketingAllowed = function (fn) {
+      if (typeof fn !== 'function') return;
+      try { fn(); } catch (e) {}
+    };
+    window.marbarasOpenCookieBanner = function () {};
+  })();
+  </script>
+  {% else %}
   <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite"
        class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
        style="display: none;">
@@ -933,6 +948,13 @@
   (function () {
     var STORAGE_KEY = 'marbaras_cookie_consent';
     var COOKIE_NAME = 'marbaras_cookie_consent';
+    function readConsent() {
+      try {
+        return localStorage.getItem(STORAGE_KEY);
+      } catch (e0) {
+        return null;
+      }
+    }
     function setConsentCookie(value) {
       document.cookie = COOKIE_NAME + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
     }
@@ -1009,10 +1031,7 @@
     };
 
     var cfgPresent = !!document.getElementById('marbaras-marketing-config');
-    var consent = null;
-    try {
-      consent = localStorage.getItem(STORAGE_KEY);
-    } catch (e3) {}
+    var consent = readConsent();
 
     if (consent === 'all' && cfgPresent) {
       window.marbarasLoadMarketingPixels();
@@ -1043,6 +1062,38 @@
         try { localStorage.setItem(STORAGE_KEY, 'essential'); } catch (e6) {}
         setConsentCookie('essential');
         hideBanner();
+      });
+    }
+
+    window.marbarasGetCookieConsent = function () {
+      return readConsent();
+    };
+    window.marbarasMarketingAllowed = function () {
+      if (!cfgPresent) return false;
+      return readConsent() === 'all';
+    };
+    window.marbarasWhenMarketingAllowed = function (fn) {
+      if (typeof fn !== 'function' || !cfgPresent) return;
+      window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
+      var c = readConsent();
+      if (c === 'all' && window.marbarasMarketingLoaded) {
+        try { fn(); } catch (e7) {}
+        return;
+      }
+      window.marbarasMarketingReadyCallbacks.push(fn);
+      if (c === 'all' && !window.marbarasMarketingLoaded) {
+        window.marbarasLoadMarketingPixels();
+      }
+    };
+    window.marbarasOpenCookieBanner = function () {
+      showBanner();
+    };
+
+    var footCookie = document.getElementById('marbaras-footer-cookie-link');
+    if (footCookie) {
+      footCookie.addEventListener('click', function (e) {
+        e.preventDefault();
+        showBanner();
       });
     }
   })();
