@@ -284,7 +284,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
           </svg>
           {% if cart_count|default:0 > 0 %}
-          <span class="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+          <span class="marbaras-cart-badge absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
             {{ cart_count }}
           </span>
           {% endif %}
@@ -690,7 +690,8 @@
 
       cartLink.addEventListener('click', (e) => {
         e.preventDefault();
-        const count = Number('{{ cart_count|default:"0" }}') || 0;
+        const badge = cartLink.querySelector('.marbaras-cart-badge');
+        const count = badge ? parseInt(badge.textContent, 10) || 0 : 0;
         if (count > 0) {
           window.location.href = "{% url 'cart_view' %}";
         } else {
@@ -773,6 +774,28 @@
 
   <script>
   (function () {
+    window.marbarasSetCartBadgeCount = function (count) {
+      count = Math.max(0, parseInt(count, 10) || 0);
+      var cls =
+        'marbaras-cart-badge absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center';
+      function sync(anchor) {
+        if (!anchor) return;
+        var el = anchor.querySelector('.marbaras-cart-badge');
+        if (count > 0) {
+          if (!el) {
+            el = document.createElement('span');
+            el.className = cls;
+            anchor.appendChild(el);
+          }
+          el.textContent = String(count);
+        } else if (el) {
+          el.remove();
+        }
+      }
+      sync(document.getElementById('mobileHeaderCartLink'));
+      sync(document.getElementById('cartLink'));
+    };
+
     window.marbarasAddToCartViaFetch = function (form, onSuccess) {
       if (!form || !form.action) return;
       var fd = new FormData(form);
@@ -813,7 +836,9 @@
             alert(msg);
             return;
           }
-          var pixelAddToCartFired = false;
+          if (typeof res.data.cart_count === 'number') {
+            window.marbarasSetCartBadgeCount(res.data.cart_count);
+          }
           {% if META_PIXEL_ID %}
           if (typeof fbq === 'function' && res.data.meta_pixel) {
             var m = res.data.meta_pixel;
@@ -825,18 +850,9 @@
               currency: m.currency,
               contents: m.contents,
             });
-            pixelAddToCartFired = true;
           }
           {% endif %}
-          function runOnSuccess() {
-            if (typeof onSuccess === 'function') onSuccess(res.data);
-          }
-          // Immediate reload cancels the pixel request before it leaves the browser.
-          if (pixelAddToCartFired) {
-            setTimeout(runOnSuccess, 320);
-          } else {
-            runOnSuccess();
-          }
+          if (typeof onSuccess === 'function') onSuccess(res.data);
         })
         .catch(function () {
           alert('Network error');

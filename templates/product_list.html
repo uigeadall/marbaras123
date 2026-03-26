@@ -192,9 +192,7 @@
       if (f.action.indexOf('cart/add') === -1) return;
       e.preventDefault();
       if (typeof window.marbarasAddToCartViaFetch === 'function') {
-        window.marbarasAddToCartViaFetch(f, function () {
-          window.location.reload();
-        });
+        window.marbarasAddToCartViaFetch(f);
       } else {
         f.submit();
       }

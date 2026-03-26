@@ -100,6 +100,30 @@ def _owner_filter(request: HttpRequest) -> dict:
     return {"session_key": request.session.session_key}
 
 
+def _cart_total_quantity(request: HttpRequest) -> int:
+    """Total item quantity in cart (same logic as cart_count context processor)."""
+    try:
+        if request.user.is_authenticated:
+            total = (
+                CartItem.objects.filter(user=request.user)
+                .aggregate(c=Sum("quantity"))
+                .get("c")
+            )
+            return int(total or 0)
+        _ensure_session(request)
+        sk = request.session.session_key
+        if not sk:
+            return 0
+        total = (
+            CartItem.objects.filter(session_key=sk)
+            .aggregate(c=Sum("quantity"))
+            .get("c")
+        )
+        return int(total or 0)
+    except Exception:
+        return 0
+
+
 def _cart_items_for(request: HttpRequest) -> Iterable[CartItem]:
     if request.user.is_authenticated:
         return (
@@ -1480,6 +1504,7 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
                 "success": True,
                 "message": f"Maximum {available} available. Quantity set to {capped_total}.",
                 "warning": True,
+                "cart_count": _cart_total_quantity(request),
             }
             if getattr(settings, "META_PIXEL_ID", "") and actually_added > 0:
                 payload["meta_pixel"] = _meta_pixel_add_to_cart_payload(
@@ -1487,7 +1512,11 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
                 )
             return JsonResponse(payload)
         messages.success(request, "✅ Added to cart.")
-        payload = {"success": True, "message": "✅ Added to cart."}
+        payload = {
+            "success": True,
+            "message": "✅ Added to cart.",
+            "cart_count": _cart_total_quantity(request),
+        }
         if getattr(settings, "META_PIXEL_ID", "") and actually_added > 0:
             payload["meta_pixel"] = _meta_pixel_add_to_cart_payload(
                 product, variant_for_pixel, actually_added

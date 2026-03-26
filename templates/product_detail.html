@@ -1368,7 +1368,7 @@
              class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition relative">
             🛒 Cart
             {% if cart_count|default:0 > 0 %}
-            <span class="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+            <span class="marbaras-cart-badge absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
               {{ cart_count }}
             </span>
             {% endif %}
@@ -1475,7 +1475,8 @@
     }
     link?.addEventListener('click', (e) => {
       e.preventDefault();
-      const count = Number('{{ cart_count|default:"0" }}') || 0;
+      const badge = link.querySelector('.marbaras-cart-badge');
+      const count = badge ? parseInt(badge.textContent, 10) || 0 : 0;
       if (count > 0) { window.location.href = "{% url 'cart_view' %}"; } else { showTip(); }
     });
     document.addEventListener('scroll', () => tip?.classList.add('invisible','opacity-0'));
@@ -1855,9 +1856,7 @@
       }
       e.preventDefault();
       if (typeof window.marbarasAddToCartViaFetch === 'function') {
-        window.marbarasAddToCartViaFetch(addToCartForm, function () {
-          window.location.reload();
-        });
+        window.marbarasAddToCartViaFetch(addToCartForm);
       } else {
         addToCartForm.submit();
       }
@@ -2502,7 +2501,9 @@
       if (form) {
         if (typeof window.marbarasAddToCartViaFetch === 'function') {
           window.marbarasAddToCartViaFetch(form, function () {
-            window.location.href = '{% url "checkout" %}';
+            setTimeout(function () {
+              window.location.href = '{% url "checkout" %}';
+            }, 320);
           });
         } else {
           form.submit();
