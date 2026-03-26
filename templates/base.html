@@ -21,8 +21,14 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '{{ META_PIXEL_ID|escapejs }}');
-    fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'PageView');
+    (function () {
+      var pid = '{{ META_PIXEL_ID|escapejs }}';
+      try { fbq('set', 'autoConfig', false, pid); } catch (e) {}
+      fbq('init', pid);
+      if (window.__marbarasPageViewSent) return;
+      window.__marbarasPageViewSent = true;
+      fbq('trackSingle', pid, 'PageView');
+    })();
   </script>
   <noscript><img height="1" width="1" style="display:none" alt=""
     src="https://www.facebook.com/tr?id={{ META_PIXEL_ID }}&ev=PageView&noscript=1"
