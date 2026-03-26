@@ -126,9 +126,15 @@
       left: 0 !important;
       right: 0 !important;
       bottom: 0 !important;
+      width: 100% !important;
+      max-width: 100vw !important;
+      box-sizing: border-box !important;
       z-index: 2147483647 !important;
       isolation: isolate;
       pointer-events: auto !important;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
     }
     #marbaras-cookie-banner button,
     #marbaras-cookie-banner a {
@@ -258,6 +264,46 @@
 
 <!-- Make page a flex column so footer is tight at bottom -->
 <body class="min-h-screen flex flex-col bg-white text-slate-900 antialiased">
+
+  {% if COOKIE_CONSENT_ENABLED %}
+  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
+       class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
+       style="display: none !important;">
+    <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex-1 min-w-0">
+        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies and privacy</p>
+        <p class="m-0 text-slate-600 leading-snug">
+          We use essential cookies for your cart, session, and security.
+          {% if marketing_pixels_json %}
+          With your consent, we also load analytics and advertising (Meta, TikTok, Google) to improve the store and our ads.
+          {% endif %}
+          Learn more in our <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Privacy Policy</a>.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
+        {% if marketing_pixels_json %}
+        <button type="button" id="marbaras-cookie-reject"
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
+          Reject
+        </button>
+        <button type="button" id="marbaras-cookie-essential"
+                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
+          Essential only
+        </button>
+        <button type="button" id="marbaras-cookie-accept"
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
+          Accept all
+        </button>
+        {% else %}
+        <button type="button" id="marbaras-cookie-dismiss"
+                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
+          Got it
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Mobile Menu Overlay -->
   <div id="mobileMenuOverlay" class="mobile-menu-overlay lg:hidden" aria-hidden="true"></div>
@@ -1104,14 +1150,25 @@
         var node = document.getElementById(domId);
         if (!node || node.dataset.marbarasCookieBarBtn === '1') return;
         node.dataset.marbarasCookieBarBtn = '1';
+        var busy = false;
         function onActivate(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (typeof window.marbarasApplyCookieChoice === 'function') {
-            window.marbarasApplyCookieChoice(choice);
+          if (busy) return;
+          busy = true;
+          try {
+            if (e.cancelable) e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.marbarasApplyCookieChoice === 'function') {
+              window.marbarasApplyCookieChoice(choice);
+            }
+          } finally {
+            window.setTimeout(function () { busy = false; }, 400);
           }
         }
         node.addEventListener('click', onActivate, true);
+        node.addEventListener('touchend', function (e) {
+          if (e.target !== node && !node.contains(e.target)) return;
+          onActivate(e);
+        }, { passive: false, capture: true });
       }
       wireCookieBarButton('marbaras-cookie-reject', 'reject');
       wireCookieBarButton('marbaras-cookie-essential', 'essential');
@@ -1126,9 +1183,23 @@
           showBanner();
         }
         fl.addEventListener('click', openFromFooter, true);
+        fl.addEventListener('touchend', function (e) {
+          if (e.target !== fl && !fl.contains(e.target)) return;
+          openFromFooter(e);
+        }, { passive: false, capture: true });
       }
     }
-    document.addEventListener('DOMContentLoaded', finishMarbarasCookieBannerUi);
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', finishMarbarasCookieBannerUi);
+    } else {
+      finishMarbarasCookieBannerUi();
+    }
+    window.addEventListener('load', function () {
+      if (!document.getElementById('marbaras-cookie-banner')) return;
+      if (!window.__marbarasCookieBannerUiDone) {
+        finishMarbarasCookieBannerUi();
+      }
+    });
 
     window.marbarasGetCookieConsent = function () {
       return readConsent();
@@ -1329,13 +1400,13 @@
       checkEmailPopup();
     }
 
-    // Close modal when clicking outside
-    window.onclick = function(event) {
+    // Close modal when clicking outside (do not use window.onclick — overwrites other handlers)
+    window.addEventListener('click', function (event) {
       const modal = document.getElementById('email-popup-modal');
-      if (event.target === modal) {
+      if (modal && event.target === modal) {
         closeEmailPopup();
       }
-    }
+    });
 
     // Close modal with Escape key
     document.addEventListener('keydown', function(event) {
@@ -1347,46 +1418,6 @@
       }
     });
   </script>
-
-  {% if COOKIE_CONSENT_ENABLED %}
-  <div id="marbaras-cookie-banner" role="dialog" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
-       class="fixed bottom-0 left-0 right-0 z-[100002] flex flex-col gap-3 p-4 shadow-[0_-4px_24px_rgba(0,0,0,.12)] border-t border-slate-200 bg-white text-slate-800 text-sm"
-       style="display: none !important;">
-    <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div class="flex-1 min-w-0">
-        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies and privacy</p>
-        <p class="m-0 text-slate-600 leading-snug">
-          We use essential cookies for your cart, session, and security.
-          {% if marketing_pixels_json %}
-          With your consent, we also load analytics and advertising (Meta, TikTok, Google) to improve the store and our ads.
-          {% endif %}
-          Learn more in our <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Privacy Policy</a>.
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
-        {% if marketing_pixels_json %}
-        <button type="button" id="marbaras-cookie-reject"
-                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
-          Reject
-        </button>
-        <button type="button" id="marbaras-cookie-essential"
-                class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition">
-          Essential only
-        </button>
-        <button type="button" id="marbaras-cookie-accept"
-                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
-          Accept all
-        </button>
-        {% else %}
-        <button type="button" id="marbaras-cookie-dismiss"
-                class="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold text-sm hover:bg-slate-800 transition">
-          Got it
-        </button>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-  {% endif %}
 
 </body>
 </html>
