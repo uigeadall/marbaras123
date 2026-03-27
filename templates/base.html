@@ -55,24 +55,7 @@
   {% if COOKIE_CONSENT_ENABLED and marketing_pixels_json %}
   {{ marketing_pixels_json|json_script:"marbaras-marketing-config" }}
   {% endif %}
-  {% if COOKIE_CONSENT_ENABLED %}
-  <script>
-  (function () {
-    window.marbarasShowCookieBannerNow = function () {
-      var b = document.getElementById('marbaras-cookie-banner');
-      if (!b) return;
-      try {
-        document.body.appendChild(b);
-        b.setAttribute('aria-hidden', 'false');
-        b.style.setProperty('display', 'flex', 'important');
-        b.style.setProperty('z-index', '999999', 'important');
-        b.style.setProperty('pointer-events', 'auto', 'important');
-      } catch (e) {}
-    };
-    window.marbarasOpenCookieBanner = window.marbarasShowCookieBannerNow;
-  })();
-  </script>
-  {% endif %}
+  {% comment %}Cookie UI show/hide is assigned in body script (needs backdrop + banner).{% endcomment %}
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
   <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
@@ -138,7 +121,21 @@
   </script>
 
   <style>
-    /* Cookie bar: fixed, safe z-index (avoid WebKit overflow on 2147483647), always last in body via JS */
+    /* Full-screen layer under bar: steals hits from sticky sidebars / iframes (Safari) */
+    #marbaras-cookie-backdrop {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      border: none;
+      z-index: 999998;
+      background: rgba(15, 23, 42, 0.45);
+      pointer-events: auto !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* Cookie bar: fixed, safe z-index, above backdrop */
     #marbaras-cookie-banner {
       position: fixed;
       inset: auto 0 0 0;
@@ -345,6 +342,42 @@
     function setConsentCookie(value) {
       document.cookie = COOKIE_NAME + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
     }
+    var __marbarasBodyOverflowBeforeCookie = '';
+    function hideCookieBackdrop() {
+      var bd = document.getElementById('marbaras-cookie-backdrop');
+      if (bd) {
+        bd.setAttribute('aria-hidden', 'true');
+        try {
+          bd.style.setProperty('display', 'none', 'important');
+        } catch (e0) {}
+      }
+      try {
+        document.body.style.overflow = __marbarasBodyOverflowBeforeCookie;
+      } catch (e1) {}
+    }
+    function showCookieBackdrop() {
+      var bd = document.getElementById('marbaras-cookie-backdrop');
+      if (!bd) return;
+      var opening = false;
+      try {
+        opening = window.getComputedStyle(bd).display === 'none';
+      } catch (eDisp) {
+        opening = true;
+      }
+      try {
+        document.body.appendChild(bd);
+        bd.setAttribute('aria-hidden', 'false');
+        bd.style.setProperty('display', 'block', 'important');
+        bd.style.setProperty('z-index', '999998', 'important');
+        bd.style.setProperty('pointer-events', 'auto', 'important');
+      } catch (e2) {}
+      if (opening) {
+        try {
+          __marbarasBodyOverflowBeforeCookie = document.body.style.overflow || '';
+          document.body.style.overflow = 'hidden';
+        } catch (e3) {}
+      }
+    }
     function hideBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
@@ -352,10 +385,12 @@
       try {
         b.style.setProperty('display', 'none', 'important');
       } catch (eClose) {}
+      hideCookieBackdrop();
     }
     function showBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
+      showCookieBackdrop();
       try {
         document.body.appendChild(b);
       } catch (eMove) {}
@@ -599,6 +634,9 @@
         }
       }
     };
+
+    window.marbarasShowCookieBannerNow = showBanner;
+    window.marbarasOpenCookieBanner = showBanner;
   })();
   </script>
   {% endif %}
@@ -1431,10 +1469,16 @@
       // Show popup after 5 seconds (do not cover the cookie consent bar)
       setTimeout(() => {
         var ban = document.getElementById('marbaras-cookie-banner');
+        var bd = document.getElementById('marbaras-cookie-backdrop');
         if (ban && ban.getAttribute('aria-hidden') !== 'true') {
           try {
             if (window.getComputedStyle(ban).display !== 'none') return;
           } catch (e) {}
+        }
+        if (bd) {
+          try {
+            if (window.getComputedStyle(bd).display !== 'none') return;
+          } catch (e2) {}
         }
         showEmailPopup();
       }, 5000);
@@ -1467,9 +1511,11 @@
   </script>
 
   {% if COOKIE_CONSENT_ENABLED %}
+  <div id="marbaras-cookie-backdrop" aria-hidden="true" style="display: none;"></div>
   <div id="marbaras-cookie-banner" role="dialog" aria-modal="true" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
        class="flex flex-col gap-3 text-sm" style="display: none;">
-    <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    {# Buttons under text on all breakpoints so they do not align with the desktop right sticky column #}
+    <div class="mx-auto max-w-site w-full flex flex-col gap-3">
       <div class="flex-1 min-w-0">
         <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies and privacy</p>
         <p class="m-0 text-slate-600 leading-snug">
@@ -1480,7 +1526,7 @@
           Learn more in our <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Privacy Policy</a>.
         </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2 shrink-0" id="marbaras-cookie-banner-actions">
+      <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full" id="marbaras-cookie-banner-actions">
         {% if marketing_pixels_json %}
         <button type="button" id="marbaras-cookie-reject" data-marbaras-cookie="reject"
                 class="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-semibold text-sm hover:bg-slate-50 transition"
