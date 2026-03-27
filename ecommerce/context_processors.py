@@ -207,7 +207,7 @@ def cookie_consent_context(request):
     marketing_pixels_json is passed to json_script in base.html.
     """
     from django.conf import settings
-    enabled = getattr(settings, "COOKIE_CONSENT_ENABLED", True)
+    enabled = getattr(settings, "COOKIE_CONSENT_ENABLED", False)
     ctx = {"COOKIE_CONSENT_ENABLED": enabled}
     if not enabled:
         return ctx

@@ -55,6 +55,25 @@
   {% if COOKIE_CONSENT_ENABLED and marketing_pixels_json %}
   {{ marketing_pixels_json|json_script:"marbaras-marketing-config" }}
   {% endif %}
+  {% if COOKIE_CONSENT_ENABLED %}
+  <script>
+  (function () {
+    window.marbarasShowCookieBannerNow = function () {
+      var b = document.getElementById('marbaras-cookie-banner');
+      if (!b) return;
+      try {
+        if (b.parentNode !== document.body) {
+          document.body.appendChild(b);
+        }
+        b.style.setProperty('display', 'flex', 'important');
+        b.style.setProperty('z-index', '2147483647', 'important');
+        b.setAttribute('aria-hidden', 'false');
+      } catch (e) {}
+    };
+    window.marbarasOpenCookieBanner = window.marbarasShowCookieBannerNow;
+  })();
+  </script>
+  {% endif %}
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
   <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
@@ -303,6 +322,26 @@
       </div>
     </div>
   </div>
+  {% endif %}
+
+  {% if COOKIE_CONSENT_ENABLED %}
+  <script>
+  (function () {
+    function autoShowCookieBar() {
+      try {
+        if (localStorage.getItem('marbaras_cookie_consent')) return;
+        if (typeof window.marbarasShowCookieBannerNow === 'function') {
+          window.marbarasShowCookieBannerNow();
+        }
+      } catch (e) {}
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', autoShowCookieBar);
+    } else {
+      autoShowCookieBar();
+    }
+  })();
+  </script>
   {% endif %}
 
   {% if not COOKIE_CONSENT_ENABLED %}
@@ -708,7 +747,7 @@
         <button type="button" id="marbaras-footer-cookie-link"
                 class="hover:text-slate-900 text-slate-600 bg-transparent border-0 p-0 m-0 cursor-pointer text-[11px] leading-tight underline decoration-transparent hover:underline hover:decoration-current"
                 style="font: inherit;"
-                onclick="if (window.marbarasOpenCookieBanner) { window.marbarasOpenCookieBanner(); } return false;">
+                onclick="try{if(typeof window.marbarasShowCookieBannerNow==='function'){window.marbarasShowCookieBannerNow();}else if(typeof window.marbarasOpenCookieBanner==='function'){window.marbarasOpenCookieBanner();}}catch(_){}return false;">
           Cookies
         </button>
         {% endif %}
