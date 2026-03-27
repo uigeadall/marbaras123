@@ -62,9 +62,10 @@
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
       try {
+        document.body.appendChild(b);
         b.setAttribute('aria-hidden', 'false');
         b.style.setProperty('display', 'flex', 'important');
-        b.style.setProperty('z-index', '2147483647', 'important');
+        b.style.setProperty('z-index', '999999', 'important');
         b.style.setProperty('pointer-events', 'auto', 'important');
       } catch (e) {}
     };
@@ -137,7 +138,7 @@
   </script>
 
   <style>
-    /* Cookie bar: fixed div + max z-index (Safari-friendly; avoid <dialog> hit-testing bugs) */
+    /* Cookie bar: fixed, safe z-index (avoid WebKit overflow on 2147483647), always last in body via JS */
     #marbaras-cookie-banner {
       position: fixed;
       inset: auto 0 0 0;
@@ -156,18 +157,28 @@
       background: #fff;
       color: #1e293b;
       box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
-      pointer-events: auto;
+      pointer-events: auto !important;
+      z-index: 999999;
+      isolation: isolate;
       -webkit-transform: translateZ(0);
       transform: translateZ(0);
     }
+    #marbaras-cookie-banner * {
+      pointer-events: auto;
+    }
     #marbaras-cookie-banner button,
     #marbaras-cookie-banner a {
-      pointer-events: auto;
+      position: relative;
+      z-index: 2;
       cursor: pointer;
       touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
       -webkit-tap-highlight-color: rgba(0, 0, 0, 0.12);
     }
     #marbaras-cookie-banner-actions {
+      position: relative;
+      z-index: 2;
       pointer-events: auto;
     }
     #marbaras-footer-cookie-link {
@@ -345,10 +356,13 @@
     function showBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
+      try {
+        document.body.appendChild(b);
+      } catch (eMove) {}
       b.setAttribute('aria-hidden', 'false');
       try {
         b.style.setProperty('display', 'flex', 'important');
-        b.style.setProperty('z-index', '2147483647', 'important');
+        b.style.setProperty('z-index', '999999', 'important');
         b.style.setProperty('pointer-events', 'auto', 'important');
       } catch (eSm) {}
     }
@@ -448,6 +462,9 @@
     }
 
     window.marbarasApplyCookieChoice = function (action) {
+      var now = Date.now();
+      if (now - (window.__marbarasCookieApplyAt || 0) < 400) return;
+      window.__marbarasCookieApplyAt = now;
       if (action === 'accept') {
         try { localStorage.setItem(STORAGE_KEY, 'all'); } catch (e5) {}
         setConsentCookie('all');
@@ -487,34 +504,52 @@
       var el = document.getElementById('marbaras-cookie-banner');
       if (!el) return;
       window.__marbarasCookieBannerUiDone = true;
+      function handleCookieChoiceEvent(ev, t) {
+        var root = document.getElementById('marbaras-cookie-banner');
+        if (!root || !isCookieBannerVisible(root)) return false;
+        if (!t || !t.closest) return false;
+        if (ev.type === 'pointerdown') {
+          if (ev.pointerType === 'mouse' && ev.button !== 0) return false;
+        }
+        var btn = t.closest('[data-marbaras-cookie]');
+        if (!btn || !root.contains(btn)) return false;
+        var act = btn.getAttribute('data-marbaras-cookie');
+        if (!act || typeof window.marbarasApplyCookieChoice !== 'function') return false;
+        ev.preventDefault();
+        ev.stopPropagation();
+        window.marbarasApplyCookieChoice(act);
+        return true;
+      }
       el.querySelectorAll('[data-marbaras-cookie]').forEach(function (btn) {
         if (btn.dataset.marbarasCookieBound === '1') return;
         btn.dataset.marbarasCookieBound = '1';
-        function activate(ev) {
-          var act = btn.getAttribute('data-marbaras-cookie');
-          if (!act || typeof window.marbarasApplyCookieChoice !== 'function') return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          window.marbarasApplyCookieChoice(act);
+        function activatePointer(ev) {
+          handleCookieChoiceEvent(ev, ev.target);
         }
-        btn.addEventListener('click', activate, true);
+        function activateClick(ev) {
+          handleCookieChoiceEvent(ev, ev.target);
+        }
+        function activateKey(ev) {
+          if (ev.key !== 'Enter' && ev.key !== ' ') return;
+          handleCookieChoiceEvent(ev, ev.target);
+        }
+        btn.addEventListener('pointerdown', activatePointer, { capture: true, passive: false });
+        btn.addEventListener('click', activateClick, true);
+        btn.addEventListener('keydown', activateKey, true);
       });
       if (!window.__marbarasCookieChoiceDelegateWired) {
         window.__marbarasCookieChoiceDelegateWired = true;
         document.addEventListener(
+          'pointerdown',
+          function (ev) {
+            handleCookieChoiceEvent(ev, ev.target);
+          },
+          { capture: true, passive: false }
+        );
+        document.addEventListener(
           'click',
           function (ev) {
-            var root = document.getElementById('marbaras-cookie-banner');
-            if (!root || !isCookieBannerVisible(root)) return;
-            var t = ev.target;
-            if (!t || !t.closest) return;
-            var btn = t.closest('[data-marbaras-cookie]');
-            if (!btn || !root.contains(btn)) return;
-            var act = btn.getAttribute('data-marbaras-cookie');
-            if (!act || typeof window.marbarasApplyCookieChoice !== 'function') return;
-            ev.preventDefault();
-            ev.stopPropagation();
-            window.marbarasApplyCookieChoice(act);
+            handleCookieChoiceEvent(ev, ev.target);
           },
           true
         );
