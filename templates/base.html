@@ -55,7 +55,14 @@
   {% if COOKIE_CONSENT_ENABLED and marketing_pixels_json %}
   {{ marketing_pixels_json|json_script:"marbaras-marketing-config" }}
   {% endif %}
-  {% comment %}Cookie UI show/hide is assigned in body script (needs backdrop + banner).{% endcomment %}
+  {% if COOKIE_CONSENT_ENABLED %}
+  <script>
+  (function () {
+    window.marbarasShowCookieBannerNow = function () {};
+    window.marbarasOpenCookieBanner = window.marbarasShowCookieBannerNow;
+  })();
+  </script>
+  {% endif %}
   <meta name="description" content="{% block meta_description %}Marbaras - Premium Silver Jewelry Shop{% endblock %}" />
   <meta name="keywords" content="{% block meta_keywords %}silver jewelry, jewelry, rings, necklaces, bracelets, earrings, premium jewelry, българия, бижута{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}" />
@@ -410,9 +417,8 @@
         return false;
       }
     }
-    window.marbarasOpenCookieBanner = function () {
-      showBanner();
-    };
+    window.marbarasShowCookieBannerNow = showBanner;
+    window.marbarasOpenCookieBanner = showBanner;
     window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
     window.marbarasMarketingLoaded = false;
 
@@ -634,9 +640,6 @@
         }
       }
     };
-
-    window.marbarasShowCookieBannerNow = showBanner;
-    window.marbarasOpenCookieBanner = showBanner;
   })();
   </script>
   {% endif %}
