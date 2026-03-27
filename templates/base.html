@@ -63,17 +63,10 @@
       if (!b) return;
       try {
         b.setAttribute('aria-hidden', 'false');
-        if (typeof b.showModal === 'function') {
-          if (!b.open) b.showModal();
-        } else {
-          b.style.setProperty('display', 'flex', 'important');
-          b.style.setProperty('z-index', '2147483647', 'important');
-        }
-      } catch (e) {
-        try {
-          b.style.setProperty('display', 'flex', 'important');
-        } catch (e2) {}
-      }
+        b.style.setProperty('display', 'flex', 'important');
+        b.style.setProperty('z-index', '2147483647', 'important');
+        b.style.setProperty('pointer-events', 'auto', 'important');
+      } catch (e) {}
     };
     window.marbarasOpenCookieBanner = window.marbarasShowCookieBannerNow;
   })();
@@ -144,7 +137,7 @@
   </script>
 
   <style>
-    /* Cookie bar: native <dialog> + showModal() = browser top layer (fixes Safari hit-testing) */
+    /* Cookie bar: fixed div + max z-index (Safari-friendly; avoid <dialog> hit-testing bugs) */
     #marbaras-cookie-banner {
       position: fixed;
       inset: auto 0 0 0;
@@ -163,9 +156,9 @@
       background: #fff;
       color: #1e293b;
       box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
-    }
-    #marbaras-cookie-banner::backdrop {
-      background: rgba(15, 23, 42, 0.25);
+      pointer-events: auto;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
     }
     #marbaras-cookie-banner button,
     #marbaras-cookie-banner a {
@@ -345,28 +338,27 @@
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
       b.setAttribute('aria-hidden', 'true');
-      if (typeof b.close === 'function') {
-        try {
-          if (b.open) b.close();
-        } catch (eClose) {}
-      } else {
+      try {
         b.style.setProperty('display', 'none', 'important');
-      }
+      } catch (eClose) {}
     }
     function showBanner() {
       var b = document.getElementById('marbaras-cookie-banner');
       if (!b) return;
       b.setAttribute('aria-hidden', 'false');
-      if (typeof b.showModal === 'function') {
-        try {
-          if (!b.open) b.showModal();
-        } catch (eSm) {
-          b.style.setProperty('display', 'flex', 'important');
-          b.style.setProperty('z-index', '2147483647', 'important');
-        }
-      } else {
+      try {
         b.style.setProperty('display', 'flex', 'important');
         b.style.setProperty('z-index', '2147483647', 'important');
+        b.style.setProperty('pointer-events', 'auto', 'important');
+      } catch (eSm) {}
+    }
+    function isCookieBannerVisible(root) {
+      if (!root) return false;
+      if (root.getAttribute('aria-hidden') === 'true') return false;
+      try {
+        return window.getComputedStyle(root).display !== 'none';
+      } catch (e) {
+        return false;
       }
     }
     window.marbarasOpenCookieBanner = function () {
@@ -495,19 +487,25 @@
       var el = document.getElementById('marbaras-cookie-banner');
       if (!el) return;
       window.__marbarasCookieBannerUiDone = true;
-      if (typeof el.addEventListener === 'function') {
-        el.addEventListener('cancel', function (e) {
-          e.preventDefault();
-        });
-      }
+      el.querySelectorAll('[data-marbaras-cookie]').forEach(function (btn) {
+        if (btn.dataset.marbarasCookieBound === '1') return;
+        btn.dataset.marbarasCookieBound = '1';
+        function activate(ev) {
+          var act = btn.getAttribute('data-marbaras-cookie');
+          if (!act || typeof window.marbarasApplyCookieChoice !== 'function') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          window.marbarasApplyCookieChoice(act);
+        }
+        btn.addEventListener('click', activate, true);
+      });
       if (!window.__marbarasCookieChoiceDelegateWired) {
         window.__marbarasCookieChoiceDelegateWired = true;
         document.addEventListener(
           'click',
           function (ev) {
             var root = document.getElementById('marbaras-cookie-banner');
-            if (!root) return;
-            if (window.getComputedStyle(root).display === 'none') return;
+            if (!root || !isCookieBannerVisible(root)) return;
             var t = ev.target;
             if (!t || !t.closest) return;
             var btn = t.closest('[data-marbaras-cookie]');
@@ -1398,12 +1396,10 @@
       // Show popup after 5 seconds (do not cover the cookie consent bar)
       setTimeout(() => {
         var ban = document.getElementById('marbaras-cookie-banner');
-        if (ban) {
-          if (ban.open === true) return;
-          var cs = window.getComputedStyle(ban);
-          if (cs.display !== 'none' && ban.getAttribute('aria-hidden') !== 'true') {
-            return;
-          }
+        if (ban && ban.getAttribute('aria-hidden') !== 'true') {
+          try {
+            if (window.getComputedStyle(ban).display !== 'none') return;
+          } catch (e) {}
         }
         showEmailPopup();
       }, 5000);
@@ -1436,8 +1432,8 @@
   </script>
 
   {% if COOKIE_CONSENT_ENABLED %}
-  <dialog id="marbaras-cookie-banner" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
-          class="flex flex-col gap-3 text-sm">
+  <div id="marbaras-cookie-banner" role="dialog" aria-modal="true" aria-labelledby="marbaras-cookie-banner-title" aria-live="polite" aria-hidden="true"
+       class="flex flex-col gap-3 text-sm" style="display: none;">
     <div class="mx-auto max-w-site w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div class="flex-1 min-w-0">
         <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies and privacy</p>
@@ -1475,7 +1471,7 @@
         {% endif %}
       </div>
     </div>
-  </dialog>
+  </div>
   {% endif %}
 
 </body>
