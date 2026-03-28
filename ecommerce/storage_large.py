@@ -67,6 +67,12 @@ class LargeFileCloudinaryStorage(MediaCloudinaryStorage):
         """
         import cloudinary.uploader
         from django.conf import settings
+
+        if hasattr(content, "seek"):
+            try:
+                content.seek(0)
+            except (OSError, TypeError, ValueError):
+                pass
         
         # Check file size
         if hasattr(content, 'size'):

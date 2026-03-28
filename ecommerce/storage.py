@@ -61,6 +61,13 @@ class HybridMediaStorage(Storage):
         Old files remain in local storage.
         NEVER writes to local storage to avoid "No space left on device" errors.
         """
+        # Django ImageField validates by reading the file (PIL); pointer stays at EOF.
+        # Cloudinary upload must start from the beginning or upload fails / 500 in admin.
+        if hasattr(content, "seek"):
+            try:
+                content.seek(0)
+            except (OSError, TypeError, ValueError):
+                pass
         # Always use Cloudinary for new uploads to avoid Railway storage issues
         try:
             from cloudinary_storage.storage import MediaCloudinaryStorage

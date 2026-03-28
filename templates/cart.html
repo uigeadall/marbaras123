@@ -122,22 +122,32 @@
     <ul class="space-y-1">
       <li>
         <a href="{% url 'home' %}?all=true"
-           class="block px-3 py-2 rounded-md text-sm font-semibold transition hover:bg-slate-100 text-slate-800">
+           class="block px-3 py-2 rounded-md text-sm font-semibold transition
+           {% if not selected_category and request.GET.all %}
+             bg-red-100 text-red-700
+           {% else %}
+             hover:bg-slate-100 text-slate-800
+           {% endif %}">
           All Products
         </a>
       </li>
       {% for cat in categories %}
+      {% if cat.slug %}
       <li>
         <a href="{% url 'products_by_category' cat.slug %}"
            class="block px-3 py-2 rounded-md text-sm font-semibold transition
            {% if cat.name|lower == 'sale' %}
              text-red-600 font-bold hover:bg-red-50
+           {% elif selected_category and selected_category.id == cat.id %}
+             bg-red-100 text-red-700
            {% else %}
              hover:bg-slate-100 text-slate-800
-           {% endif %}">
-          {{ cat.name }}
+           {% endif %}"
+           {% if cat.parent %}style="padding-left: 1.5rem;"{% endif %}>
+          {% if cat.parent %}-{{ cat.name|lower }}{% else %}{{ cat.name|upper }}{% endif %}
         </a>
       </li>
+      {% endif %}
       {% endfor %}
     </ul>
   </div>
@@ -195,16 +205,22 @@
             </a>
           </li>
           {% for cat in categories %}
+          {% if cat.slug %}
           <li>
             <a href="{% url 'products_by_category' cat.slug %}"
                class="block px-2.5 py-1.5 rounded-md text-xs font-semibold transition
                {% if cat.name|lower == 'sale' %}
                  text-red-600 font-bold hover:bg-red-50
-               {% elif selected_category and selected_category.id == cat.id %} bg-red-100 text-red-700 {% else %} hover:bg-slate-100 text-slate-800 {% endif %}"
-               {% if cat.name|lower == 'amber' or cat.name|lower == 'maestro italy' %}style="padding-left: 1.5rem;"{% endif %}>
-              {% if cat.name|lower == 'amber' or cat.name|lower == 'maestro italy' %}-{{ cat.name|lower }}{% else %}{{ cat.name|upper }}{% endif %}
+               {% elif selected_category and selected_category.id == cat.id %}
+                 bg-red-100 text-red-700
+               {% else %}
+                 hover:bg-slate-100 text-slate-800
+               {% endif %}"
+               {% if cat.parent %}style="padding-left: 1.5rem;"{% endif %}>
+              {% if cat.parent %}-{{ cat.name|lower }}{% else %}{{ cat.name|upper }}{% endif %}
             </a>
           </li>
+          {% endif %}
           {% endfor %}
         </ul>
       </div>
