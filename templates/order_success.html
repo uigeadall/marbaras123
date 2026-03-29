@@ -70,12 +70,18 @@
     window.__marbarasPurchasePixelSent = true;
     {% if META_PIXEL_ID %}
     if (p.meta && typeof fbq === 'function') {
-      fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'Purchase', p.meta);
+      var pid = '{{ META_PIXEL_ID|escapejs }}';
+      var metaOpts = p.meta_event_id ? { eventID: p.meta_event_id } : {};
+      if (Object.keys(metaOpts).length) {
+        fbq('trackSingle', pid, 'Purchase', p.meta, metaOpts);
+      } else {
+        fbq('trackSingle', pid, 'Purchase', p.meta);
+      }
     }
     {% endif %}
     {% if TIKTOK_PIXEL_ID %}
     if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
-      ttq.track('Purchase', p.tiktok);
+      ttq.track('CompletePayment', p.tiktok);
     }
     {% endif %}
   }

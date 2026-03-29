@@ -62,6 +62,7 @@ class Category(models.Model):
         upload_to="categories/",
         blank=True,
         null=True,
+        max_length=512,
         storage=_get_storage(),
         help_text="Image for sub-category display"
     )
@@ -150,6 +151,7 @@ class Product(models.Model):
         upload_to="products/", 
         blank=True, 
         null=True,
+        max_length=512,
         storage=_get_storage()
     )
     serial_number = models.CharField(
@@ -433,6 +435,7 @@ class ProductImage(models.Model):
     
     image = models.ImageField(
         upload_to='products/multiple/',
+        max_length=512,
         storage=_get_storage()
     )
 
@@ -785,13 +788,15 @@ class BlogPost(models.Model):
         upload_to="blog/",
         blank=True,
         null=True,
+        max_length=512,
         storage=_get_storage(),
         help_text="Featured image for blog post"
     )
     video_file = models.FileField(
         upload_to="blog/videos/", 
         blank=True, 
-        null=True, 
+        null=True,
+        max_length=512,
         help_text="Upload a video file (MP4, WebM, OGG). Max size: 100MB"
     )
     video_url = models.URLField(blank=True, null=True, help_text="Optional video URL (YouTube, Vimeo, etc.) or upload a file above")
@@ -890,7 +895,8 @@ class BannerImage(models.Model):
     image = models.ImageField(
         upload_to="banners/", 
         blank=True, 
-        null=True, 
+        null=True,
+        max_length=512,
         storage=_get_storage(),
         help_text="Banner image for carousel"
     )
@@ -898,7 +904,7 @@ class BannerImage(models.Model):
         upload_to="banners/videos/", 
         blank=True, 
         null=True,
-        max_length=None,  # Remove default 10MB limit
+        max_length=512,
         storage=_get_storage(),
         help_text="Upload a video file (MP4, WebM, OGG). Video will autoplay, loop, and be muted like a GIF. Max size: 500MB"
     )

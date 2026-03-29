@@ -1530,6 +1530,7 @@ def _purchase_pixel_payload_from_order(order: Order) -> Optional[dict]:
     if not content_ids:
         return None
     val = float(order.total_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    oid = str(order.pk)
     return {
         "meta": {
             "content_type": "product",
@@ -1538,11 +1539,15 @@ def _purchase_pixel_payload_from_order(order: Order) -> Optional[dict]:
             "num_items": num_items,
             "value": val,
             "currency": cur_meta,
+            "order_id": oid,
         },
+        "meta_event_id": f"purchase-{oid}",
         "tiktok": {
             "contents": tiktok_contents,
             "value": val,
             "currency": cur_tt,
+            "content_type": "product",
+            "order_id": oid,
         },
     }
 
@@ -2402,6 +2407,14 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             
             transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
         
+        try:
+            px = _purchase_pixel_payload_from_order(order)
+            if px:
+                request.session["marbaras_purchase_pixel"] = px
+                request.session.modified = True
+        except Exception:
+            logger.warning("marbaras_purchase_pixel failed (create_order_from_product)", exc_info=True)
+
         return JsonResponse({
             'success': True,
             'order_id': order.id,

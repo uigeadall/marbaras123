@@ -1,9 +1,13 @@
 """
 Custom storage backend that supports both Cloudinary (for new files) and local storage (for old files).
 """
-from django.core.files.storage import Storage
-from django.conf import settings
+import logging
 import os
+
+from django.conf import settings
+from django.core.files.storage import Storage
+
+logger = logging.getLogger(__name__)
 
 
 class HybridMediaStorage(Storage):
@@ -54,6 +58,41 @@ class HybridMediaStorage(Storage):
             return cloudinary_storage.exists(name)
         except Exception:
             return False
+
+    def delete(self, name):
+        if self.location:
+            path = os.path.join(self.location, name)
+            if os.path.isfile(path):
+                os.remove(path)
+                return
+        try:
+            from cloudinary_storage.storage import MediaCloudinaryStorage
+
+            MediaCloudinaryStorage().delete(name)
+        except Exception as e:
+            logger.warning("HybridMediaStorage.delete(%r): %s", name, e)
+
+    def size(self, name):
+        if self.location:
+            path = os.path.join(self.location, name)
+            if os.path.isfile(path):
+                return os.path.getsize(path)
+        try:
+            from cloudinary_storage.storage import MediaCloudinaryStorage
+
+            return MediaCloudinaryStorage().size(name)
+        except Exception:
+            return None
+
+    def get_available_name(self, name, max_length=None):
+        """
+        Align with MediaCloudinaryStorage: avoid calling exists() in a tight loop
+        (Cloudinary uses HTTP HEAD per check; failures/timeouts caused admin 500s).
+        """
+        name = str(name).replace("\\", "/")
+        if max_length is None or len(name) <= max_length:
+            return name
+        return name[:max_length]
     
     def _save(self, name, content):
         """
@@ -75,12 +114,8 @@ class HybridMediaStorage(Storage):
             # Save directly to Cloudinary without touching local storage
             return cloudinary_storage._save(name, content)
         except Exception as e:
-            # If Cloudinary fails, raise the error instead of falling back to local
-            # This prevents "No space left on device" errors
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to save to Cloudinary: {e}")
-            raise Exception(f"Failed to upload to Cloudinary. Please check your Cloudinary credentials. Error: {e}")
+            logger.exception("Failed to save to Cloudinary (name=%r)", name)
+            raise
     
     def _open(self, name, mode='rb'):
         """Open file for reading - check local first, then Cloudinary."""
