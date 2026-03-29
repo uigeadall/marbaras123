@@ -53,12 +53,24 @@
 {% endblock %}
 
 {% block extra_js %}
+{% comment %}
+  Meta: събитието Purchase трябва да се изпраща само на thank-you страницата след успешна поръчка.
+  Няма fbq Purchase в checkout/cart/product — само тук (+ данните идват от сесията след реален order save).
+{% endcomment %}
 {% if purchase_pixel %}
 {{ purchase_pixel|json_script:"marbaras-purchase-pixel" }}
 <script>
 (function () {
+  function stripTrailingSlash(path) {
+    var s = path || '';
+    s = s.replace(/\/+$/, '');
+    return s || '/';
+  }
   function marbarasFirePurchase() {
     if (window.__marbarasPurchasePixelSent) return;
+    var thankYouPath = stripTrailingSlash('{% url "order_success" %}');
+    var currentPath = stripTrailingSlash(window.location.pathname);
+    if (thankYouPath && currentPath !== thankYouPath) return;
     var el = document.getElementById('marbaras-purchase-pixel');
     if (!el) return;
     var p;
@@ -85,16 +97,11 @@
     }
     {% endif %}
   }
-  {% if not COOKIE_CONSENT_ENABLED %}
-  marbarasFirePurchase();
-  {% else %}
-  if (window.marbarasMarketingLoaded) {
-    marbarasFirePurchase();
+  if (typeof window.marbarasWhenMarketingAllowed === 'function') {
+    window.marbarasWhenMarketingAllowed(marbarasFirePurchase);
   } else {
-    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
-    window.marbarasMarketingReadyCallbacks.push(marbarasFirePurchase);
+    marbarasFirePurchase();
   }
-  {% endif %}
 })();
 </script>
 {% endif %}

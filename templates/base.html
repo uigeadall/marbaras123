@@ -305,9 +305,20 @@
   {% if COOKIE_CONSENT_ENABLED %}
   <script>
   (function () {
+    function marbarasConsentStoredInCookie() {
+      try {
+        var parts = (document.cookie || '').split(';');
+        for (var i = 0; i < parts.length; i++) {
+          var t = parts[i].trim();
+          if (t.indexOf('marbaras_cookie_consent=') === 0) return true;
+        }
+      } catch (e) {}
+      return false;
+    }
     function autoShowCookieBar() {
       try {
         if (localStorage.getItem('marbaras_cookie_consent')) return;
+        if (marbarasConsentStoredInCookie()) return;
         if (typeof window.marbarasShowCookieBannerNow === 'function') {
           window.marbarasShowCookieBannerNow();
         }
@@ -341,10 +352,26 @@
     var COOKIE_NAME = 'marbaras_cookie_consent';
     function readConsent() {
       try {
-        return localStorage.getItem(STORAGE_KEY);
-      } catch (e0) {
-        return null;
-      }
+        var ls = localStorage.getItem(STORAGE_KEY);
+        if (ls) return ls;
+      } catch (e0) {}
+      try {
+        var nameEq = COOKIE_NAME + '=';
+        var parts = (document.cookie || '').split(';');
+        for (var i = 0; i < parts.length; i++) {
+          var c = parts[i].replace(/^\s+/, '');
+          if (c.indexOf(nameEq) === 0) {
+            var v = decodeURIComponent(c.substring(nameEq.length).replace(/\+/g, ' '));
+            if (v) {
+              try {
+                localStorage.setItem(STORAGE_KEY, v);
+              } catch (eSync) {}
+            }
+            return v;
+          }
+        }
+      } catch (e1) {}
+      return null;
     }
     function setConsentCookie(value) {
       document.cookie = COOKIE_NAME + '=' + encodeURIComponent(value) + '; path=/; max-age=31536000; SameSite=Lax';
