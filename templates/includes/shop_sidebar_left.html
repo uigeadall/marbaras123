@@ -1,0 +1,42 @@
+{% load static %}
+<aside class="hidden lg:block sticky top-6 self-start w-[180px]">
+  <a href="{% url 'home' %}" class="block mb-3 overflow-hidden">
+    <img src="{% static 'images/image2.jpeg' %}"
+         alt="Marbaras"
+         class="h-12 w-auto object-contain scale-125 origin-left">
+  </a>
+  {% if categories %}
+  <div class="rounded-xl bg-white shadow-sm">
+    <div class="px-3 py-2">
+      <h2 class="text-[10px] font-extrabold tracking-widest text-slate-600">CATEGORIES</h2>
+    </div>
+    <ul class="p-2 space-y-1.5">
+      <li>
+        <a href="{% url 'home' %}?all=true"
+           class="block px-2.5 py-1.5 rounded-md text-xs font-semibold transition
+           {% if not selected_category and request.GET.all %} bg-red-100 text-red-700 {% else %} hover:bg-slate-100 text-slate-800 {% endif %}">
+          All Products
+        </a>
+      </li>
+      {% for cat in categories %}
+      {% if cat.slug %}
+      <li>
+        <a href="{% url 'products_by_category' cat.slug %}"
+           class="block px-2.5 py-1.5 rounded-md text-xs font-semibold transition
+           {% if cat.name|lower == 'sale' %}
+             text-red-600 font-bold hover:bg-red-50
+           {% elif selected_category and selected_category.id == cat.id %}
+             bg-red-100 text-red-700
+           {% else %}
+             hover:bg-slate-100 text-slate-800
+           {% endif %}"
+           {% if cat.parent %}style="padding-left: 1.5rem;"{% endif %}>
+          {% if cat.parent %}-{{ cat.name|lower }}{% else %}{{ cat.name|upper }}{% endif %}
+        </a>
+      </li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</aside>

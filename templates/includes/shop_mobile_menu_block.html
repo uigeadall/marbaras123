@@ -1,0 +1,67 @@
+{% load static %}
+{% if categories %}
+<div>
+  <h2 class="text-xs font-extrabold tracking-widest text-slate-600 mb-3">CATEGORIES</h2>
+  <ul class="space-y-1">
+    <li>
+      <a href="{% url 'home' %}?all=true"
+         class="block px-3 py-2 rounded-md text-sm font-semibold transition
+         {% if not selected_category and request.GET.all %}
+           bg-red-100 text-red-700
+         {% else %}
+           hover:bg-slate-100 text-slate-800
+         {% endif %}">
+        All Products
+      </a>
+    </li>
+    {% for cat in categories %}
+    {% if cat.slug %}
+    <li>
+      <a href="{% url 'products_by_category' cat.slug %}"
+         class="block px-3 py-2 rounded-md text-sm font-semibold transition
+         {% if cat.name|lower == 'sale' %}
+           text-red-600 font-bold hover:bg-red-50
+         {% elif selected_category and selected_category.id == cat.id %}
+           bg-red-100 text-red-700
+         {% else %}
+           hover:bg-slate-100 text-slate-800
+         {% endif %}"
+         {% if cat.parent %}style="padding-left: 1.5rem;"{% endif %}>
+        {% if cat.parent %}-{{ cat.name|lower }}{% else %}{{ cat.name|upper }}{% endif %}
+      </a>
+    </li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="pt-4 border-t border-slate-200">
+  {% if user.is_authenticated %}
+    <a href="{% url 'profile_dashboard' %}"
+       class="block px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800">
+      👤 Profile
+    </a>
+    <a href="{% url 'profile_favorites' %}"
+       class="block px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800">
+      ❤️ Favorites
+    </a>
+    <a href="{% url 'account_logout' %}"
+       class="block px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800">
+      Logout
+    </a>
+  {% else %}
+    <a href="{% url 'login' %}"
+       class="block px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800">
+      Login
+    </a>
+    <a href="{% url 'register' %}"
+       class="block px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800">
+      Register
+    </a>
+    <button type="button" onclick="showEmailPopup()"
+            class="block w-full px-3 py-2 rounded-md text-sm font-semibold hover:bg-slate-100 text-slate-800 mt-2 text-left">
+      🎁 Get 5% Discount
+    </button>
+  {% endif %}
+</div>

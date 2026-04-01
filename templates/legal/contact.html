@@ -1,5 +1,11 @@
 {% extends "base.html" %}
+{% load static %}
+
 {% block title %}Contact Us - Marbaras{% endblock %}
+
+{% block mobile_menu_content %}
+{% include "includes/shop_mobile_menu_block.html" %}
+{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -53,6 +59,10 @@
 {% endblock %}
 
 {% block content %}
+<div class="mx-auto max-w-site px-4">
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[180px,minmax(0,1fr),180px]">
+    {% include "includes/shop_sidebar_left.html" %}
+    <section class="min-w-0">
 <section class="contact-wrap">
   <header class="contact-hero">
     <h1>Contact Us</h1>
@@ -129,9 +139,15 @@
     </aside>
   </div>
 </section>
+    </section>
+    {% include "includes/shop_sidebar_right.html" %}
+  </div>
+  {% include "includes/shop_mobile_quick_auth.html" %}
+</div>
 {% endblock %}
 
 {% block extra_js %}
+{% include "includes/shop_sidebar_wiring_js.html" %}
 <script>
   (function(){
     const msg = document.getElementById('message');

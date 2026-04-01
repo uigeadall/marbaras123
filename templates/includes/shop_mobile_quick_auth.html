@@ -1,0 +1,25 @@
+<div class="lg:hidden mt-4 grid gap-2">
+  {% if request.user.is_authenticated %}
+    <a href="{% url 'profile_dashboard' %}"
+       class="block px-3 py-2 rounded-xl border border-slate-200 bg-white font-extrabold text-sm text-center">
+      👤 Profile
+    </a>
+    <a href="{% url 'profile_favorites' %}"
+       class="block px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 font-extrabold text-sm text-center">
+      ❤️ Favorites
+    </a>
+    <a href="{% url 'account_logout' %}"
+       class="block px-3 py-2 rounded-xl border border-slate-200 bg-white font-extrabold text-sm text-center">
+      Logout
+    </a>
+  {% else %}
+    <a href="{% url 'login' %}"
+       class="block px-3 py-2 rounded-xl border border-slate-200 bg-white font-extrabold text-sm text-center">
+      Login
+    </a>
+    <a href="{% url 'register' %}"
+       class="block px-3 py-2 rounded-xl border border-slate-200 bg-white font-extrabold text-sm text-center">
+      Register
+    </a>
+  {% endif %}
+</div>

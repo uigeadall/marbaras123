@@ -1,0 +1,75 @@
+<aside class="hidden lg:block sticky top-6 self-start w-[180px]">
+  <div class="rounded-xl bg-white shadow-sm p-3 space-y-3 text-right">
+    <div class="currency-selector" style="text-align: right;">
+      <select id="currencySelectorDesktop" aria-label="Select currency" style="width: 100%;">
+        <option value="EUR">€ EUR</option>
+        <option value="USD">$ USD</option>
+        <option value="GBP">£ GBP</option>
+      </select>
+    </div>
+
+    <button id="searchToggle" type="button" aria-expanded="false" aria-controls="searchWrap"
+            class="w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
+      🔎 Search
+    </button>
+    <form id="searchWrap" method="get" action="{% url 'home' %}" aria-hidden="true" class="hidden">
+      <div class="mt-2 grid gap-2">
+        <input type="text" name="q" placeholder="Search products…"
+               class="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-right focus:outline-none focus:ring-2 focus:ring-slate-300">
+        <div>
+          <button type="submit"
+                  class="inline-flex px-2.5 py-1.5 rounded-md bg-brand text-white font-extrabold text-xs hover:brightness-95 transition">
+            Go
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <div class="relative">
+      <a id="cartLink" href="#" aria-describedby="cartTip"
+         class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition relative">
+        🛒 Cart
+        {% if cart_count|default:0 > 0 %}
+        <span class="marbaras-cart-badge absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+          {{ cart_count }}
+        </span>
+        {% endif %}
+      </a>
+      <span id="cartTip"
+            class="cart-tip invisible opacity-0 absolute right-0 mt-1
+                   bg-[#0b1220] text-white text-xs px-3 py-2 rounded-lg
+                   transition-opacity duration-200">
+        Your cart is empty
+      </span>
+    </div>
+
+    {% if request.user.is_authenticated %}
+      <a href="{% url 'account_logout' %}"
+         class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
+        Logout
+      </a>
+      <a href="{% url 'profile_dashboard' %}"
+         class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
+        👤 Profile
+      </a>
+      <a href="{% url 'profile_favorites' %}"
+         class="block w-full px-2.5 py-1.5 rounded-md text-xs font-extrabold text-right
+                border border-red-200 bg-red-50 text-red-700 shadow-soft hover:bg-red-100 transition">
+        ❤️ Favorites
+      </a>
+    {% else %}
+      <a href="{% url 'login' %}"
+         class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right shadow-soft hover:shadow-card hover:bg-slate-50 transition">
+        Login
+      </a>
+      <a href="{% url 'register' %}"
+         class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right hover:brightness-95 transition">
+        Register
+      </a>
+      <button type="button" onclick="showEmailPopup()"
+              class="block w-full px-2.5 py-1.5 rounded-md bg-white text-xs font-extrabold text-right hover:brightness-95 transition mt-2">
+        🎁 Get 5% Discount
+      </button>
+    {% endif %}
+  </div>
+</aside>

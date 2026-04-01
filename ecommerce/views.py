@@ -2833,32 +2833,41 @@ def order_success(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _legal_pages_shop_context() -> dict:
+    """Sidebar categories (same as cart/home) for legal and contact pages."""
+    return {"categories": _get_categories(), "selected_category": None}
+
+
 def terms(request: HttpRequest) -> HttpResponse:
     from .models import LegalPage
+    shop_ctx = _legal_pages_shop_context()
     legal_page = LegalPage.objects.filter(page_type='terms').first()
-    
+
     # Fallback to template if no legal page exists in database
     if not legal_page:
-        return render(request, "legal/terms.html")
-    
+        return render(request, "legal/terms.html", shop_ctx)
+
     context = {
-        'legal_page': legal_page,
-        'page_title': legal_page.title or 'Terms & Conditions',
+        **shop_ctx,
+        "legal_page": legal_page,
+        "page_title": legal_page.title or "Terms & Conditions",
     }
     return render(request, "legal/legal_page.html", context)
 
 
 def privacy(request: HttpRequest) -> HttpResponse:
     from .models import LegalPage
+    shop_ctx = _legal_pages_shop_context()
     legal_page = LegalPage.objects.filter(page_type='privacy').first()
-    
+
     # Fallback to template if no legal page exists in database
     if not legal_page:
-        return render(request, "legal/privacy.html")
-    
+        return render(request, "legal/privacy.html", shop_ctx)
+
     context = {
-        'legal_page': legal_page,
-        'page_title': legal_page.title or 'Privacy Policy',
+        **shop_ctx,
+        "legal_page": legal_page,
+        "page_title": legal_page.title or "Privacy Policy",
     }
     return render(request, "legal/legal_page.html", context)
 
@@ -2880,7 +2889,7 @@ def contact(request: HttpRequest) -> HttpResponse:
         if website:
             # Silently ignore spam submissions (don't show any message)
             logger.warning(f"Spam contact form submission detected from {email} (honeypot triggered)")
-            return render(request, "legal/contact.html")
+            return render(request, "legal/contact.html", _legal_pages_shop_context())
         
         # Validate required fields
         errors = []
@@ -2930,8 +2939,8 @@ You can reply directly to this email to respond to {name} ({email})
             except Exception as e:
                 logger.error(f"Failed to send contact form email: {e}")
                 messages.error(request, "Sorry, there was an error sending your message. Please try again later or email us directly at marbaras.store@gmail.com")
-    
-    return render(request, "legal/contact.html")
+
+    return render(request, "legal/contact.html", _legal_pages_shop_context())
 
 @login_required
 def profile_dashboard(request: HttpRequest) -> HttpResponse:

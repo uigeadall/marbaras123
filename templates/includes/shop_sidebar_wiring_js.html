@@ -1,0 +1,51 @@
+<script>
+(function () {
+  function wireSearchToggle(btnId, formId) {
+    var btn = document.getElementById(btnId);
+    var form = document.getElementById(formId);
+    if (!btn || !form) return;
+    btn.addEventListener('click', function () {
+      var hidden = form.classList.contains('hidden');
+      form.classList.toggle('hidden');
+      btn.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+      form.setAttribute('aria-hidden', hidden ? 'false' : 'true');
+      if (hidden) {
+        var inp = form.querySelector('input');
+        if (inp) inp.focus();
+      }
+    });
+  }
+  function wireCart(linkId, tipId) {
+    var link = document.getElementById(linkId);
+    var tip = document.getElementById(tipId);
+    if (!link) return;
+    var t = null;
+    function show() {
+      if (!tip) return;
+      tip.classList.remove('invisible', 'opacity-0');
+      clearTimeout(t);
+      t = setTimeout(function () {
+        tip.classList.add('opacity-0');
+        setTimeout(function () {
+          tip.classList.add('invisible');
+        }, 200);
+      }, 2000);
+    }
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      var badge = link.querySelector('.marbaras-cart-badge');
+      var count = badge ? parseInt(badge.textContent, 10) || 0 : 0;
+      if (count > 0) {
+        window.location.href = "{% url 'cart_view' %}";
+      } else {
+        show();
+      }
+    });
+    document.addEventListener('scroll', function () {
+      if (tip) tip.classList.add('invisible', 'opacity-0');
+    });
+  }
+  wireSearchToggle('searchToggle', 'searchWrap');
+  wireCart('cartLink', 'cartTip');
+})();
+</script>
