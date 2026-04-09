@@ -104,15 +104,21 @@
 
         <div class="form-field">
           <label for="message">Message</label>
-          <textarea id="message" name="message" rows="6" class="field" placeholder="Write your message..." required maxlength="1200"></textarea>
+          <textarea id="message" name="message" rows="6" class="field" placeholder="Write your message..." required minlength="10" maxlength="1200"></textarea>
           <div class="char-count"><span id="msgCount">0</span>/1200</div>
         </div>
 
-        <!-- Honeypot (basic spam trap) -->
+        <!-- Honeypot fields (leave empty; bots often auto-fill) -->
         <div class="honeypot" aria-hidden="true">
           <label for="website">Website</label>
-          <input id="website" type="text" name="website" tabindex="-1">
+          <input id="website" type="text" name="website" tabindex="-1" autocomplete="off">
         </div>
+        <div class="honeypot" aria-hidden="true">
+          <label for="fax">Fax</label>
+          <input id="fax" type="text" name="fax" tabindex="-1" autocomplete="off">
+        </div>
+
+        <input type="hidden" name="form_load_time" id="form_load_time" value="">
 
         <div class="form-actions">
           <small class="policy">
@@ -150,6 +156,10 @@
 {% include "includes/shop_sidebar_wiring_js.html" %}
 <script>
   (function(){
+    const loadEl = document.getElementById('form_load_time');
+    if (loadEl) {
+      loadEl.value = String(Date.now());
+    }
     const msg = document.getElementById('message');
     const out = document.getElementById('msgCount');
     if(msg && out){

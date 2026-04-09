@@ -85,6 +85,24 @@ else:
 
 UNLIMITED_STOCK = 10**9
 
+# Contact form anti-bot (see contact view)
+CONTACT_BOT_RAW_POST_LIMIT = 25
+CONTACT_BOT_SENT_PER_HOUR = 5
+CONTACT_BOT_WINDOW_SEC = 3600
+CONTACT_BOT_MIN_SUBMIT_MS = 3000
+CONTACT_MESSAGE_MIN_LEN = 10
+CONTACT_MESSAGE_MAX_LEN = 1200
+CONTACT_NAME_MAX_LEN = 200
+CONTACT_SUBJECT_MAX_LEN = 200
+
+
+def _client_ip(request: HttpRequest) -> str:
+    """Client IP; prefers X-Forwarded-For when behind a reverse proxy (e.g. Railway)."""
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip() or "unknown"
+    return (request.META.get("REMOTE_ADDR") or "").strip() or "unknown"
+
 
 def _ensure_session(request: HttpRequest) -> None:
 
@@ -2898,41 +2916,97 @@ def contact(request: HttpRequest) -> HttpResponse:
     from django.contrib import messages
     from django.core.mail import EmailMessage
     from django.conf import settings
-    
+
     if request.method == "POST":
-        # Get form data
-        name = request.POST.get("name", "").strip()
-        email = request.POST.get("email", "").strip()
-        subject = request.POST.get("subject", "").strip()
-        message = request.POST.get("message", "").strip()
-        website = request.POST.get("website", "").strip()  # Honeypot field
-        
-        # Honeypot check - if website field is filled, it's spam
-        if website:
-            # Silently ignore spam submissions (don't show any message)
-            logger.warning(f"Spam contact form submission detected from {email} (honeypot triggered)")
+        name = (request.POST.get("name") or "").strip()
+        email = (request.POST.get("email") or "").strip()
+        subject = (request.POST.get("subject") or "").strip()
+        message = (request.POST.get("message") or "").strip()
+        website = (request.POST.get("website") or "").strip()
+        fax = (request.POST.get("fax") or "").strip()
+
+        if website or fax:
+            logger.warning(
+                "Contact honeypot triggered (website=%r fax=%r) ip=%s",
+                bool(website),
+                bool(fax),
+                _client_ip(request),
+            )
             return render(request, "legal/contact.html", _legal_pages_shop_context())
-        
-        # Validate required fields
+
+        ip = _client_ip(request)
+        raw_key = f"contact_raw_{ip}"
+        raw_count = cache.get(raw_key, 0)
+        if raw_count >= CONTACT_BOT_RAW_POST_LIMIT:
+            logger.warning("Contact rate limit (raw posts) ip=%s", ip)
+            messages.error(
+                request,
+                "Too many submission attempts from your network. Please try again in an hour.",
+            )
+            return render(request, "legal/contact.html", _legal_pages_shop_context())
+        cache.set(raw_key, raw_count + 1, CONTACT_BOT_WINDOW_SEC)
+
+        form_load_time = (request.POST.get("form_load_time") or "").strip()
+        if form_load_time:
+            try:
+                load_ms = int(form_load_time)
+                now_ms = int(time.time() * 1000)
+                if now_ms - load_ms < CONTACT_BOT_MIN_SUBMIT_MS:
+                    logger.warning(
+                        "Contact form submitted too quickly ip=%s delta_ms=%s",
+                        ip,
+                        now_ms - load_ms,
+                    )
+                    messages.error(
+                        request,
+                        "Please wait a few seconds before sending your message.",
+                    )
+                    return render(request, "legal/contact.html", _legal_pages_shop_context())
+            except (ValueError, TypeError):
+                pass
+
         errors = []
         if not name:
             errors.append("Name is required.")
+        elif len(name) > CONTACT_NAME_MAX_LEN:
+            errors.append("Name is too long.")
         if not email:
             errors.append("Email is required.")
-        elif "@" not in email:
-            errors.append("Please enter a valid email address.")
+        else:
+            try:
+                validate_email(email)
+            except ValidationError:
+                errors.append("Please enter a valid email address.")
+        if len(subject) > CONTACT_SUBJECT_MAX_LEN:
+            errors.append("Subject is too long.")
         if not message:
             errors.append("Message is required.")
-        
+        elif len(message) < CONTACT_MESSAGE_MIN_LEN:
+            errors.append(
+                f"Please write at least {CONTACT_MESSAGE_MIN_LEN} characters in your message."
+            )
+        elif len(message) > CONTACT_MESSAGE_MAX_LEN:
+            errors.append("Message is too long.")
+
         if errors:
             for error in errors:
                 messages.error(request, error)
         else:
-            # Send email to marbaras.store@gmail.com with Reply-To header set to customer's email
-            contact_email = "marbaras.store@gmail.com"
-            email_subject = f"Contact Form: {subject}" if subject else f"Contact Form Message from {name}"
-            
-            email_body = f"""
+            sent_key = f"contact_sent_{ip}"
+            sent_count = cache.get(sent_key, 0)
+            if sent_count >= CONTACT_BOT_SENT_PER_HOUR:
+                logger.warning("Contact hourly send cap ip=%s", ip)
+                messages.error(
+                    request,
+                    "You have sent several messages recently. Please try again later or email us directly.",
+                )
+            else:
+                contact_email = "marbaras.store@gmail.com"
+                email_subject = (
+                    f"Contact Form: {subject}" if subject else f"Contact Form Message from {name}"
+                )
+
+                email_body = f"""
 New contact form submission from Marbaras website:
 
 Name: {name}
@@ -2946,21 +3020,29 @@ Message:
 This message was sent from the contact form on marbaras.com
 You can reply directly to this email to respond to {name} ({email})
 """
-            
-            try:
-                # Use EmailMessage to set Reply-To header
-                email_msg = EmailMessage(
-                    subject=email_subject,
-                    body=email_body,
-                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"),
-                    to=[contact_email],
-                    reply_to=[email],  # Set Reply-To to customer's email so you can reply directly
-                )
-                email_msg.send(fail_silently=False)
-                messages.success(request, "Thank you for your message! We'll get back to you within 1-2 business days.")
-            except Exception as e:
-                logger.error(f"Failed to send contact form email: {e}")
-                messages.error(request, "Sorry, there was an error sending your message. Please try again later or email us directly at marbaras.store@gmail.com")
+
+                try:
+                    email_msg = EmailMessage(
+                        subject=email_subject,
+                        body=email_body,
+                        from_email=getattr(
+                            settings, "DEFAULT_FROM_EMAIL", "support@marbaras.com"
+                        ),
+                        to=[contact_email],
+                        reply_to=[email],
+                    )
+                    email_msg.send(fail_silently=False)
+                    cache.set(sent_key, sent_count + 1, CONTACT_BOT_WINDOW_SEC)
+                    messages.success(
+                        request,
+                        "Thank you for your message! We'll get back to you within 1-2 business days.",
+                    )
+                except Exception as e:
+                    logger.error("Failed to send contact form email: %s", e)
+                    messages.error(
+                        request,
+                        "Sorry, there was an error sending your message. Please try again later or email us directly at marbaras.store@gmail.com",
+                    )
 
     return render(request, "legal/contact.html", _legal_pages_shop_context())
 
