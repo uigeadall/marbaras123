@@ -1,5 +1,5 @@
 
-from django.urls import resolve, reverse
+from django.urls import NoReverseMatch, resolve, reverse
 from django.db.models import Sum
 from ecommerce.models import Product, Category, CartItem
 
@@ -49,10 +49,24 @@ def breadcrumbs(request):
         )
         if product:
             if product.category:
-                trail.append({
-                    "name": product.category.name,
-                    "url": reverse("products_by_category", kwargs={"slug": product.category.slug})
-                })
+                cat_slug = (product.category.slug or "").strip()
+                if cat_slug:
+                    try:
+                        trail.append({
+                            "name": product.category.name,
+                            "url": reverse(
+                                "products_by_category",
+                                kwargs={"slug": cat_slug},
+                            ),
+                        })
+                    except NoReverseMatch:
+                        trail.append(
+                            {"name": product.category.name, "url": request.path}
+                        )
+                else:
+                    trail.append(
+                        {"name": product.category.name, "url": request.path}
+                    )
 
             product_name = product.name
             if len(product_name) > 50:

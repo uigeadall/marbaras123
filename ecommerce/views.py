@@ -2435,15 +2435,26 @@ def notify(request: HttpRequest, level: int, msg: str) -> HttpResponse:
 
 def sitemap_xml(request: HttpRequest) -> HttpResponse:
     """Generate sitemap.xml for search engines."""
-    from django.urls import reverse
+    from django.urls import NoReverseMatch, reverse
     from django.utils import timezone
     from datetime import timedelta
+
+    def _reverse_or_skip(viewname: str, *, kwargs: dict | None = None) -> str | None:
+        try:
+            return reverse(viewname, kwargs=kwargs or {})
+        except NoReverseMatch:
+            logger.warning(
+                "sitemap: skip %s kwargs=%s (invalid or missing slug)",
+                viewname,
+                kwargs,
+            )
+            return None
     
     products = Product.objects.filter(stock__gt=0).order_by('-id')
     categories = Category.objects.all()
     blog_posts = BlogPost.objects.filter(published=True) if hasattr(BlogPost, 'published') else BlogPost.objects.all()
     
-    base_url = f"{request.scheme}://{request.get_host}"
+    base_url = f"{request.scheme}://{request.get_host()}"
     lastmod = timezone.now().strftime('%Y-%m-%d')
     
     xml = ['<?xml version="1.0" encoding="UTF-8"?>']
@@ -2454,7 +2465,10 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     
     # Products
     for product in products:
-        url = f"{base_url}{reverse('product_detail', kwargs={'slug': product.slug})}"
+        path = _reverse_or_skip("product_detail", kwargs={"slug": product.slug})
+        if not path:
+            continue
+        url = f"{base_url}{path}"
         # Use current date if product doesn't have created_at field
         product_date = lastmod
         if hasattr(product, 'created_at') and product.created_at:
@@ -2463,16 +2477,24 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     
     # Categories
     for category in categories:
-        url = f"{base_url}{reverse('products_by_category', kwargs={'slug': category.slug})}"
+        path = _reverse_or_skip("products_by_category", kwargs={"slug": category.slug})
+        if not path:
+            continue
+        url = f"{base_url}{path}"
         xml.append(f'  <url><loc>{url}</loc><lastmod>{lastmod}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>')
     
     # Blog posts
     for post in blog_posts:
-        url = f"{base_url}{reverse('blog_detail', kwargs={'slug': post.slug})}"
+        path = _reverse_or_skip("blog_detail", kwargs={"slug": post.slug})
+        if not path:
+            continue
+        url = f"{base_url}{path}"
         post_date = lastmod
         if hasattr(post, 'created_at') and post.created_at:
             post_date = post.created_at.strftime("%Y-%m-%d")
-        xml.append(f'  <url><loc>{url}</loc><lastmod>{post_date}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>')
+        xml.append(
+            f'  <url><loc>{url}</loc><lastmod>{post_date}</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>'
+        )
     
     # Static pages
     static_pages = [
@@ -2808,7 +2830,7 @@ def validate_coupon(request: HttpRequest) -> JsonResponse:
 
 def robots_txt(request: HttpRequest) -> HttpResponse:
     """Generate robots.txt file."""
-    base_url = f"{request.scheme}://{request.get_host}"
+    base_url = f"{request.scheme}://{request.get_host()}"
     content = f"""User-agent: *
 Allow: /
 Disallow: /admin/
