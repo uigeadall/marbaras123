@@ -3416,10 +3416,11 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
     """Test email sending functionality - accessible from browser."""
     # Check if user is staff (allow unauthenticated for testing, but check staff if logged in)
     if request.user.is_authenticated and not request.user.is_staff:
-            messages.error(request, "You must be a staff user to test emails.")
-        return redirect('home')
-    
-    email = request.GET.get('email', request.user.email)
+        messages.error(request, "You must be a staff user to test emails.")
+        return redirect("home")
+
+    default_email = (request.user.email or "") if request.user.is_authenticated else ""
+    email = (request.GET.get("email") or default_email).strip()
     email_type = request.GET.get('type', 'all')
     
     if not email:
