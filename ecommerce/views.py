@@ -1560,6 +1560,7 @@ def _purchase_pixel_payload_from_order(order: Order) -> Optional[dict]:
             "order_id": oid,
         },
         "meta_event_id": f"purchase-{oid}",
+        "tiktok_event_id": f"purchase-{oid}",
         "tiktok": {
             "contents": tiktok_contents,
             "value": val,
@@ -1568,6 +1569,39 @@ def _purchase_pixel_payload_from_order(order: Order) -> Optional[dict]:
             "order_id": oid,
         },
     }
+
+
+def _finalize_checkout_purchase_tracking(request: HttpRequest, order: Order) -> None:
+    """Store browser pixel payload in session and schedule server-side CAPI / TikTok Events API."""
+    try:
+        px = _purchase_pixel_payload_from_order(order)
+        if px:
+            request.session["marbaras_purchase_pixel"] = px
+            request.session.modified = True
+    except Exception:
+        logger.warning("marbaras_purchase_pixel failed", exc_info=True)
+        return
+    if not px:
+        return
+    if not (
+        (getattr(settings, "META_CAPI_ACCESS_TOKEN", "") or "").strip()
+        or (getattr(settings, "TIKTOK_EVENTS_API_ACCESS_TOKEN", "") or "").strip()
+    ):
+        return
+    try:
+        from ecommerce.utils.capi import schedule_purchase_capi
+
+        schedule_purchase_capi(
+            order_id=order.pk,
+            purchase_pixel=px,
+            client_ip=_client_ip(request),
+            user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:2048],
+            fbp=request.COOKIES.get("_fbp", "") or "",
+            fbc=request.COOKIES.get("_fbc", "") or "",
+            email=(order.email or "").strip(),
+        )
+    except Exception:
+        logger.warning("schedule_purchase_capi failed", exc_info=True)
 
 
 @require_POST
@@ -1924,13 +1958,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             cart_items.delete()
             transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
 
-        try:
-            px = _purchase_pixel_payload_from_order(order)
-            if px:
-                request.session["marbaras_purchase_pixel"] = px
-                request.session.modified = True
-        except Exception:
-            logger.warning("marbaras_purchase_pixel failed", exc_info=True)
+        _finalize_checkout_purchase_tracking(request, order)
 
         return redirect("order_success")
 
@@ -2150,13 +2178,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             cart_qs.delete()
             transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
 
-        try:
-            px = _purchase_pixel_payload_from_order(order)
-            if px:
-                request.session["marbaras_purchase_pixel"] = px
-                request.session.modified = True
-        except Exception:
-            logger.warning("marbaras_purchase_pixel failed", exc_info=True)
+        _finalize_checkout_purchase_tracking(request, order)
 
         return redirect("order_success")
 
@@ -2425,13 +2447,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             
             transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
         
-        try:
-            px = _purchase_pixel_payload_from_order(order)
-            if px:
-                request.session["marbaras_purchase_pixel"] = px
-                request.session.modified = True
-        except Exception:
-            logger.warning("marbaras_purchase_pixel failed (create_order_from_product)", exc_info=True)
+        _finalize_checkout_purchase_tracking(request, order)
 
         return JsonResponse({
             'success': True,

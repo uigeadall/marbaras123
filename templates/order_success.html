@@ -93,7 +93,12 @@
     {% endif %}
     {% if TIKTOK_PIXEL_ID %}
     if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
-      ttq.track('CompletePayment', p.tiktok);
+      var ttOpts = p.tiktok_event_id ? { event_id: p.tiktok_event_id } : {};
+      if (Object.keys(ttOpts).length) {
+        ttq.track('CompletePayment', p.tiktok, ttOpts);
+      } else {
+        ttq.track('CompletePayment', p.tiktok);
+      }
     }
     {% endif %}
   }

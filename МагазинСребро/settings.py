@@ -645,6 +645,18 @@ TIKTOK_PIXEL_CURRENCY = (
     else META_PIXEL_CURRENCY
 )
 
+# Meta Conversions API (CAPI) — Events Manager → Settings → Generate access token
+META_CAPI_ACCESS_TOKEN = (env("META_CAPI_ACCESS_TOKEN", "") or "").strip()
+META_CAPI_GRAPH_VERSION = (env("META_CAPI_GRAPH_VERSION", "v21.0") or "v21.0").strip().lstrip("/")
+# Optional: Events Manager → Test Events → copy code (only for debugging CAPI)
+META_CAPI_TEST_EVENT_CODE = (env("META_CAPI_TEST_EVENT_CODE", "") or "").strip()
+
+# TikTok Events API — Ads Manager → Tools → Events → Manage (Server events access token)
+TIKTOK_EVENTS_API_ACCESS_TOKEN = (env("TIKTOK_EVENTS_API_ACCESS_TOKEN", "") or "").strip()
+
+# Canonical site URL for CAPI event_source_url / TikTok page context (no trailing slash)
+PUBLIC_BASE_URL = (env("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+
 # Cookie consent: when True, Meta/TikTok/GA load only after “Accept all” in the banner.
 # Default False so pixels work without depending on the banner (set COOKIE_CONSENT_ENABLED=1 for strict opt-in).
 COOKIE_CONSENT_ENABLED = env_bool("COOKIE_CONSENT_ENABLED", False)
