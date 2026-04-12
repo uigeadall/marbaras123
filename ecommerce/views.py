@@ -45,6 +45,7 @@ from .forms import RatingForm
 from .models import (
     BannerImage,
     BlogPost,
+    CustomerReview,
     CartItem,
     Category,
     Comment,
@@ -591,6 +592,7 @@ def home(request: HttpRequest) -> HttpResponse:
         "popular_products": popular_products,
         "editors_choice": editors_choice,
         "blog_posts": BlogPost.objects.filter(is_published=True)[:3],
+        "customer_reviews": CustomerReview.objects.filter(is_published=True)[:6],
         "banner_images": banner_images,
         "sort": sort,
         "query": query,
@@ -3305,7 +3307,7 @@ def blog_detail(request: HttpRequest, slug: str) -> HttpResponse:
                 paragraphs = re.split(r'\n\s*\n+', value_str)
             else:
                 # Split by sentences
-                parts = re.split(r'([.!?])\s+([A-ZА-ЯЁ])', value_str)
+                parts = re.split(r'([.!?])\s+([A-Z])', value_str)
                 
                 if len(parts) > 3:
                     sentences = []
@@ -3414,7 +3416,7 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
     """Test email sending functionality - accessible from browser."""
     # Check if user is staff (allow unauthenticated for testing, but check staff if logged in)
     if request.user.is_authenticated and not request.user.is_staff:
-        messages.error(request, "Трябва да си администратор за да тестваш имейли.")
+            messages.error(request, "You must be a staff user to test emails.")
         return redirect('home')
     
     email = request.GET.get('email', request.user.email)
@@ -3422,7 +3424,7 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
     
     if not email:
         return render(request, 'test_emails.html', {
-            'error': 'Моля, предоставете email адрес: ?email=your@email.com'
+            'error': 'Please provide an email address: ?email=your@email.com'
         })
     
     results = []
@@ -3433,16 +3435,16 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
         try:
             user, created = User.objects.get_or_create(
                 username=f'test_user_{uuid.uuid4().hex[:8]}',
-                defaults={'email': email, 'first_name': 'Тест', 'last_name': 'Потребител'}
+                defaults={'email': email, 'first_name': 'Test', 'last_name': 'User'}
             )
             if not created:
                 user.email = email
                 user.save()
             
             if send_welcome_email(user, base_url):
-                results.append({'type': 'Welcome Email', 'status': 'success', 'message': f'Изпратен до {email}'})
+                results.append({'type': 'Welcome Email', 'status': 'success', 'message': f'Sent to {email}'})
             else:
-                results.append({'type': 'Welcome Email', 'status': 'error', 'message': 'Грешка при изпращане'})
+                results.append({'type': 'Welcome Email', 'status': 'error', 'message': 'Send failed'})
         except Exception as e:
             results.append({'type': 'Welcome Email', 'status': 'error', 'message': str(e)})
     
@@ -3459,19 +3461,19 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
             
             shipping, _ = ShippingOption.objects.get_or_create(
                 name='Standard',
-                defaults={'price': Decimal('5.00'), 'delivery_time': '3-5 дни'}
+                defaults={'price': Decimal('5.00'), 'delivery_time': '3-5 days'}
             )
             
             product = Product.objects.first()
             if not product:
-                results.append({'type': 'Order Confirmation', 'status': 'error', 'message': 'Няма продукти в базата данни'})
+                results.append({'type': 'Order Confirmation', 'status': 'error', 'message': 'No products in database'})
             else:
                 order = Order.objects.create(
                     user=user,
                     email=email,
-                    full_name='Тест Потребител',
-                    address='Тестова Адрес 123',
-                    city='София',
+                    full_name='Test Customer',
+                    address='123 Test Street',
+                    city='London',
                     postal_code='1000',
                     phone='+359888123456',
                     shipping_option=shipping,
@@ -3487,9 +3489,9 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
                 )
                 
                 if send_order_confirmation_email(order, base_url, notify_admin=False):
-                    results.append({'type': 'Order Confirmation', 'status': 'success', 'message': f'Изпратен до {email}'})
+                    results.append({'type': 'Order Confirmation', 'status': 'success', 'message': f'Sent to {email}'})
                 else:
-                    results.append({'type': 'Order Confirmation', 'status': 'error', 'message': 'Грешка при изпращане'})
+                    results.append({'type': 'Order Confirmation', 'status': 'error', 'message': 'Send failed'})
         except Exception as e:
             results.append({'type': 'Order Confirmation', 'status': 'error', 'message': str(e)})
     
@@ -3497,13 +3499,13 @@ def test_emails_view(request: HttpRequest) -> HttpResponse:
     if email_type in ['simple', 'all']:
         try:
             send_mail(
-                'Test Email от Marbaras',
-                'Това е тестов email. Ако го получиш, email настройките работят!',
+                'Test email from Marbaras',
+                'This is a test message. If you receive it, your email configuration works.',
                 settings.DEFAULT_FROM_EMAIL,
                 [email],
                 fail_silently=False
             )
-            results.append({'type': 'Simple Test Email', 'status': 'success', 'message': f'Изпратен до {email}'})
+            results.append({'type': 'Simple Test Email', 'status': 'success', 'message': f'Sent to {email}'})
         except Exception as e:
             results.append({'type': 'Simple Test Email', 'status': 'error', 'message': str(e)})
     

@@ -578,6 +578,34 @@
         </div>
         {% endif %}
 
+        {# ======= Customer reviews (same grid style as blogs; no detail link) ======= #}
+        {% if customer_reviews %}
+        <div class="mt-12">
+          <h3 class="section-title"><span>What our customers say</span></h3>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {% for r in customer_reviews %}
+            <article class="rounded-2xl bg-white shadow-sm overflow-hidden hover:shadow-card transition flex flex-col h-full">
+              {% if r.image %}
+                <div class="w-full aspect-video overflow-hidden bg-slate-100 shrink-0">
+                  <img src="{{ r.image.url }}" alt="Customer photo — {{ r.customer_name }}"
+                       class="w-full h-full object-cover"
+                       loading="lazy" decoding="async">
+                </div>
+              {% endif %}
+              <div class="p-6 flex flex-col flex-1">
+                <p class="text-sm text-slate-700 leading-relaxed flex-1 mb-4">{{ r.review|linebreaksbr }}</p>
+                <div class="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <span class="text-sm font-extrabold text-slate-900">{{ r.customer_name }}</span>
+                  <span class="text-xs text-slate-500 whitespace-nowrap">{{ r.created_at|date:"M j, Y" }}</span>
+                </div>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
       {% endif %}
 
       {# ===== Sort bar: ONLY when user is filtering/searching, not on clean home ===== #}

@@ -45,7 +45,7 @@ def format_paragraphs(value):
         else:
             # One big block - split by sentences intelligently
             # Split by sentence endings (. ! ?) followed by space and capital letter
-            parts = re.split(r'([.!?])\s+([A-ZА-ЯЁ])', value_str)
+            parts = re.split(r'([.!?])\s+([A-Z])', value_str)
             
             if len(parts) > 3:
                 # Reconstruct sentences

@@ -54,8 +54,8 @@
 
 {% block extra_js %}
 {% comment %}
-  Meta: събитието Purchase трябва да се изпраща само на thank-you страницата след успешна поръчка.
-  Няма fbq Purchase в checkout/cart/product — само тук (+ данните идват от сесията след реален order save).
+  Meta Purchase must fire only on this thank-you page after a real order (session payload from server).
+  No fbq Purchase on checkout/cart/product — only here.
 {% endcomment %}
 {% if purchase_pixel %}
 {{ purchase_pixel|json_script:"marbaras-purchase-pixel" }}

@@ -14,9 +14,23 @@ import csv
 import json
 
 from .models import (
-    BlogPost, BannerImage, LegalPage, EmailSubscription,
-    Category, Product, ProductImage, ProductVariant,
-    CartItem, Order, OrderItem, Favorite, Discount, ShippingOption, Coupon, ProductBundleItem
+    BlogPost,
+    CustomerReview,
+    BannerImage,
+    LegalPage,
+    EmailSubscription,
+    Category,
+    Product,
+    ProductImage,
+    ProductVariant,
+    CartItem,
+    Order,
+    OrderItem,
+    Favorite,
+    Discount,
+    ShippingOption,
+    Coupon,
+    ProductBundleItem,
 )
 from .utils.emailing import send_order_shipped_email
 
@@ -736,6 +750,51 @@ class BlogPostAdmin(admin.ModelAdmin):
     has_video_url.boolean = True
     has_video_url.short_description = 'Has Video URL'
 
+
+@admin.register(CustomerReview)
+class CustomerReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "customer_name",
+        "order",
+        "is_published",
+        "has_image",
+        "created_at",
+        "review_preview",
+    )
+    list_filter = ("is_published", "created_at")
+    list_editable = ("order", "is_published")
+    search_fields = ("customer_name", "review")
+    ordering = ("order", "-created_at")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "customer_name",
+                    "review",
+                    "image",
+                    "order",
+                    "is_published",
+                )
+            },
+        ),
+    )
+
+    def has_image(self, obj):
+        return bool(obj.image)
+
+    has_image.boolean = True
+    has_image.short_description = "Photo"
+
+    def review_preview(self, obj):
+        t = (obj.review or "").strip()
+        if len(t) > 60:
+            return t[:60] + "…"
+        return t
+
+    review_preview.short_description = "Review preview"
+
+
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ('get_indented_name', 'slug', 'get_subcategories_count', 'get_products_count')
@@ -1224,7 +1283,7 @@ class OrderAdmin(admin.ModelAdmin):
                     <ol style="margin: 10px 0; padding-left: 20px;">
                         <li>Click "Copy All Data" button below</li>
                         <li>Go to FedEx Ship Manager</li>
-                        <li>Click in the first field (ИМЕ ЗА КОНТАКТ / Contact Name)</li>
+                        <li>Click in the first field (Contact Name)</li>
                         <li>Press <strong>Tab</strong> key to move to next field</li>
                         <li>Paste (Ctrl+V / Cmd+V) - data will fill current field</li>
                         <li>Press <strong>Tab</strong> again and paste - repeat for each field</li>
@@ -1256,17 +1315,17 @@ class OrderAdmin(admin.ModelAdmin):
                 </div>
                 
                 <div style="background: #e8f4f8; padding: 15px; border-radius: 4px; margin-top: 15px;">
-                    <strong>📝 Field Order (for reference):</strong>
+                    <strong>📝 Field order (FedEx may show localised labels; bookmarklet matches both):</strong>
                     <ol style="margin: 10px 0; padding-left: 20px; font-size: 12px;">
-                        <li>ИМЕ ЗА КОНТАКТ (Contact Name) - <code>{}</code></li>
-                        <li>ФИРМА (Company) - <em>leave empty</em></li>
-                        <li>ТЕЛЕФОНЕН НОМЕР (Phone) - <code>{}</code></li>
-                        <li>ИМЕЙЛ (Email) - <code>{}</code></li>
-                        <li>ПОЛЕ 1 ЗА АДРЕС (Address 1) - <code>{}</code></li>
-                        <li>ПОЛЕ 2 ЗА АДРЕС (Address 2) - <code>{}</code></li>
-                        <li>ПОЩЕНСКИ КОД (Postal Code) - <code>{}</code></li>
-                        <li>ГРАД (City) - <code>{}</code></li>
-                        <li>ДЪРЖАВА/ТЕРИТОРИЯ (Country) - <code>{}</code></li>
+                        <li>Contact Name - <code>{}</code></li>
+                        <li>Company - <em>leave empty</em></li>
+                        <li>Phone - <code>{}</code></li>
+                        <li>Email - <code>{}</code></li>
+                        <li>Address line 1 - <code>{}</code></li>
+                        <li>Address line 2 - <code>{}</code></li>
+                        <li>Postal code - <code>{}</code></li>
+                        <li>City - <code>{}</code></li>
+                        <li>Country / territory - <code>{}</code></li>
                     </ol>
                 </div>
                 

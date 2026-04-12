@@ -14,92 +14,87 @@ from decimal import Decimal
 
 
 class Command(BaseCommand):
-    help = 'Test email sending functionality'
+    help = "Test email sending functionality"
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--email',
+            "--email",
             type=str,
-            help='Email address to send test emails to',
+            help="Email address to send test emails to",
             required=True,
         )
         parser.add_argument(
-            '--type',
+            "--type",
             type=str,
-            choices=['welcome', 'order', 'admin_order', 'shipped', 'reset', 'all'],
-            default='all',
-            help='Type of email to test',
+            choices=["welcome", "order", "admin_order", "shipped", "reset", "all"],
+            default="all",
+            help="Type of email to test",
         )
 
     def handle(self, *args, **options):
-        email = options['email']
-        email_type = options['type']
-        # Try to get base URL from settings, or use production domain
-        base_url = getattr(settings, 'SITE_URL', None) or \
-                   getattr(settings, 'BASE_URL', None) or \
-                   'https://www.marbaras.com'
+        email = options["email"]
+        email_type = options["type"]
+        base_url = (
+            getattr(settings, "SITE_URL", None)
+            or getattr(settings, "BASE_URL", None)
+            or "https://www.marbaras.com"
+        )
 
-        self.stdout.write(self.style.SUCCESS(f'\n📧 Тестване на имейли до: {email}'))
-        self.stdout.write(self.style.SUCCESS(f'🌐 Base URL: {base_url}\n'))
+        self.stdout.write(self.style.SUCCESS(f"\nSending test emails to: {email}"))
+        self.stdout.write(self.style.SUCCESS(f"Base URL: {base_url}\n"))
 
-
-        if email_type in ['welcome', 'all']:
-            self.stdout.write(self.style.WARNING('Тестване на Welcome Email...'))
+        if email_type in ["welcome", "all"]:
+            self.stdout.write(self.style.WARNING("Testing welcome email..."))
             try:
-
                 user, created = User.objects.get_or_create(
-                    username='test_user',
-                    defaults={'email': email, 'first_name': 'Тест', 'last_name': 'Потребител'}
+                    username="test_user",
+                    defaults={"email": email, "first_name": "Test", "last_name": "User"},
                 )
                 if not created:
                     user.email = email
                     user.save()
 
                 if send_welcome_email(user, base_url):
-                    self.stdout.write(self.style.SUCCESS('✅ Welcome email изпратен успешно!\n'))
+                    self.stdout.write(self.style.SUCCESS("Welcome email sent.\n"))
                 else:
-                    self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Welcome email\n'))
+                    self.stdout.write(self.style.ERROR("Welcome email failed to send.\n"))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+                self.stdout.write(self.style.ERROR(f"Error: {e}\n"))
 
-
-        if email_type in ['order', 'all']:
-            self.stdout.write(self.style.WARNING('Тестване на Order Confirmation Email...'))
+        if email_type in ["order", "all"]:
+            self.stdout.write(self.style.WARNING("Testing order confirmation email..."))
             try:
-
                 user, _ = User.objects.get_or_create(
-                    username='test_user',
-                    defaults={'email': email}
+                    username="test_user",
+                    defaults={"email": email},
                 )
                 if user.email != email:
                     user.email = email
                     user.save()
 
-
                 shipping, _ = ShippingOption.objects.get_or_create(
-                    name='Standard',
-                    defaults={'price': Decimal('5.00'), 'delivery_time': '3-5 дни'}
+                    name="Standard",
+                    defaults={"price": Decimal("5.00"), "delivery_time": "3-5 days"},
                 )
-
 
                 product = Product.objects.first()
                 if not product:
-                    self.stdout.write(self.style.ERROR('❌ Няма продукти в базата данни. Създайте поне един продукт.\n'))
+                    self.stdout.write(
+                        self.style.ERROR("No products in database. Create at least one product.\n")
+                    )
                     return
-
 
                 order = Order.objects.create(
                     user=user,
                     email=email,
-                    full_name='Тест Потребител',
-                    address='Тестова Адрес 123',
-                    city='София',
-                    postal_code='1000',
-                    phone='+359888123456',
+                    full_name="Test Customer",
+                    address="123 Test Street",
+                    city="London",
+                    postal_code="SW1A 1AA",
+                    phone="+441234567890",
                     shipping_option=shipping,
-                    total_price=Decimal('99.99'),
+                    total_price=Decimal("99.99"),
                 )
-
 
                 variant = product.variants.first()
                 OrderItem.objects.create(
@@ -110,44 +105,44 @@ class Command(BaseCommand):
                 )
 
                 if send_order_confirmation_email(order, base_url, notify_admin=False):
-                    self.stdout.write(self.style.SUCCESS('✅ Order confirmation email изпратен успешно!\n'))
+                    self.stdout.write(self.style.SUCCESS("Order confirmation email sent.\n"))
                 else:
-                    self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Order confirmation email\n'))
+                    self.stdout.write(self.style.ERROR("Order confirmation email failed to send.\n"))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+                self.stdout.write(self.style.ERROR(f"Error: {e}\n"))
 
-
-        if email_type in ['admin_order', 'all']:
-            self.stdout.write(self.style.WARNING('Тестване на Admin Order Notification Email...'))
+        if email_type in ["admin_order", "all"]:
+            self.stdout.write(self.style.WARNING("Testing admin order notification email..."))
             try:
-                # Get or create test order
                 order = Order.objects.filter(email=email).first()
                 if not order:
                     user, _ = User.objects.get_or_create(
-                        username='test_user',
-                        defaults={'email': email}
+                        username="test_user",
+                        defaults={"email": email},
                     )
                     shipping, _ = ShippingOption.objects.get_or_create(
-                        name='Standard',
-                        defaults={'price': Decimal('5.00'), 'delivery_time': '3-5 дни'}
+                        name="Standard",
+                        defaults={"price": Decimal("5.00"), "delivery_time": "3-5 days"},
                     )
                     product = Product.objects.first()
                     if not product:
-                        self.stdout.write(self.style.ERROR('❌ Няма продукти в базата данни. Създайте поне един продукт.\n'))
+                        self.stdout.write(
+                            self.style.ERROR("No products in database. Create at least one product.\n")
+                        )
                         return
-                    
+
                     order = Order.objects.create(
                         user=user,
                         email=email,
-                        full_name='Тест Потребител',
-                        address='Тестова Адрес 123',
-                        city='София',
-                        postal_code='1000',
-                        phone='+359888123456',
+                        full_name="Test Customer",
+                        address="123 Test Street",
+                        city="London",
+                        postal_code="SW1A 1AA",
+                        phone="+441234567890",
                         shipping_option=shipping,
-                        total_price=Decimal('99.99'),
+                        total_price=Decimal("99.99"),
                     )
-                    
+
                     variant = product.variants.first()
                     OrderItem.objects.create(
                         order=order,
@@ -155,59 +150,67 @@ class Command(BaseCommand):
                         variant=variant,
                         quantity=2,
                     )
-                
-                # Get order items with calculations
+
                 items = order.items.select_related("product", "variant").all()
                 subtotal = sum(
                     (item.product.get_discounted_price() * Decimal(item.quantity))
                     for item in items
                 )
-                shipping_cost = order.shipping_option.price if order.shipping_option else Decimal("0.00")
+                shipping_cost = (
+                    order.shipping_option.price if order.shipping_option else Decimal("0.00")
+                )
                 discount_amount = Decimal("0.00")
                 if order.coupon:
                     discount_amount = subtotal - order.coupon.apply(subtotal)
                 total = order.total_price
-                
-                if send_admin_order_notification(order, base_url, items, subtotal, shipping_cost, discount_amount, total):
-                    self.stdout.write(self.style.SUCCESS('✅ Admin order notification email изпратен успешно!\n'))
-                    self.stdout.write(self.style.SUCCESS(f'   📧 Изпратен до: {getattr(settings, "ADMIN_EMAIL", "ADMINS setting")}\n'))
+
+                if send_admin_order_notification(
+                    order, base_url, items, subtotal, shipping_cost, discount_amount, total
+                ):
+                    self.stdout.write(self.style.SUCCESS("Admin order notification sent.\n"))
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"   To: {getattr(settings, 'ADMIN_EMAIL', 'ADMINS setting')}\n"
+                        )
+                    )
                 else:
-                    self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Admin order notification email\n'))
+                    self.stdout.write(
+                        self.style.ERROR("Admin order notification failed to send.\n")
+                    )
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+                self.stdout.write(self.style.ERROR(f"Error: {e}\n"))
                 import traceback
+
                 self.stdout.write(self.style.ERROR(traceback.format_exc()))
 
-
-        if email_type in ['shipped', 'all']:
-            self.stdout.write(self.style.WARNING('Тестване на Order Shipped Email...'))
+        if email_type in ["shipped", "all"]:
+            self.stdout.write(self.style.WARNING("Testing order shipped email..."))
             try:
-
                 order = Order.objects.filter(email=email).first()
                 if not order:
                     user, _ = User.objects.get_or_create(
-                        username='test_user',
-                        defaults={'email': email}
+                        username="test_user",
+                        defaults={"email": email},
                     )
                     shipping, _ = ShippingOption.objects.get_or_create(
-                        name='Standard',
-                        defaults={'price': Decimal('5.00'), 'delivery_time': '3-5 дни'}
+                        name="Standard",
+                        defaults={"price": Decimal("5.00"), "delivery_time": "3-5 days"},
                     )
                     product = Product.objects.first()
                     if not product:
-                        self.stdout.write(self.style.ERROR('❌ Няма продукти в базата данни.\n'))
+                        self.stdout.write(self.style.ERROR("No products in database.\n"))
                         return
 
                     order = Order.objects.create(
                         user=user,
                         email=email,
-                        full_name='Тест Потребител',
-                        address='Тестова Адрес 123',
-                        city='София',
-                        postal_code='1000',
-                        phone='+359888123456',
+                        full_name="Test Customer",
+                        address="123 Test Street",
+                        city="London",
+                        postal_code="SW1A 1AA",
+                        phone="+441234567890",
                         shipping_option=shipping,
-                        total_price=Decimal('99.99'),
+                        total_price=Decimal("99.99"),
                     )
                     variant = product.variants.first()
                     OrderItem.objects.create(
@@ -217,20 +220,19 @@ class Command(BaseCommand):
                         quantity=1,
                     )
 
-                if send_order_shipped_email(order, base_url, tracking_number='TEST123456'):
-                    self.stdout.write(self.style.SUCCESS('✅ Order shipped email изпратен успешно!\n'))
+                if send_order_shipped_email(order, base_url, tracking_number="TEST123456"):
+                    self.stdout.write(self.style.SUCCESS("Order shipped email sent.\n"))
                 else:
-                    self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Order shipped email\n'))
+                    self.stdout.write(self.style.ERROR("Order shipped email failed to send.\n"))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+                self.stdout.write(self.style.ERROR(f"Error: {e}\n"))
 
-
-        if email_type in ['reset', 'all']:
-            self.stdout.write(self.style.WARNING('Тестване на Password Reset Email...'))
+        if email_type in ["reset", "all"]:
+            self.stdout.write(self.style.WARNING("Testing password reset email..."))
             try:
                 user, _ = User.objects.get_or_create(
-                    username='test_user',
-                    defaults={'email': email}
+                    username="test_user",
+                    defaults={"email": email},
                 )
                 if user.email != email:
                     user.email = email
@@ -238,12 +240,11 @@ class Command(BaseCommand):
 
                 reset_url = f"{base_url}/accounts/password/reset/?token=test_token_12345"
                 if send_password_reset_email(user, reset_url, base_url):
-                    self.stdout.write(self.style.SUCCESS('✅ Password reset email изпратен успешно!\n'))
+                    self.stdout.write(self.style.SUCCESS("Password reset email sent.\n"))
                 else:
-                    self.stdout.write(self.style.ERROR('❌ Грешка при изпращане на Password reset email\n'))
+                    self.stdout.write(self.style.ERROR("Password reset email failed to send.\n"))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f'❌ Грешка: {e}\n'))
+                self.stdout.write(self.style.ERROR(f"Error: {e}\n"))
 
-        self.stdout.write(self.style.SUCCESS('\n✨ Тестването приключи!\n'))
-        self.stdout.write(self.style.WARNING('💡 Съвет: Проверете вашия email inbox (и spam папката).\n'))
-
+        self.stdout.write(self.style.SUCCESS("\nDone.\n"))
+        self.stdout.write(self.style.WARNING("Check inbox and spam folder.\n"))

@@ -819,6 +819,53 @@ class BlogPost(models.Model):
         return self.title
 
 
+class CustomerReview(models.Model):
+    """Customer testimonial for the home page (created in admin)."""
+
+    @staticmethod
+    def _get_storage():
+        from django.conf import settings
+        if hasattr(settings, "CLOUDINARY_CLOUD_NAME") and settings.CLOUDINARY_CLOUD_NAME:
+            try:
+                from ecommerce.storage import HybridMediaStorage
+                return HybridMediaStorage()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error("Failed to initialize HybridMediaStorage: %s", e)
+        from django.core.files.storage import default_storage
+        return default_storage
+
+    customer_name = models.CharField(
+        max_length=120,
+        help_text="Display name (e.g. first name or initials).",
+    )
+    review = models.TextField(help_text="Review text shown on the home page.")
+    image = models.ImageField(
+        upload_to="reviews/",
+        blank=True,
+        null=True,
+        max_length=512,
+        storage=_get_storage(),
+        help_text="Optional photo (customer or product).",
+    )
+    is_published = models.BooleanField(default=True, db_index=True)
+    order = models.IntegerField(
+        default=0,
+        db_index=True,
+        help_text="Lower numbers appear first.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["order", "-created_at"]
+        verbose_name = "Customer Review"
+        verbose_name_plural = "Customer Reviews"
+
+    def __str__(self) -> str:
+        return f"{self.customer_name} — {self.review[:50]}{'…' if len(self.review) > 50 else ''}"
+
+
 class LegalPage(models.Model):
     """Model for legal pages (Privacy Policy, Terms & Conditions) that can be edited from admin."""
     PAGE_TYPE_CHOICES = [

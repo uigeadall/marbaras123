@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Product indexes - най-често използвани заявки
+        # Product indexes — common query paths
         migrations.AlterField(
             model_name='product',
             name='name',
@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(blank=True, db_index=True, help_text='Select a parent category to make this a sub-category', null=True, on_delete=models.CASCADE, related_name='subcategories', to='ecommerce.category'),
         ),
         
-        # Order indexes - критични за admin и user dashboard
+        # Order indexes — admin and customer dashboards
         migrations.AlterField(
             model_name='order',
             name='created_at',
@@ -82,7 +82,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(blank=True, db_index=True, null=True, on_delete=models.CASCADE, to='auth.user'),
         ),
         
-        # CartItem indexes - за бързо достъпване на количката
+        # CartItem indexes — cart lookups
         migrations.AlterField(
             model_name='cartitem',
             name='user',
@@ -99,7 +99,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(db_index=True, on_delete=models.CASCADE, to='ecommerce.product'),
         ),
         
-        # Favorite indexes - за бързо достъпване на favorites
+        # Favorite indexes — wishlist lookups
         migrations.AlterField(
             model_name='favorite',
             name='user',
@@ -116,7 +116,7 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(auto_now_add=True, db_index=True),
         ),
         
-        # ProductVariant indexes - за бързо търсене по размер
+        # ProductVariant indexes — variant / stock lookups
         migrations.AlterField(
             model_name='productvariant',
             name='product',
@@ -145,7 +145,7 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(db_index=True, on_delete=models.CASCADE, to='ecommerce.product'),
         ),
         
-        # Comment indexes - за бързо показване на коментари
+        # Comment indexes — product comment lists
         migrations.AlterField(
             model_name='comment',
             name='product',
