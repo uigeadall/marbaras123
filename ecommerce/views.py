@@ -105,6 +105,23 @@ def _client_ip(request: HttpRequest) -> str:
     return (request.META.get("REMOTE_ADDR") or "").strip() or "unknown"
 
 
+def _get_currency_from_request(request: HttpRequest) -> str:
+    """ISO 4217 code for Order.currency (POST/GET/session); defaults to EUR."""
+    for key in ("currency", "order_currency"):
+        raw = (request.POST.get(key) or request.GET.get(key) or "").strip().upper()
+        if len(raw) == 3 and raw.isalpha():
+            return raw
+    sess = (request.session.get("order_currency") or "").strip().upper()
+    if len(sess) == 3 and sess.isalpha():
+        return sess
+    default = getattr(settings, "DEFAULT_ORDER_CURRENCY", None) or getattr(
+        settings, "META_PIXEL_CURRENCY", None
+    )
+    if default and len(str(default).strip()) == 3:
+        return str(default).strip().upper()[:3]
+    return "EUR"
+
+
 def _ensure_session(request: HttpRequest) -> None:
 
     if not request.session.session_key:
