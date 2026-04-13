@@ -101,7 +101,7 @@ def send_welcome_custom(sender, user, request=None, **kwargs):
 
 @receiver(order_submitted, dispatch_uid="ecommerce_order_confirmation_v1")
 def send_order_confirmation(sender, order, request=None, base_url=None, **kwargs):
-    """Order confirmation once Order + items are fully saved."""
+    """Order confirmation once Order + items are fully saved (sends in-process after commit)."""
     log.info("🔔 SIGNAL TRIGGERED: order_submitted for order #%s", getattr(order, 'id', 'unknown'))
     
     # Determine base_url
@@ -117,19 +117,16 @@ def send_order_confirmation(sender, order, request=None, base_url=None, **kwargs
     log.info("  Base URL determined: %s", base_url)
     log.info("  Order details: ID=%s, Total=$%s", getattr(order, 'id', 'unknown'), getattr(order, 'total_price', 'unknown'))
     
-    # Send email in background thread to avoid blocking the request
-    def send_email_async():
-        log.info("  Executing send_order_confirmation_email in background thread...")
-        try:
-            send_order_confirmation_email(order, base_url, notify_admin=True)
-        except Exception as e:
-            log.error("  ❌ Exception in send_email_async thread: %s", e)
-            log.exception("Exception details:")
-    
-    # Use threading to send email asynchronously
-    thread = threading.Thread(target=send_email_async, daemon=True)
-    thread.start()
-    log.info("  ✅ Order confirmation email thread started (non-blocking)")
+    # Send synchronously: daemon threads were often cut off before SMTP finished (redirect / worker).
+    try:
+        ok = send_order_confirmation_email(order, base_url, notify_admin=True)
+        if ok:
+            log.info("  ✅ Order confirmation email completed for order #%s", getattr(order, 'id', 'unknown'))
+        else:
+            log.warning("  ⚠️ Order confirmation email returned False for order #%s", getattr(order, 'id', 'unknown'))
+    except Exception as e:
+        log.error("  ❌ Exception sending order confirmation for order #%s: %s", getattr(order, 'id', 'unknown'), e)
+        log.exception("Exception details:")
 
 
 # Cache invalidation signals

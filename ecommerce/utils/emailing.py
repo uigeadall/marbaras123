@@ -244,7 +244,15 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
         msg.attach_alternative(html, "text/html")
         
         log.info("  Message created, attempting to send via SMTP...")
-        result = msg.send(fail_silently=True)  # Changed to True to prevent blocking if email fails
+        try:
+            result = msg.send(fail_silently=False)
+        except Exception as send_err:
+            log.error("❌ SMTP send failed for order #%s to %s: %s", order.id, recipient, send_err)
+            log.exception("SMTP traceback:")
+            return False
+        if not result:
+            log.error("❌ Order confirmation send returned 0 messages for order #%s to %s", order.id, recipient)
+            return False
         log.info("✅ Order confirmation email sent successfully to %s (result: %s)", recipient, result)
 
         if notify_admin:

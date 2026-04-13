@@ -1921,7 +1921,17 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
         phone = (request.POST.get("phone") or "").strip()
         country = (request.POST.get("country") or "").strip()
         shipping_option_id = request.POST.get("shipping_option")
-        email = request.user.email if request.user.is_authenticated else (request.POST.get("email") or "").strip()
+        post_email = (request.POST.get("email") or "").strip()
+        if request.user.is_authenticated:
+            email = post_email or (getattr(request.user, "email", None) or "").strip()
+            if not email:
+                try:
+                    prof = UserProfile.objects.get(user=request.user)
+                    email = (prof.email or "").strip()
+                except UserProfile.DoesNotExist:
+                    email = ""
+        else:
+            email = post_email
         coupon_code = (request.POST.get("coupon") or "").strip().upper()
 
         if not all([full_name, address, city, postal_code, phone, country]):
@@ -1936,16 +1946,15 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             messages.error(request, "Sorry, we don't ship to this country. Please select a country from the list.")
             return redirect("checkout")
 
-        if not request.user.is_authenticated and not email:
-            messages.error(request, "Email is required for guest checkout.")
+        if not email:
+            messages.error(request, "Email is required so we can send your order confirmation.")
             return redirect("checkout")
 
-        if not request.user.is_authenticated:
-            try:
-                validate_email(email)
-            except ValidationError:
-                messages.error(request, "Invalid email address.")
-                return redirect("checkout")
+        try:
+            validate_email(email)
+        except ValidationError:
+            messages.error(request, "Invalid email address.")
+            return redirect("checkout")
 
 
         subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True, cart_items=cart_items)
