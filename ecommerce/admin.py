@@ -860,7 +860,71 @@ class CategoryAdmin(admin.ModelAdmin):
         return form
 admin.site.register(ProductImage)
 admin.site.register(CartItem)
-admin.site.register(OrderItem)
+
+
+def order_item_variant_summary(obj: OrderItem) -> str:
+    """Human-readable variant line for admin (ring size, zodiac, hoop, SKU)."""
+    v = obj.variant
+    if v is None:
+        return "—"
+    try:
+        kind = v.get_variant_type_display()
+    except Exception:
+        kind = getattr(v, "variant_type", "") or ""
+    try:
+        detail = (v.display_name or "").strip() or (v.size or "").strip()
+    except Exception:
+        detail = (getattr(v, "size", None) or "").strip()
+    bits = [kind] if kind else []
+    if detail:
+        bits.append(detail)
+    sku = (getattr(v, "sku", None) or "").strip()
+    if sku:
+        bits.append(f"SKU {sku}")
+    return " · ".join(bits) if bits else "—"
+
+
+class OrderItemInline(admin.TabularInline):
+    """Line items on the order change page — shows variant/size/zodiac clearly."""
+
+    model = OrderItem
+    extra = 0
+    can_delete = False
+    fields = ("product", "variant_summary", "quantity")
+    readonly_fields = ("product", "variant_summary", "quantity")
+    ordering = ("id",)
+    verbose_name = "Order line"
+    verbose_name_plural = "Order lines (products & variants)"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Variant / option")
+    def variant_summary(self, obj):
+        return order_item_variant_summary(obj)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("product", "variant")
+
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "order", "product", "variant_summary", "quantity")
+    list_select_related = ("order", "product", "variant")
+    search_fields = (
+        "order__id",
+        "product__name",
+        "product__serial_number",
+        "variant__size",
+        "variant__sku",
+    )
+    list_filter = ("order__created_at",)
+    fields = ("order", "product", "variant", "variant_summary", "quantity")
+    readonly_fields = ("order", "product", "variant", "variant_summary")
+
+    @admin.display(description="Variant / option")
+    def variant_summary(self, obj):
+        return order_item_variant_summary(obj)
 
 
 @admin.register(Favorite)
@@ -886,6 +950,8 @@ admin.site.register(ShippingOption)
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
+    inlines = [OrderItemInline]
+
     list_display = (
         "id",
         "order_status",
