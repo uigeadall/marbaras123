@@ -1096,7 +1096,6 @@
                 {% endif %}
               </div>
 
-              <input type="hidden" name="variant_id" id="variantInput" value="" form="addToCartForm">
               <div class="action-bar-container">
                 <div class="action-bar">
                   <div class="action-bar-left">
@@ -1128,6 +1127,7 @@
 
                   <form id="addToCartForm" method="post" action="{% url 'add_to_cart' product.pk %}">
                     {% csrf_token %}
+                    <input type="hidden" name="variant_id" id="variantInput" value="">
                     <div class="btn-wrap" style="position: relative;">
                       <button
                         id="addToCartBtn"

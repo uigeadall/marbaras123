@@ -1660,6 +1660,13 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
     except (TypeError, ValueError):
         variant_id = None
 
+    if product.variants.exists() and variant_id is None:
+        msg = "Please open the product page and select size or option before adding to cart."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JsonResponse({"success": False, "message": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("product_detail", slug=product.slug)
+
     try:
         quantity = max(1, int(request.POST.get("quantity", 1)))
     except (TypeError, ValueError):

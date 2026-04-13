@@ -136,12 +136,16 @@
               {% endif %}
             </p>
 
-            {# Optional quick actions; only render if id exists #}
+            {# Quick add only when product has no variants (size/color must be chosen on product page). #}
             {% if p.id %}
+              {% if p.variants.count %}
+                <a class="btn" href="{% url 'product_detail' p.slug %}" style="display:inline-block;text-decoration:none;">🛒 Choose options</a>
+              {% else %}
               <form method="post" action="{% url 'add_to_cart' pk=p.id %}" style="display:inline;">
                 {% csrf_token %}
                 <button class="btn" type="submit">🛒 Add to Cart</button>
               </form>
+              {% endif %}
               {% if favorite_ids %}
                 <form method="post" action="{% url 'toggle_favorite' pk=p.id %}" style="display:inline;">
                   {% csrf_token %}

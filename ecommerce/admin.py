@@ -920,7 +920,20 @@ class OrderItemAdmin(admin.ModelAdmin):
     )
     list_filter = ("order__created_at",)
     fields = ("order", "product", "variant", "variant_summary", "quantity")
-    readonly_fields = ("order", "product", "variant", "variant_summary")
+    readonly_fields = ("order", "product", "variant_summary")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "variant":
+            oid = request.resolver_match.kwargs.get("object_id")
+            if oid:
+                try:
+                    oi = OrderItem.objects.select_related("product").get(pk=oid)
+                    kwargs["queryset"] = ProductVariant.objects.filter(
+                        product_id=oi.product_id
+                    ).order_by("variant_type", "size")
+                except OrderItem.DoesNotExist:
+                    pass
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     @admin.display(description="Variant / option")
     def variant_summary(self, obj):
