@@ -1,0 +1,4 @@
+/* Order admin list row styling (shipped vs pending). */
+.admin-order-shipped {
+  background-color: #ecfdf5;
+}

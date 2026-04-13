@@ -2463,7 +2463,10 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 else "nouser"
             )
             vid = int(variant_id) if variant_id else 0
-            idempotency_key = f"pi-prod-{product_id}-{vid}-{session_hash}-{_to_cents(total)}"
+            # Idempotency must include payment_method_id: same session+total but a new Apple/Google Pay
+            # tap sends a different PM — Stripe rejects reuse of the key with different body params.
+            pm_key = hashlib.sha256((payment_method_id or "").encode("utf-8")).hexdigest()[:24]
+            idempotency_key = f"pi-prod-{product_id}-{vid}-{session_hash}-{_to_cents(total)}-{pm_key}"
             
             intent = stripe.PaymentIntent.create(
                 **intent_params,
