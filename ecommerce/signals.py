@@ -1,6 +1,5 @@
 
 from django.dispatch import Signal, receiver
-from django.db import transaction
 from django.db.models.signals import post_save, post_delete
 from django.core.cache import cache
 from allauth.account.signals import user_signed_up
@@ -11,10 +10,7 @@ import time
 log = logging.getLogger(__name__)
 
 from .models import Product, Category, ProductImage
-from .utils.emailing import (
-    send_welcome_email,
-    send_order_confirmation_email,
-)
+from .utils.emailing import send_welcome_email
 from .utils.image_ai import optimize_image_cloudinary_ai
 
 
@@ -99,34 +95,9 @@ def send_welcome_custom(sender, user, request=None, **kwargs):
         log.exception("Exception details:")
 
 
-@receiver(order_submitted, dispatch_uid="ecommerce_order_confirmation_v1")
-def send_order_confirmation(sender, order, request=None, base_url=None, **kwargs):
-    """Order confirmation once Order + items are fully saved (sends in-process after commit)."""
-    log.info("🔔 SIGNAL TRIGGERED: order_submitted for order #%s", getattr(order, 'id', 'unknown'))
-    
-    # Determine base_url
-    if not base_url:
-        if request is not None:
-            try:
-                base_url = request.build_absolute_uri('/').rstrip('/')
-            except Exception:
-                base_url = 'https://www.marbaras.com'
-        else:
-            base_url = 'https://www.marbaras.com'
-    
-    log.info("  Base URL determined: %s", base_url)
-    log.info("  Order details: ID=%s, Total=$%s", getattr(order, 'id', 'unknown'), getattr(order, 'total_price', 'unknown'))
-    
-    # Send synchronously: daemon threads were often cut off before SMTP finished (redirect / worker).
-    try:
-        ok = send_order_confirmation_email(order, base_url, notify_admin=True)
-        if ok:
-            log.info("  ✅ Order confirmation email completed for order #%s", getattr(order, 'id', 'unknown'))
-        else:
-            log.warning("  ⚠️ Order confirmation email returned False for order #%s", getattr(order, 'id', 'unknown'))
-    except Exception as e:
-        log.error("  ❌ Exception sending order confirmation for order #%s: %s", getattr(order, 'id', 'unknown'), e)
-        log.exception("Exception details:")
+# Order confirmation email is sent from ecommerce.views._notify_order_confirmed
+# immediately after each successful checkout transaction (post-commit), not via this
+# signal, so delivery does not depend on transaction.on_commit scheduling on the worker.
 
 
 # Cache invalidation signals

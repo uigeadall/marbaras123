@@ -3,11 +3,44 @@ Resend API email backend for Railway Hobby plan.
 Resend is Railway's recommended email service for Hobby plan users.
 """
 import logging
+from email.utils import parseaddr
+
 import requests
 from django.core.mail.backends.base import BaseEmailBackend
 from django.conf import settings
 
 log = logging.getLogger(__name__)
+
+
+def _resend_plain_email(addr: str) -> str:
+    """Extract bare email for Resend `to` / `cc` arrays (RFC parse)."""
+    if not addr:
+        return ""
+    name, email = parseaddr(addr)
+    email = (email or "").strip()
+    if not email and "@" in addr:
+        email = addr.strip()
+    return email
+
+
+def _resend_from_string(addr: str) -> str:
+    """Resend `from` must be a string; normalize 'Name <email>'."""
+    if not addr:
+        return ""
+    name, email = parseaddr(addr)
+    email = (email or "").strip()
+    if not email and "@" in addr:
+        email = addr.strip()
+    if name and str(name).strip():
+        return f"{str(name).strip()} <{email}>"
+    return email
+
+
+def _resend_recipient_list(addrs) -> list:
+    if not addrs:
+        return []
+    seq = addrs if isinstance(addrs, (list, tuple)) else [addrs]
+    return [e for a in seq if (e := _resend_plain_email(a))]
 
 
 class ResendBackend(BaseEmailBackend):
@@ -53,22 +86,32 @@ class ResendBackend(BaseEmailBackend):
     def _send_email(self, message):
         """Send a single email message via Resend API."""
         try:
+            to_list = _resend_recipient_list(message.to)
+            if not to_list:
+                log.error("❌ Resend: no valid recipients after parsing: %s", message.to)
+                if not self.fail_silently:
+                    raise ValueError("Resend: no valid recipient emails")
+                return False
+
             # Prepare email data
             email_data = {
-                "from": message.from_email,
-                "to": message.to,
+                "from": _resend_from_string(message.from_email),
+                "to": to_list,
                 "subject": message.subject,
             }
             
             # Add Reply-To header if present (allows direct replies to customer)
             if hasattr(message, 'reply_to') and message.reply_to:
-                email_data["reply_to"] = message.reply_to if isinstance(message.reply_to, list) else [message.reply_to]
+                rt = message.reply_to if isinstance(message.reply_to, list) else [message.reply_to]
+                parsed_rt = _resend_recipient_list(rt)
+                if parsed_rt:
+                    email_data["reply_to"] = parsed_rt
             
             # Add CC and BCC if present
             if message.cc:
-                email_data["cc"] = message.cc
+                email_data["cc"] = _resend_recipient_list(message.cc)
             if message.bcc:
-                email_data["bcc"] = message.bcc
+                email_data["bcc"] = _resend_recipient_list(message.bcc)
             
             # Handle email body
             if message.body:

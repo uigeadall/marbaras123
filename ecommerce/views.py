@@ -1648,6 +1648,51 @@ def _finalize_checkout_purchase_tracking(request: HttpRequest, order: Order) -> 
         logger.warning("schedule_purchase_capi failed", exc_info=True)
 
 
+def _notify_order_confirmed(request: HttpRequest, order: Order) -> None:
+    """
+    Send buyer order confirmation email after the checkout DB transaction has committed.
+    Runs in the request thread (not transaction.on_commit) so SMTP reliably finishes
+    before the worker returns the redirect/JSON response.
+    """
+    base_url = ""
+    if request is not None:
+        try:
+            base_url = request.build_absolute_uri("/").rstrip("/")
+        except Exception:
+            pass
+    if not (base_url or "").strip():
+        base_url = (getattr(settings, "PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+    if not base_url:
+        base_url = "https://www.marbaras.com"
+
+    try:
+        order_db = (
+            Order.objects.select_related("coupon", "shipping_option", "user")
+            .prefetch_related(
+                Prefetch("items", queryset=OrderItem.objects.select_related("product", "variant"))
+            )
+            .get(pk=order.pk)
+        )
+    except Order.DoesNotExist:
+        logger.error("_notify_order_confirmed: order %s not found", getattr(order, "pk", None))
+        return
+
+    try:
+        ok = send_order_confirmation_email(order_db, base_url, notify_admin=True)
+        if not ok:
+            logger.warning(
+                "_notify_order_confirmed: send_order_confirmation_email returned False for order #%s",
+                order_db.pk,
+            )
+    except Exception:
+        logger.exception("_notify_order_confirmed: email failed for order #%s", order_db.pk)
+
+    try:
+        order_submitted.send(sender=Order, order=order_db, request=request, base_url=base_url)
+    except Exception:
+        logger.exception("_notify_order_confirmed: order_submitted signal failed for order #%s", order_db.pk)
+
+
 @require_POST
 def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
@@ -2000,6 +2045,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 city=city,
                 postal_code=postal_code,
                 phone=phone,
+                country=country,
                 shipping_option=shipping_option,
                 total_price=total,
                 currency=currency,
@@ -2026,8 +2072,8 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 return redirect("cart_view")
 
             cart_items.delete()
-            transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
 
+        _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
 
         return redirect("order_success")
@@ -2262,8 +2308,8 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
                 return redirect("cart_view")
 
             cart_qs.delete()
-            transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
 
+        _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
 
         return redirect("order_success")
@@ -2530,9 +2576,8 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             # Clear cart items for this product (if any)
             owner = _owner_filter(request)
             CartItem.objects.filter(**owner, product=product, variant=variant).delete()
-            
-            transaction.on_commit(lambda: order_submitted.send(sender=Order, order=order, request=request))
-        
+
+        _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
 
         return JsonResponse({

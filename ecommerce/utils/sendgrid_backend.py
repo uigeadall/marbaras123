@@ -3,11 +3,27 @@ SendGrid API email backend for Railway Hobby plan.
 SendGrid provides HTTPS API instead of SMTP, which works on Railway Hobby plan.
 """
 import logging
+from email.utils import parseaddr
+
 import requests
 from django.core.mail.backends.base import BaseEmailBackend
 from django.conf import settings
 
 log = logging.getLogger(__name__)
+
+
+def _sendgrid_person(addr: str) -> dict:
+    """Turn Django-style 'Name <email@domain>' into SendGrid v3 personalizations format."""
+    if not addr:
+        return {"email": ""}
+    name, email = parseaddr(addr)
+    email = (email or "").strip()
+    if not email and "@" in addr:
+        email = addr.strip()
+    out: dict = {"email": email}
+    if name and str(name).strip():
+        out["name"] = str(name).strip()
+    return out
 
 
 class SendGridBackend(BaseEmailBackend):
@@ -56,22 +72,25 @@ class SendGridBackend(BaseEmailBackend):
             # Prepare email data for SendGrid API
             email_data = {
                 "personalizations": [{
-                    "to": [{"email": email} for email in message.to],
+                    "to": [_sendgrid_person(rec) for rec in message.to],
                 }],
-                "from": {"email": message.from_email},
+                "from": _sendgrid_person(message.from_email),
                 "subject": message.subject,
             }
             
             # Add Reply-To header if present (allows direct replies to customer)
             if hasattr(message, 'reply_to') and message.reply_to:
                 reply_to_list = message.reply_to if isinstance(message.reply_to, list) else [message.reply_to]
-                email_data["reply_to"] = {"email": reply_to_list[0]} if reply_to_list else None
+                if reply_to_list:
+                    rt = _sendgrid_person(reply_to_list[0])
+                    if rt.get("email"):
+                        email_data["reply_to"] = rt
             
             # Add CC and BCC if present
             if message.cc:
-                email_data["personalizations"][0]["cc"] = [{"email": email} for email in message.cc]
+                email_data["personalizations"][0]["cc"] = [_sendgrid_person(rec) for rec in message.cc]
             if message.bcc:
-                email_data["personalizations"][0]["bcc"] = [{"email": email} for email in message.bcc]
+                email_data["personalizations"][0]["bcc"] = [_sendgrid_person(rec) for rec in message.bcc]
             
             # Handle email content
             content = []
@@ -94,11 +113,11 @@ class SendGridBackend(BaseEmailBackend):
             }
             
             log.info("  Sending email via SendGrid API...")
-            log.info("    From: %s", email_data["from"]["email"])
-            log.info("    To: %s", [email["email"] for email in email_data["personalizations"][0]["to"]])
+            log.info("    From: %s", email_data["from"])
+            log.info("    To: %s", email_data["personalizations"][0]["to"])
             log.info("    Subject: %s", email_data["subject"])
             if "reply_to" in email_data and email_data["reply_to"]:
-                log.info("    Reply-To: %s", email_data["reply_to"]["email"])
+                log.info("    Reply-To: %s", email_data["reply_to"])
             
             response = requests.post(
                 self.api_url,

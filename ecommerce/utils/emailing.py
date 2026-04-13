@@ -1,8 +1,9 @@
 import logging
-from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, mail_admins
-from django.template.loader import render_to_string
 from decimal import Decimal
+
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives, mail_admins, send_mail
+from django.template.loader import render_to_string
 
 log = logging.getLogger(__name__)
 
@@ -191,10 +192,31 @@ def send_welcome_email_with_promo(user, base_url, promo_code, discount_display="
         return False
 
 
+def _order_confirmation_recipient(order) -> str:
+    """Resolve buyer address: order email, account email, then profile shipping email."""
+    direct = (getattr(order, "email", None) or "").strip()
+    if direct:
+        return direct
+    user = getattr(order, "user", None)
+    if not user:
+        return ""
+    ue = (getattr(user, "email", None) or "").strip()
+    if ue:
+        return ue
+    try:
+        from ecommerce.models import UserProfile
+
+        prof = UserProfile.objects.filter(user=user).only("email").first()
+        if prof and (prof.email or "").strip():
+            return prof.email.strip()
+    except Exception:
+        log.warning("Could not load UserProfile for order recipient", exc_info=True)
+    return ""
+
+
 def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
     """Send order confirmation email to customer."""
-    # Prefer an explicit order email (e.g., shipping email), else fallback to user's email.
-    recipient = getattr(order, "email", None) or getattr(getattr(order, "user", None), "email", None)
+    recipient = _order_confirmation_recipient(order)
     if not recipient:
         log.warning("Order email skipped, no recipient for order #%s", order.id)
         return False
@@ -202,17 +224,25 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
 
     # Avoid N+1 when templates access item.product and variant
-    items = order.items.select_related("product", "variant").all()
+    items = list(order.items.select_related("product", "variant").all())
 
-    # Calculate totals
-    subtotal = sum(
-        (item.product.get_discounted_price() * Decimal(item.quantity))
-        for item in items
-    )
+    # Calculate totals (never block email if a line item misbehaves)
+    subtotal = Decimal("0.00")
+    try:
+        subtotal = sum(
+            (item.product.get_discounted_price() * Decimal(item.quantity)) for item in items
+        )
+    except Exception:
+        log.warning("Subtotal calculation failed for order #%s, using total_price", order.id, exc_info=True)
+        subtotal = getattr(order, "total_price", None) or Decimal("0.00")
     shipping_cost = order.shipping_option.price if order.shipping_option else Decimal("0.00")
     discount_amount = Decimal("0.00")
     if order.coupon:
-        discount_amount = subtotal - order.coupon.apply(subtotal)
+        try:
+            discount_amount = subtotal - order.coupon.apply(subtotal)
+        except Exception:
+            log.warning("Coupon discount calc failed for order #%s", order.id, exc_info=True)
+            discount_amount = Decimal("0.00")
     total = order.total_price
 
     ctx = {
@@ -235,10 +265,51 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
     log.info("  Total: $%s", total)
     log.info("  Base URL: %s", base_url)
     
+    def _send_fallback_plain() -> bool:
+        body = (
+            f"Thank you for your order #{order.id}.\n\n"
+            f"Total: {total} {getattr(order, 'currency', '') or ''}\n"
+            f"Shipping to: {getattr(order, 'full_name', '')}, {getattr(order, 'address', '')}, "
+            f"{getattr(order, 'city', '')}\n\n"
+            f"If you have questions, reply to this email.\n"
+            f"{base_url}\n"
+        )
+        try:
+            n = send_mail(
+                subject=f"Order #{order.id} - Marbaras",
+                message=body,
+                from_email=from_email,
+                recipient_list=[recipient],
+                fail_silently=False,
+            )
+            return bool(n)
+        except Exception:
+            log.exception("Fallback plain order confirmation failed for order #%s", order.id)
+            return False
+
     try:
         subject = f"Order #{order.id} - Marbaras ✨"
-        text = render_to_string("emails/order_confirmation.txt", ctx)
-        html = render_to_string("emails/order_confirmation.html", ctx)
+        try:
+            text = render_to_string("emails/order_confirmation.txt", ctx)
+            html = render_to_string("emails/order_confirmation.html", ctx)
+        except Exception as render_err:
+            log.error("Order confirmation template render failed #%s: %s", order.id, render_err)
+            log.exception("Render traceback:")
+            if _send_fallback_plain():
+                log.info("✅ Sent fallback plain-text order confirmation to %s", recipient)
+                if notify_admin:
+                    try:
+                        send_admin_order_notification(
+                            order, base_url, items, subtotal, shipping_cost, discount_amount, total
+                        )
+                    except Exception as adm_err:
+                        log.warning(
+                            "Admin order notification failed after fallback mail #%s: %s",
+                            order.id,
+                            adm_err,
+                        )
+                return True
+            return False
 
         msg = EmailMultiAlternatives(subject, text, from_email, [recipient])
         msg.attach_alternative(html, "text/html")
@@ -249,15 +320,53 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
         except Exception as send_err:
             log.error("❌ SMTP send failed for order #%s to %s: %s", order.id, recipient, send_err)
             log.exception("SMTP traceback:")
+            if _send_fallback_plain():
+                log.info("✅ Sent fallback plain-text after primary send error for order #%s", order.id)
+                if notify_admin:
+                    try:
+                        send_admin_order_notification(
+                            order, base_url, items, subtotal, shipping_cost, discount_amount, total
+                        )
+                    except Exception as adm_err:
+                        log.warning(
+                            "Admin order notification failed after fallback #%s: %s",
+                            order.id,
+                            adm_err,
+                        )
+                return True
             return False
-        if not result:
+        if result is None or int(result) < 1:
             log.error("❌ Order confirmation send returned 0 messages for order #%s to %s", order.id, recipient)
+            if _send_fallback_plain():
+                log.info("✅ Sent fallback plain-text after zero-result send for order #%s", order.id)
+                if notify_admin:
+                    try:
+                        send_admin_order_notification(
+                            order, base_url, items, subtotal, shipping_cost, discount_amount, total
+                        )
+                    except Exception as adm_err:
+                        log.warning(
+                            "Admin order notification failed after fallback #%s: %s",
+                            order.id,
+                            adm_err,
+                        )
+                return True
             return False
         log.info("✅ Order confirmation email sent successfully to %s (result: %s)", recipient, result)
 
         if notify_admin:
             log.info("  Sending admin notification email...")
-            send_admin_order_notification(order, base_url, items, subtotal, shipping_cost, discount_amount, total)
+            try:
+                send_admin_order_notification(
+                    order, base_url, items, subtotal, shipping_cost, discount_amount, total
+                )
+            except Exception as adm_err:
+                log.warning(
+                    "Admin order notification failed for order #%s (customer mail already sent): %s",
+                    order.id,
+                    adm_err,
+                )
+                log.exception("Admin notification traceback:")
         return True
     except Exception as e:
         log.error("❌ Failed to send order email for #%s: %s", order.id, e)
