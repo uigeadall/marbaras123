@@ -666,6 +666,21 @@ GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")
 STRIPE_PUBLISHABLE_KEY = _clean_stripe_key(env("STRIPE_PUBLISHABLE_KEY", ""))
 STRIPE_WEBHOOK_SECRET = _clean_stripe_key(env("STRIPE_WEBHOOK_SECRET", ""))
 
+# Anti-abuse: cap Stripe PaymentIntent–related calls per IP / logged-in user per hour (see ecommerce.views)
+CHECKOUT_PI_RATE_LIMIT_ENABLED = env_bool("CHECKOUT_PI_RATE_LIMIT_ENABLED", True)
+try:
+    CHECKOUT_PI_RATE_PER_HOUR_IP = int((env("CHECKOUT_PI_RATE_PER_HOUR_IP", "45") or "45").strip())
+except ValueError:
+    CHECKOUT_PI_RATE_PER_HOUR_IP = 45
+try:
+    CHECKOUT_PI_RATE_PER_HOUR_USER = int((env("CHECKOUT_PI_RATE_PER_HOUR_USER", "120") or "120").strip())
+except ValueError:
+    CHECKOUT_PI_RATE_PER_HOUR_USER = 120
+try:
+    CHECKOUT_PI_RATE_WINDOW_SEC = int((env("CHECKOUT_PI_RATE_WINDOW_SEC", "3600") or "3600").strip())
+except ValueError:
+    CHECKOUT_PI_RATE_WINDOW_SEC = 3600
+
 # -------------------------
 # Caching (Redis/Memcached)
 # -------------------------

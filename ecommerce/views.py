@@ -96,6 +96,9 @@ CONTACT_MESSAGE_MAX_LEN = 1200
 CONTACT_NAME_MAX_LEN = 200
 CONTACT_SUBJECT_MAX_LEN = 200
 
+# Checkout / PaymentIntent abuse (bots opening checkout or hitting Apple Pay API)
+CHECKOUT_PI_RATE_WINDOW_SEC = 3600
+
 
 def _client_ip(request: HttpRequest) -> str:
     """Client IP; prefers X-Forwarded-For when behind a reverse proxy (e.g. Railway)."""
@@ -103,6 +106,35 @@ def _client_ip(request: HttpRequest) -> str:
     if xff:
         return xff.split(",")[0].strip() or "unknown"
     return (request.META.get("REMOTE_ADDR") or "").strip() or "unknown"
+
+
+def _checkout_payment_intent_rate_allow(request: HttpRequest) -> bool:
+    """Limit PaymentIntent-related Stripe calls per IP / user (sliding window via cache TTL)."""
+    if not getattr(settings, "CHECKOUT_PI_RATE_LIMIT_ENABLED", True):
+        return True
+    if request.user.is_authenticated:
+        limit = int(getattr(settings, "CHECKOUT_PI_RATE_PER_HOUR_USER", 120))
+        bucket = f"u{request.user.pk}"
+    else:
+        limit = int(getattr(settings, "CHECKOUT_PI_RATE_PER_HOUR_IP", 45))
+        raw_ip = _client_ip(request)
+        bucket = "i" + raw_ip.replace(":", "_")[:120]
+    key = f"c_stripe_pi:{bucket}"
+    window = int(getattr(settings, "CHECKOUT_PI_RATE_WINDOW_SEC", CHECKOUT_PI_RATE_WINDOW_SEC))
+    try:
+        n = cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, window)
+        return True
+    if n > limit:
+        logger.warning(
+            "checkout Stripe PI rate limit exceeded key=%s n=%s limit=%s",
+            key,
+            n,
+            limit,
+        )
+        return False
+    return True
 
 
 def _get_currency_from_request(request: HttpRequest) -> str:
@@ -397,15 +429,15 @@ def _create_stripe_intent(amount: Decimal, session_key: Optional[str], is_guest:
         else:
             session_hash = 'nouser'
         
-        idempotency_key = f"pi-{'guest' if is_guest else 'user'}-{session_hash}-{uuid.uuid4().hex}"
+        cents = int(_to_cents(amount))
+        idempotency_key = f"pi-{'g' if is_guest else 'u'}-{session_hash}-{cents}"
         
         # Ensure idempotency_key is ASCII-safe
         try:
             idempotency_key.encode('latin-1')
         except UnicodeEncodeError:
             logger.error("Idempotency key contains non-ASCII characters: %s", idempotency_key)
-            # Fallback: use only hash and UUID
-            idempotency_key = f"pi-{session_hash}-{uuid.uuid4().hex}"
+            idempotency_key = f"pi-{session_hash}-{cents}"
         
         # Ensure all parameters are ASCII-safe
         intent = stripe.PaymentIntent.create(
@@ -1048,14 +1080,8 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
                 sale_expires_at = product.sale_expires_at
 
     stripe_public_key = getattr(settings, 'STRIPE_PUBLISHABLE_KEY', None) or ""
-    
-    # Create PaymentIntent for Apple Pay (using product price as base, shipping will be calculated on frontend)
-    product_price = product.get_discounted_price()
-    # Use base price for PaymentIntent, shipping will be added dynamically in Apple Pay
     _ensure_session(request)
-    intent = _create_stripe_intent(product_price, request.session.session_key, is_guest=not request.user.is_authenticated)
-    client_secret = intent.client_secret if intent else None
-    
+
     context = {
         "product": product,
         "product_images": product_images,
@@ -1080,7 +1106,6 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "is_sale": is_sale,
         "sale_expires_at": sale_expires_at,
         "stripe_public_key": stripe_public_key,
-        "client_secret": client_secret,
     }
     return render(request, "product_detail.html", context)
 
@@ -1879,6 +1904,16 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
     }
 
     if request.method == "POST":
+        if (request.POST.get("checkout_website_url") or "").strip():
+            logger.warning("checkout honeypot triggered path=checkout ip=%s", _client_ip(request))
+            return redirect("cart_view")
+        if request.POST.get("checkout_human_confirm") != "1":
+            messages.error(
+                request,
+                "Please confirm you are placing a real order using the checkbox above the Pay button.",
+            )
+            return redirect("checkout")
+
         full_name = (request.POST.get("full_name") or "").strip()
         address = (request.POST.get("address") or "").strip()
         city = (request.POST.get("city") or "").strip()
@@ -1981,6 +2016,12 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
 
         return redirect("order_success")
 
+    if not _checkout_payment_intent_rate_allow(request):
+        messages.error(
+            request,
+            "Too many checkout attempts from your network. Please try again later or contact us.",
+        )
+        return redirect("cart_view")
 
     intent = _create_stripe_intent(subtotal, request.session.session_key, is_guest=not request.user.is_authenticated)
     if not intent:
@@ -2119,6 +2160,16 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
     }
 
     if request.method == "POST":
+        if (request.POST.get("checkout_website_url") or "").strip():
+            logger.warning("checkout honeypot triggered path=guest_checkout ip=%s", _client_ip(request))
+            return redirect("cart_view")
+        if request.POST.get("checkout_human_confirm") != "1":
+            messages.error(
+                request,
+                "Please confirm you are placing a real order using the checkbox before completing the order.",
+            )
+            return redirect("guest_checkout")
+
         full_name = (request.POST.get("full_name") or "").strip()
         email = (request.POST.get("email") or "").strip()
         address = (request.POST.get("address") or "").strip()
@@ -2201,19 +2252,6 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
 
         return redirect("order_success")
 
-
-    intent = _create_stripe_intent(subtotal, request.session.session_key, is_guest=True)
-    if not intent:
-        messages.error(request, "Payment system error. Please try again.")
-        return redirect("cart_view")
-
-
-    stripe_public_key = settings.STRIPE_PUBLISHABLE_KEY
-    if not stripe_public_key or not stripe_public_key.startswith(('pk_test_', 'pk_live_')):
-        logger.error(f"Invalid Stripe publishable key format: {stripe_public_key[:20] if stripe_public_key else 'empty'}... (length: {len(stripe_public_key) if stripe_public_key else 0})")
-        messages.error(request, "Payment system configuration error. Please contact support.")
-        return redirect("cart_view")
-
     initiate_checkout_pixel = None
     if getattr(settings, "META_PIXEL_ID", "") or getattr(settings, "TIKTOK_PIXEL_ID", ""):
         initiate_checkout_pixel = _initiate_checkout_pixel_payloads(cart_qs, subtotal)
@@ -2230,9 +2268,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             "coupon_applied": coupon_applied,
             "coupon_error": coupon_error,
             "coupon_code": coupon_code,
-            "client_secret": intent.client_secret,
             "shipping_options": list(ShippingOption.objects.all().order_by("price", "name").distinct()),
-            "stripe_public_key": stripe_public_key,
             "initiate_checkout_pixel": initiate_checkout_pixel,
         },
     )
@@ -2311,6 +2347,15 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
     
     try:
         data = json.loads(request.body)
+        _ensure_session(request)
+        if not _checkout_payment_intent_rate_allow(request):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Too many payment attempts. Please try again later.",
+                },
+                status=429,
+            )
         product_id = data.get('product_id')
         variant_id = data.get('variant_id')
         quantity = int(data.get('quantity', 1))
@@ -2388,7 +2433,6 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
         
         # Create PaymentIntent with payment method attached
-        _ensure_session(request)
         try:
             # Create PaymentIntent with payment method
             intent_params = {
@@ -2404,9 +2448,13 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             if payer_email:
                 intent_params['receipt_email'] = payer_email
             
-            # Create idempotency key
-            session_hash = hashlib.md5(request.session.session_key.encode('utf-8')).hexdigest() if request.session.session_key else 'nouser'
-            idempotency_key = f"pi-product-{product_id}-{variant_id or 'none'}-{session_hash}-{uuid.uuid4().hex}"
+            session_hash = (
+                hashlib.md5(request.session.session_key.encode("utf-8")).hexdigest()
+                if request.session.session_key
+                else "nouser"
+            )
+            vid = int(variant_id) if variant_id else 0
+            idempotency_key = f"pi-prod-{product_id}-{vid}-{session_hash}-{_to_cents(total)}"
             
             intent = stripe.PaymentIntent.create(
                 **intent_params,

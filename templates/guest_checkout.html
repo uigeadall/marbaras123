@@ -182,6 +182,18 @@
       {% if coupon_applied %}<div style="color:#0a0; margin-top:6px;">Coupon {{ coupon_applied }} applied.</div>{% endif %}
     </div>
 
+    <div class="marbaras-checkout-hp" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+      <label for="checkout_website_url">Leave blank</label>
+      <input type="text" name="checkout_website_url" id="checkout_website_url" value="" tabindex="-1" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:0.95rem;">
+        <input type="checkbox" id="checkout_human_confirm" name="checkout_human_confirm" value="1" required style="margin-top:3px;">
+        <span>I confirm I am placing a real order (not a bot or automated script).</span>
+      </label>
+    </div>
+
     <button type="submit" class="checkout-btn">Complete Order — ${{ subtotal }}</button>
   </form>
 

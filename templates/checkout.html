@@ -387,12 +387,24 @@
               </div>
 
               <input type="hidden" id="payment_intent_id" name="payment_intent_id">
+
+              <div class="marbaras-checkout-hp" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
+                <label for="checkout_website_url">Leave blank</label>
+                <input type="text" name="checkout_website_url" id="checkout_website_url" value="" tabindex="-1" autocomplete="off">
+              </div>
               
               <!-- Terms and Conditions Checkbox -->
               <div class="form-group" style="margin-top: 12px; margin-bottom: 8px;">
                 <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.9rem; line-height: 1.5;">
                   <input type="checkbox" id="terms_agreed" name="terms_agreed" required style="margin-top: 2px; cursor: pointer; width: 18px; height: 18px; flex-shrink: 0;">
                   <span>I agree to the <a href="{% url 'terms' %}" target="_blank" style="color: #0066cc; text-decoration: underline;">Terms and Conditions</a> and <a href="{% url 'privacy' %}" target="_blank" style="color: #0066cc; text-decoration: underline;">Privacy Policy</a></span>
+                </label>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 8px;">
+                <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.9rem; line-height: 1.5;">
+                  <input type="checkbox" id="checkout_human_confirm" name="checkout_human_confirm" value="1" style="margin-top: 2px; cursor: pointer; width: 18px; height: 18px; flex-shrink: 0;">
+                  <span>I confirm I am placing a real order (not a bot or automated script).</span>
                 </label>
               </div>
               
@@ -2163,6 +2175,16 @@
       // Handle payment method
       window.paymentRequest.on('paymentmethod', async function(ev) {
         try {
+          const termsAp = document.getElementById('terms_agreed');
+          const humanAp = document.getElementById('checkout_human_confirm');
+          if ((termsAp && !termsAp.checked) || (humanAp && !humanAp.checked)) {
+            ev.complete('fail');
+            const ce = document.getElementById('card-errors');
+            if (ce) {
+              ce.textContent = 'Please tick the terms and the “real order” confirmation before using Apple Pay or Google Pay.';
+            }
+            return;
+          }
           console.log('=== Apple Pay / Google Pay Payment Method Received ===');
           console.log('Device:', /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop');
           console.log('Payer Name:', ev.payerName);
@@ -2509,14 +2531,19 @@
     });
     } // End of else block for valid totalAmount
 
-    // Terms and Conditions checkbox handler
+    // Terms + human confirmation: both required to enable Pay
     const termsCheckbox = document.getElementById('terms_agreed');
+    const humanCheckbox = document.getElementById('checkout_human_confirm');
     const submitBtn = document.getElementById('submit-payment-btn');
-    if (termsCheckbox && submitBtn) {
-      termsCheckbox.addEventListener('change', function() {
-        submitBtn.disabled = !this.checked;
-      });
+    function updateCheckoutPayButtonState() {
+      if (!submitBtn) return;
+      const termsOk = !termsCheckbox || termsCheckbox.checked;
+      const humanOk = !humanCheckbox || humanCheckbox.checked;
+      submitBtn.disabled = !(termsOk && humanOk);
     }
+    if (termsCheckbox) termsCheckbox.addEventListener('change', updateCheckoutPayButtonState);
+    if (humanCheckbox) humanCheckbox.addEventListener('change', updateCheckoutPayButtonState);
+    updateCheckoutPayButtonState();
 
     // Form submit handler (always available, regardless of Payment Request)
     const form = document.getElementById('payment-form');
@@ -2528,6 +2555,13 @@
           e.preventDefault();
           document.getElementById('card-errors').textContent = 'Please agree to the Terms and Conditions to proceed.';
           termsAgreed.focus();
+          return;
+        }
+        const humanAgreed = document.getElementById('checkout_human_confirm');
+        if (humanAgreed && !humanAgreed.checked) {
+          e.preventDefault();
+          document.getElementById('card-errors').textContent = 'Please confirm you are placing a real order.';
+          humanAgreed.focus();
           return;
         }
         
