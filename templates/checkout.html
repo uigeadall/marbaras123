@@ -2323,6 +2323,11 @@
 
           // Payment succeeded
           ev.complete('success');
+          {% if initiate_checkout_pixel %}
+          try {
+            document.dispatchEvent(new Event('marbarasCardComplete'));
+          } catch (eMarbarasAp) {}
+          {% endif %}
           console.log('✅ Payment succeeded, filling form...');
           
           // Fill form with payment method details (for order creation)
@@ -2578,6 +2583,11 @@
         }
 
         document.getElementById('payment_intent_id').value = paymentIntent.id;
+        {% if initiate_checkout_pixel %}
+        try {
+          document.dispatchEvent(new Event('marbarasCardComplete'));
+        } catch (eMarbarasCardPay) {}
+        {% endif %}
         form.submit();
       });
     }
@@ -2611,76 +2621,76 @@
 {{ initiate_checkout_pixel|json_script:"marbaras-initiate-checkout-pixel" }}
 <script>
 (function () {
-  function marbarasFireInitiateCheckout() {
+  var needMeta = {% if META_PIXEL_ID %}true{% else %}false{% endif %};
+  var needTt = {% if TIKTOK_PIXEL_ID %}true{% else %}false{% endif %};
+  var metaPixelId = {% if META_PIXEL_ID %}'{{ META_PIXEL_ID|escapejs }}'{% else %}''{% endif %};
+
+  function marbarasReadCheckoutPixelPayload() {
     var el = document.getElementById('marbaras-initiate-checkout-pixel');
-    if (!el) return;
-    var p;
+    if (!el) return null;
     try {
-      p = JSON.parse(el.textContent || '{}');
-    } catch (e) {
-      return;
+      return JSON.parse(el.textContent || '{}');
+    } catch (e0) {
+      return null;
     }
-    if (window.__marbarasInitiateCheckoutSent) return;
-    window.__marbarasInitiateCheckoutSent = true;
-    {% if META_PIXEL_ID %}
-    if (p.meta && typeof fbq === 'function') {
-      fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'InitiateCheckout', p.meta);
-    }
-    {% endif %}
-    {% if TIKTOK_PIXEL_ID %}
-    if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
-      ttq.track('InitiateCheckout', p.tiktok);
-    }
-    {% endif %}
   }
-  {% if not COOKIE_CONSENT_ENABLED %}
-  marbarasFireInitiateCheckout();
-  {% else %}
-  if (window.marbarasMarketingLoaded) {
-    marbarasFireInitiateCheckout();
-  } else {
-    window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
-    window.marbarasMarketingReadyCallbacks.push(marbarasFireInitiateCheckout);
+
+  /**
+   * Fire Meta + TikTok checkout events only when both SDKs are ready (if configured).
+   * Do not set the done-flag until events are actually queued — otherwise a race with
+   * deferred marketing pixels (cookie consent) drops the event permanently.
+   */
+  function marbarasTryFireCheckoutPair(metaEventName, ttEventName) {
+    var p = marbarasReadCheckoutPixelPayload();
+    if (!p) return true;
+    var wantMeta = needMeta && !!p.meta;
+    var wantTt = needTt && !!p.tiktok;
+    if (!wantMeta && !wantTt) return true;
+    if (wantMeta && typeof fbq !== 'function') return false;
+    if (wantTt && (typeof ttq === 'undefined' || !ttq.track)) return false;
+    if (wantMeta) {
+      fbq('trackSingle', metaPixelId, metaEventName, p.meta);
+    }
+    if (wantTt) {
+      ttq.track(ttEventName, p.tiktok);
+    }
+    return true;
   }
-  {% endif %}
-})();
-</script>
-<script>
-(function () {
-  document.addEventListener('marbarasCardComplete', function marbarasOnCardCompleteOnce() {
-    document.removeEventListener('marbarasCardComplete', marbarasOnCardCompleteOnce);
-    function marbarasFireAddPaymentInfo() {
-      if (window.__marbarasAddPaymentInfoSent) return;
-      var el = document.getElementById('marbaras-initiate-checkout-pixel');
-      if (!el) return;
-      var p;
-      try {
-        p = JSON.parse(el.textContent || '{}');
-      } catch (e) {
+
+  function marbarasStartCheckoutPixelRetry(doneKey, metaEventName, ttEventName) {
+    if (window[doneKey]) return;
+    var ticks = 0;
+    var maxTicks = 150;
+    function tick() {
+      if (window[doneKey]) return;
+      if (marbarasTryFireCheckoutPair(metaEventName, ttEventName)) {
+        window[doneKey] = true;
         return;
       }
-      window.__marbarasAddPaymentInfoSent = true;
-      {% if META_PIXEL_ID %}
-      if (p.meta && typeof fbq === 'function') {
-        fbq('trackSingle', '{{ META_PIXEL_ID|escapejs }}', 'AddPaymentInfo', p.meta);
+      ticks += 1;
+      if (ticks < maxTicks) {
+        setTimeout(tick, 80);
+      } else {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('marbaras: ' + metaEventName + ' / ' + ttEventName + ' not sent after retries (pixels or consent).');
+        }
+        window[doneKey] = true;
       }
-      {% endif %}
-      {% if TIKTOK_PIXEL_ID %}
-      if (p.tiktok && typeof ttq !== 'undefined' && ttq.track) {
-        ttq.track('AddPaymentInfo', p.tiktok);
-      }
-      {% endif %}
     }
-    {% if not COOKIE_CONSENT_ENABLED %}
-    marbarasFireAddPaymentInfo();
-    {% else %}
-    if (window.marbarasMarketingLoaded) {
-      marbarasFireAddPaymentInfo();
+    function start() {
+      tick();
+    }
+    if (typeof window.marbarasWhenMarketingAllowed === 'function') {
+      window.marbarasWhenMarketingAllowed(start);
     } else {
-      window.marbarasMarketingReadyCallbacks = window.marbarasMarketingReadyCallbacks || [];
-      window.marbarasMarketingReadyCallbacks.push(marbarasFireAddPaymentInfo);
+      start();
     }
-    {% endif %}
+  }
+
+  marbarasStartCheckoutPixelRetry('__marbarasInitiateCheckoutSent', 'InitiateCheckout', 'InitiateCheckout');
+
+  document.addEventListener('marbarasCardComplete', function () {
+    marbarasStartCheckoutPixelRetry('__marbarasAddPaymentInfoSent', 'AddPaymentInfo', 'AddPaymentInfo');
   });
 })();
 </script>

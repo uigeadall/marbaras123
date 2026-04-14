@@ -76,11 +76,16 @@
     } catch (e) {
       return true;
     }
-    var needMeta = {% if META_PIXEL_ID %}true{% else %}false{% endif %} && !!p.meta;
-    var needTt = {% if TIKTOK_PIXEL_ID %}true{% else %}false{% endif %} && !!p.tiktok;
-    var didSend = false;
+    var wantMeta = {% if META_PIXEL_ID %}true{% else %}false{% endif %} && !!p.meta;
+    var wantTt = {% if TIKTOK_PIXEL_ID %}true{% else %}false{% endif %} && !!p.tiktok;
+    if (!wantMeta && !wantTt) {
+      window.__marbarasPurchasePixelSent = true;
+      return true;
+    }
+    if (wantMeta && typeof fbq !== 'function') return false;
+    if (wantTt && (typeof ttq === 'undefined' || !ttq.track)) return false;
     {% if META_PIXEL_ID %}
-    if (needMeta && typeof fbq === 'function') {
+    if (wantMeta) {
       var pid = '{{ META_PIXEL_ID|escapejs }}';
       var metaOpts = p.meta_event_id ? { eventID: p.meta_event_id } : {};
       if (Object.keys(metaOpts).length) {
@@ -88,40 +93,36 @@
       } else {
         fbq('trackSingle', pid, 'Purchase', p.meta);
       }
-      didSend = true;
     }
     {% endif %}
     {% if TIKTOK_PIXEL_ID %}
-    if (needTt && typeof ttq !== 'undefined' && ttq.track) {
+    if (wantTt) {
       var ttOpts = p.tiktok_event_id ? { event_id: p.tiktok_event_id } : {};
       if (Object.keys(ttOpts).length) {
         ttq.track('CompletePayment', p.tiktok, ttOpts);
       } else {
         ttq.track('CompletePayment', p.tiktok);
       }
-      didSend = true;
     }
     {% endif %}
-    if (didSend) {
-      window.__marbarasPurchasePixelSent = true;
-      return true;
-    }
-    if (!needMeta && !needTt) {
-      window.__marbarasPurchasePixelSent = true;
-      return true;
-    }
-    return false;
+    window.__marbarasPurchasePixelSent = true;
+    return true;
   }
 
   function marbarasSchedulePurchasePixels() {
-    var maxTicks = 100;
+    var maxTicks = 150;
     var n = 0;
     function tick() {
       if (window.__marbarasPurchasePixelSent) return;
       if (marbarasFirePurchase()) return;
       n += 1;
       if (n < maxTicks) {
-        setTimeout(tick, 100);
+        setTimeout(tick, 80);
+      } else {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('marbaras: Purchase / CompletePayment not sent after retries.');
+        }
+        window.__marbarasPurchasePixelSent = true;
       }
     }
     tick();
