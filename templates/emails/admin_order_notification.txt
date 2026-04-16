@@ -27,7 +27,7 @@ ORDER ITEMS
 
 {% for item in items %}
 {{ item.quantity }}x {{ item.product.name }}{% if item.variant %} (Size: {{ item.variant.size }}){% endif %}
-   ${{ item.product.get_discounted_price|floatformat:2 }} each = ${{ item.product.get_discounted_price|floatformat:2|multiply:item.quantity|floatformat:2 }}
+   {{ item.quantity }} × ${{ item.product.get_discounted_price|floatformat:2 }} each
 
 {% endfor %}
 

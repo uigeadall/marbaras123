@@ -1,4 +1,4 @@
-Hello, {{ order.full_name|default:order.user.username }},
+Hello, {% if order.full_name %}{{ order.full_name }}{% elif order.user %}{{ order.user.username }}{% else %}Customer{% endif %},
 
 Thank you for your order! Your order #{{ order.id }} has been received and is being processed.
 

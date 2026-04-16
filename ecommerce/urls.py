@@ -25,6 +25,7 @@ urlpatterns = [
     path('category/<slug:slug>/', views.products_by_category, name='products_by_category'),
     path('success/', views.payment_success, name='success'),
     path('webhook/', views.stripe_webhook, name='stripe_webhook'),
+    path('stripe/webhook/', views.stripe_webhook, name='stripe_webhook_stripe_path'),
     path('toggle-favorite/<int:pk>/', views.toggle_favorite, name='toggle_favorite'),
     path('cart/update/<int:pk>/', views.update_cart_quantity, name='update_cart_quantity'),
     path('order-success/', views.order_success, name='order_success'),
