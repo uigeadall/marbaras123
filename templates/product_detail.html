@@ -2404,33 +2404,73 @@
           confirmParams.receipt_email = ev.payerEmail;
         }
         
-        // Create new PaymentIntent with correct total amount
-        const response = await fetch('{% url "create_order_from_product" %}', {
+        const orderPayload = {
+          product_id: {{ product.pk }},
+          variant_id: variantId || null,
+          quantity: quantity,
+          payment_method_id: ev.paymentMethod.id,
+          payer_name: ev.payerName,
+          payer_email: ev.payerEmail,
+          payer_phone: ev.payerPhone,
+          shipping_address: shippingAddr ? {
+            addressLine: shippingAddr.addressLine,
+            city: shippingAddr.city,
+            postalCode: shippingAddr.postalCode,
+            country: shippingAddr.country,
+            region: shippingAddr.region,
+          } : null
+        };
+
+        let response = await fetch('{% url "create_order_from_product" %}', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRFToken': '{{ csrf_token }}'
           },
-          body: JSON.stringify({
-            product_id: {{ product.pk }},
-            variant_id: variantId || null,
-            quantity: quantity,
-            payment_method_id: ev.paymentMethod.id,
-            payer_name: ev.payerName,
-            payer_email: ev.payerEmail,
-            payer_phone: ev.payerPhone,
-            shipping_address: shippingAddr ? {
-              addressLine: shippingAddr.addressLine,
-              city: shippingAddr.city,
-              postalCode: shippingAddr.postalCode,
-              country: shippingAddr.country,
-              region: shippingAddr.region,
-            } : null
-          }),
+          body: JSON.stringify(orderPayload),
           credentials: 'same-origin'
         });
-        
-        const result = await response.json();
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseErr) {
+          console.error('Invalid server response', parseErr);
+          ev.complete('fail');
+          alert('Server error. Please try again.');
+          return;
+        }
+
+        if (result.requires_action && result.client_secret) {
+          const { error: actionErr, paymentIntent: piAfter } = await stripe.confirmCardPayment(result.client_secret);
+          if (actionErr || !piAfter || piAfter.status !== 'succeeded') {
+            console.error('3DS / action failed:', actionErr);
+            ev.complete('fail');
+            alert((actionErr && actionErr.message) || 'Payment authentication failed.');
+            return;
+          }
+          const finalizePayload = Object.assign({}, orderPayload, {
+            completed_payment_intent_id: piAfter.id
+          });
+          delete finalizePayload.payment_method_id;
+          response = await fetch('{% url "create_order_from_product" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(finalizePayload),
+            credentials: 'same-origin'
+          });
+          try {
+            result = await response.json();
+          } catch (parseErr2) {
+            console.error('Invalid server response (finalize)', parseErr2);
+            ev.complete('fail');
+            alert('Server error after payment. Contact support with your receipt.');
+            return;
+          }
+        }
         
         if (result.success) {
           console.log('✅ Order created successfully:', result.order_id);

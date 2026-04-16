@@ -2604,11 +2604,82 @@ def payment_success(request: HttpRequest) -> HttpResponse:
     return render(request, "payment_success.html")
 
 
+def _json_order_success_redirect(order: Order) -> JsonResponse:
+    ok_path = f"{reverse('order_success')}?{urlencode({'o': _order_success_query_token(order.pk)})}"
+    return JsonResponse(
+        {
+            "success": True,
+            "order_id": order.id,
+            "redirect_url": ok_path,
+        }
+    )
+
+
+def _product_quick_checkout_build_order(
+    request: HttpRequest,
+    *,
+    product: Product,
+    variant: Optional[ProductVariant],
+    quantity: int,
+    payer_name: str,
+    payer_email: str,
+    payer_phone: str,
+    shipping_address: dict,
+    total: Decimal,
+    country: str,
+    shipping_option: Optional[ShippingOption],
+    currency: str,
+) -> Order:
+    with transaction.atomic():
+        order = Order.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            email=payer_email,
+            full_name=payer_name,
+            address=", ".join(shipping_address.get("addressLine", []))
+            if shipping_address.get("addressLine")
+            else "",
+            city=shipping_address.get("city", ""),
+            postal_code=shipping_address.get("postalCode", ""),
+            phone=payer_phone,
+            country=country,
+            shipping_option=shipping_option,
+            total_price=total,
+            currency=currency,
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            variant=variant,
+            quantity=quantity,
+        )
+        owner = _owner_filter(request)
+        CartItem.objects.filter(**owner, product=product, variant=variant).delete()
+    return order
+
+
+_PI_ORDER_CACHE_PREFIX = "marbaras_order_pi:"
+_PI_FINALIZE_LOCK_PREFIX = "marbaras_pi_finalize_lock:"
+
+
+def _cached_order_response_for_pi(payment_intent_id: str) -> Optional[JsonResponse]:
+    oid = cache.get(f"{_PI_ORDER_CACHE_PREFIX}{payment_intent_id}")
+    if not oid:
+        return None
+    order = Order.objects.filter(pk=oid).first()
+    if not order:
+        return None
+    return _json_order_success_redirect(order)
+
+
+def _remember_pi_order_mapping(payment_intent_id: str, order_id: int) -> None:
+    cache.set(f"{_PI_ORDER_CACHE_PREFIX}{payment_intent_id}", order_id, 86400 * 30)
+
+
 @require_http_methods(["POST"])
 def create_order_from_product(request: HttpRequest) -> HttpResponse:
-    """Create order directly from product detail page with Apple Pay."""
+    """Create order directly from product detail page with Apple Pay / Google Pay."""
     import json
-    
+
     try:
         data = json.loads(request.body)
         _ensure_session(request)
@@ -2620,165 +2691,249 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 },
                 status=429,
             )
-        product_id = data.get('product_id')
-        variant_id = data.get('variant_id')
+        product_id = data.get("product_id")
+        variant_id = data.get("variant_id")
         try:
-            quantity = max(1, int(data.get('quantity', 1)))
+            quantity = max(1, int(data.get("quantity", 1)))
         except (TypeError, ValueError):
             quantity = 1
-        payment_method_id = data.get('payment_method_id')
-        
-        # Customer data from Apple Pay
-        payer_name = data.get('payer_name', '').strip()
-        payer_email = data.get('payer_email', '').strip()
-        payer_phone = data.get('payer_phone', '').strip()
-        shipping_address = data.get('shipping_address', {})
-        
-        # Validate required fields
-        if not all([product_id, payment_method_id, payer_name, payer_email, payer_phone]):
-            return JsonResponse({'success': False, 'error': 'Missing required fields'}, status=400)
+        payment_method_id = (data.get("payment_method_id") or "").strip()
+        completed_pi_id = (data.get("completed_payment_intent_id") or "").strip()
+
+        payer_name = data.get("payer_name", "").strip()
+        payer_email = data.get("payer_email", "").strip()
+        payer_phone = data.get("payer_phone", "").strip()
+        shipping_address = data.get("shipping_address") or {}
+
+        if completed_pi_id:
+            if not all([product_id, payer_name, payer_email, payer_phone]):
+                return JsonResponse(
+                    {"success": False, "error": "Missing required fields"},
+                    status=400,
+                )
+        else:
+            if not all(
+                [product_id, payment_method_id, payer_name, payer_email, payer_phone]
+            ):
+                return JsonResponse(
+                    {"success": False, "error": "Missing required fields"},
+                    status=400,
+                )
         try:
             validate_email(payer_email)
         except ValidationError:
-            return JsonResponse({'success': False, 'error': 'Invalid email address'}, status=400)
-        
-        # Get product
+            return JsonResponse(
+                {"success": False, "error": "Invalid email address"},
+                status=400,
+            )
+
         product = get_object_or_404(Product, pk=product_id)
-        
-        # Get variant if specified
+
         variant = None
         if variant_id:
             try:
                 variant = ProductVariant.objects.get(id=variant_id, product=product)
             except ProductVariant.DoesNotExist:
-                return JsonResponse({'success': False, 'error': 'Invalid variant'}, status=400)
-        
-        # Validate stock
+                return JsonResponse({"success": False, "error": "Invalid variant"}, status=400)
+
         available = _available_stock(product, variant_id=variant_id if variant else None)
         if available != UNLIMITED_STOCK and quantity > available:
-            return JsonResponse({'success': False, 'error': f'Only {available} available'}, status=400)
-        
-        # Calculate prices
+            return JsonResponse(
+                {"success": False, "error": f"Only {available} available"},
+                status=400,
+            )
+
         product_price = product.get_discounted_price()
         subtotal = product_price * quantity
-        
-        # Calculate shipping
-        country_raw = (shipping_address.get('country') or '').strip()
+
+        country_raw = (shipping_address.get("country") or "").strip()
         country = _normalize_checkout_country(country_raw)
         if not country:
             return JsonResponse(
-                {'success': False, 'error': 'We do not ship to this country or the address is incomplete.'},
+                {
+                    "success": False,
+                    "error": "We do not ship to this country or the address is incomplete.",
+                },
                 status=400,
             )
 
         _ensure_default_shipping_options()
 
-        # Determine shipping cost
         shipping_cost = Decimal("0.00")
         shipping_option = None
         if country in ["Canada", "Australia", "New Zealand", "Norway"]:
-            standard_shipping = ShippingOption.objects.filter(price=Decimal("5.99")).first()
+            standard_shipping = ShippingOption.objects.filter(
+                price=Decimal("5.99")
+            ).first()
             if standard_shipping:
                 shipping_option = standard_shipping
                 shipping_cost = standard_shipping.price
             else:
                 shipping_cost = Decimal("5.99")
-        
+
         total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
-        
-        # Create PaymentIntent with payment method attached
+        expected_minor = int(_to_cents(total))
+        want_cur = _stripe_checkout_currency()
+
+        cached = _cached_order_response_for_pi(completed_pi_id) if completed_pi_id else None
+        if cached:
+            return cached
+
+        if completed_pi_id:
+            lock_key = f"{_PI_FINALIZE_LOCK_PREFIX}{completed_pi_id}"
+            if not cache.add(lock_key, 1, timeout=120):
+                for _ in range(60):
+                    time.sleep(0.05)
+                    again = _cached_order_response_for_pi(completed_pi_id)
+                    if again:
+                        return again
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Order is being created. Please wait a moment and try again.",
+                    },
+                    status=409,
+                )
+            try:
+                try:
+                    pi_done = stripe.PaymentIntent.retrieve(completed_pi_id)
+                except stripe_error.StripeError as e:
+                    return JsonResponse(
+                        {"success": False, "error": str(e)},
+                        status=400,
+                    )
+                if (pi_done.currency or "").lower() != want_cur:
+                    return JsonResponse(
+                        {"success": False, "error": "Currency mismatch"},
+                        status=400,
+                    )
+                if pi_done.status != "succeeded":
+                    return JsonResponse(
+                        {
+                            "success": False,
+                            "error": f"Payment not completed ({pi_done.status})",
+                        },
+                        status=400,
+                    )
+                if int(pi_done.amount or 0) != expected_minor:
+                    return JsonResponse(
+                        {"success": False, "error": "Payment amount does not match order"},
+                        status=400,
+                    )
+
+                currency = (
+                    getattr(pi_done, "currency", "").upper()
+                    or data.get("currency", "").upper()
+                    or _get_currency_from_request(request)
+                )
+                order = _product_quick_checkout_build_order(
+                    request,
+                    product=product,
+                    variant=variant,
+                    quantity=quantity,
+                    payer_name=payer_name,
+                    payer_email=payer_email,
+                    payer_phone=payer_phone,
+                    shipping_address=shipping_address,
+                    total=total,
+                    country=country,
+                    shipping_option=shipping_option,
+                    currency=currency,
+                )
+                _remember_pi_order_mapping(completed_pi_id, order.pk)
+                _notify_order_confirmed(request, order)
+                _finalize_checkout_purchase_tracking(request, order)
+                return _json_order_success_redirect(order)
+            finally:
+                cache.delete(lock_key)
+
         try:
-            # Create PaymentIntent with payment method
             intent_params = {
-                'amount': int(_to_cents(total)),
-                'currency': _stripe_checkout_currency(),
-                'payment_method': payment_method_id,
-                'automatic_payment_methods': {
-                    'enabled': True,
-                    'allow_redirects': 'never'
+                "amount": expected_minor,
+                "currency": want_cur,
+                "payment_method": payment_method_id,
+                "automatic_payment_methods": {
+                    "enabled": True,
+                    "allow_redirects": "never",
                 },
-                'confirm': True,
+                "confirm": True,
             }
             if payer_email:
-                intent_params['receipt_email'] = payer_email
-            
+                intent_params["receipt_email"] = payer_email
+
             session_hash = (
                 hashlib.md5(request.session.session_key.encode("utf-8")).hexdigest()
                 if request.session.session_key
                 else "nouser"
             )
             vid = int(variant_id) if variant_id else 0
-            # Idempotency must include payment_method_id: same session+total but a new Apple/Google Pay
-            # tap sends a different PM — Stripe rejects reuse of the key with different body params.
-            pm_key = hashlib.sha256((payment_method_id or "").encode("utf-8")).hexdigest()[:24]
-            idempotency_key = f"pi-prod-{product_id}-{vid}-{session_hash}-{_to_cents(total)}-{pm_key}"
-            
+            pm_key = hashlib.sha256(
+                (payment_method_id or "").encode("utf-8")
+            ).hexdigest()[:24]
+            idempotency_key = (
+                f"pi-prod-{product_id}-{vid}-{session_hash}-{expected_minor}-{pm_key}"
+            )
+
             intent = stripe.PaymentIntent.create(
                 **intent_params,
-                idempotency_key=idempotency_key
+                idempotency_key=idempotency_key,
             )
-            
-            # Handle 3D Secure if needed
-            if intent.status == 'requires_action':
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Payment requires authentication',
-                    'requires_action': True,
-                    'client_secret': intent.client_secret
-                }, status=400)
-            
-            if intent.status != 'succeeded':
-                return JsonResponse({'success': False, 'error': f'Payment status: {intent.status}'}, status=400)
-                
-        except stripe_error.StripeError as e:
-            logger.error(f"Stripe payment error: {e}")
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
-        
-        # Create order
-        with transaction.atomic():
-            # Get currency from intent or request (default to EUR)
-            currency = getattr(intent, 'currency', '').upper() or data.get('currency', '').upper() or _get_currency_from_request(request)
-            
-            order = Order.objects.create(
-                user=request.user if request.user.is_authenticated else None,
-                email=payer_email,
-                full_name=payer_name,
-                address=', '.join(shipping_address.get('addressLine', [])) if shipping_address.get('addressLine') else '',
-                city=shipping_address.get('city', ''),
-                postal_code=shipping_address.get('postalCode', ''),
-                phone=payer_phone,
-                country=country,
-                shipping_option=shipping_option,
-                total_price=total,
-                currency=currency,
-            )
-            
-            OrderItem.objects.create(
-                order=order,
-                product=product,
-                variant=variant,
-                quantity=quantity
-            )
-            
-            # Clear cart items for this product (if any)
-            owner = _owner_filter(request)
-            CartItem.objects.filter(**owner, product=product, variant=variant).delete()
 
+            if intent.status == "requires_action":
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "requires_action": True,
+                        "client_secret": intent.client_secret,
+                    }
+                )
+
+            if intent.status != "succeeded":
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": f"Payment status: {intent.status}",
+                    },
+                    status=400,
+                )
+
+        except stripe_error.StripeError as e:
+            logger.error("Stripe payment error: %s", e)
+            return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+        dup = _cached_order_response_for_pi(intent.id)
+        if dup:
+            return dup
+
+        currency = (
+            getattr(intent, "currency", "").upper()
+            or data.get("currency", "").upper()
+            or _get_currency_from_request(request)
+        )
+        order = _product_quick_checkout_build_order(
+            request,
+            product=product,
+            variant=variant,
+            quantity=quantity,
+            payer_name=payer_name,
+            payer_email=payer_email,
+            payer_phone=payer_phone,
+            shipping_address=shipping_address,
+            total=total,
+            country=country,
+            shipping_option=shipping_option,
+            currency=currency,
+        )
+        _remember_pi_order_mapping(intent.id, order.pk)
         _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
+        return _json_order_success_redirect(order)
 
-        ok_path = f"{reverse('order_success')}?{urlencode({'o': _order_success_query_token(order.pk)})}"
-        return JsonResponse({
-            'success': True,
-            'order_id': order.id,
-            'redirect_url': ok_path,
-        })
-        
     except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        return JsonResponse({"success": False, "error": "Invalid JSON"}, status=400)
     except Exception as e:
-        logger.error(f"Error creating order from product: {e}", exc_info=True)
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        logger.error("Error creating order from product: %s", e, exc_info=True)
+        return JsonResponse({"success": False, "error": str(e)}, status=500)
 
 
 def notify(request: HttpRequest, level: int, msg: str) -> HttpResponse:
