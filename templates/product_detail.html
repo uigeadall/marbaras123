@@ -1014,13 +1014,7 @@
               {% if filtered_variants|length > 0 %}
                 <div class="variant-wrap">
                   <span class="variant-label">
-                    {% if has_zodiac_variants %}
-                      Select Zodiac Sign
-                    {% elif has_earring_hoop_variants %}
-                      Select Hoop Size
-                    {% else %}
-                      Select size
-                    {% endif %}
+                    Select option first
                   </span>
                   <div id="sizeGrid" class="size-grid{% if has_zodiac_variants %} zodiac-grid{% endif %}" role="radiogroup" aria-label="{% if has_zodiac_variants %}Zodiac signs{% elif has_earring_hoop_variants %}Earring hoop sizes{% else %}Ring sizes{% endif %}">
                     {% for v in filtered_variants %}
@@ -1138,7 +1132,7 @@
                       </button>
                       <div id="sizeWarning" class="inline-warning" aria-live="polite"></div>
                       {% if product.variants.count %}
-                      <div id="addToCartTooltip" class="add-to-cart-tooltip">You must choose size first</div>
+                      <div id="addToCartTooltip" class="add-to-cart-tooltip">Please select an option first</div>
                       {% endif %}
                     </div>
                   </form>
@@ -1150,7 +1144,7 @@
               <div id="product-payment-section" style="width: 100%; margin-top: 20px; clear: both;">
                 {% if product.variants.count %}
                 <div id="product-payment-size-warning" style="display: block; text-align: center; color: #b91c1c; font-size: 0.9em; padding: 8px; margin-bottom: 8px; background: #fee2e2; border-radius: 6px;">
-                  ⚠️ Please select a size first
+                  ⚠️ Please select an option first
                 </div>
                 {% endif %}
                 <div id="product-payment-request-button-container" style="min-height: 48px; width: 100%; {% if product.variants.count %}opacity: 0.5; pointer-events: none;{% endif %}">
@@ -1701,7 +1695,7 @@
 
     function showWarning(msg) {
       if (!warning) return;
-      warning.textContent = msg || '⚠️ Please select a size';
+      warning.textContent = msg || '⚠️ Please select an option first';
       warning.classList.add('show');
     }
     function hideWarning() {
@@ -1875,7 +1869,7 @@
     addToCartForm?.addEventListener('submit', function(e){
       if (hasVariants && !hidden.value) {
         e.preventDefault();
-        showWarning('⚠️ Please select a size');
+        showWarning('⚠️ Please select an option first');
         if (tooltip) tooltip.classList.remove('show');
         grid?.focus?.();
         return;
@@ -2354,7 +2348,7 @@
         if (!selectedVariantId) {
           console.error('❌ Product Detail - Size not selected for ring product');
           ev.complete('fail');
-          alert('Please select a size first before completing payment.');
+          alert('Please select an option first before completing payment.');
           return;
         }
         console.log('✅ Product Detail - Size selected:', selectedVariantId);
@@ -2549,7 +2543,7 @@
       const hasVariants = {{ product.variants.count|default:0 }} > 0;
       if (hasVariants) {
         if (!variantInput || !variantInput.value) {
-          alert('Please select a size first before completing payment.');
+          alert('Please select an option first before completing payment.');
           // Show warning message
           const paymentWarning = document.getElementById('product-payment-size-warning');
           if (paymentWarning) {
