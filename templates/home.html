@@ -89,6 +89,40 @@
     content-visibility: auto;
   }
 
+  /* Customer reviews: horizontal carousel (same idea as “recently viewed” on product page) */
+  .reviews-carousel-wrap {
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+  .reviews-carousel-container {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding: 0.35rem 0 0.75rem;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .reviews-carousel-container::-webkit-scrollbar {
+    height: 6px;
+  }
+  .reviews-carousel-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+  }
+  .reviews-carousel-item {
+    flex: 0 0 min(300px, 88vw);
+    scroll-snap-align: start;
+    min-height: 100%;
+  }
+  @media (prefers-color-scheme: dark) {
+    .reviews-carousel-container::-webkit-scrollbar-thumb {
+      background: #475569;
+    }
+  }
+
   /* Banner Carousel Styles */
   .banner-carousel {
     position: relative;
@@ -578,30 +612,41 @@
         </div>
         {% endif %}
 
-        {# ======= Customer reviews (same grid style as blogs; no detail link) ======= #}
+        {# ======= Customer reviews: horizontal carousel + star rating (admin) ======= #}
         {% if customer_reviews %}
         <div class="mt-12">
           <h3 class="section-title"><span>What our customers say</span></h3>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {% for r in customer_reviews %}
-            <article class="rounded-2xl bg-white shadow-sm overflow-hidden hover:shadow-card transition flex flex-col h-full">
-              {% if r.image %}
-                <div class="w-full aspect-video overflow-hidden bg-slate-100 shrink-0">
-                  <img src="{{ r.image.url }}" alt="Customer photo — {{ r.customer_name }}"
-                       class="w-full h-full object-cover"
-                       loading="lazy" decoding="async">
+          <div class="reviews-carousel-wrap">
+            <div class="reviews-carousel-container" role="region" aria-label="Customer reviews carousel">
+              {% for r in customer_reviews %}
+              <article class="reviews-carousel-item rounded-2xl bg-white shadow-sm overflow-hidden hover:shadow-card transition flex flex-col h-full border border-slate-100/80">
+                {% if r.image %}
+                  <div class="w-full aspect-video overflow-hidden bg-slate-100 shrink-0">
+                    <img src="{{ r.image.url }}" alt="Customer photo — {{ r.customer_name }}"
+                         class="w-full h-full object-cover"
+                         loading="lazy" decoding="async">
+                  </div>
+                {% endif %}
+                <div class="p-5 flex flex-col flex-1">
+                  <div class="flex gap-0.5 mb-3 text-amber-500 leading-none" role="img" aria-label="Rating: {{ r.rating }} out of 5 stars">
+                    {% for _ in "12345" %}
+                      {% if forloop.counter <= r.rating %}
+                        <span class="text-base" aria-hidden="true">★</span>
+                      {% else %}
+                        <span class="text-base text-slate-300" aria-hidden="true">★</span>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                  <p class="text-sm text-slate-700 leading-relaxed flex-1 mb-4">{{ r.review|linebreaksbr }}</p>
+                  <div class="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span class="text-sm font-extrabold text-slate-900">{{ r.customer_name }}</span>
+                    <span class="text-xs text-slate-500 whitespace-nowrap">{{ r.created_at|date:"M j, Y" }}</span>
+                  </div>
                 </div>
-              {% endif %}
-              <div class="p-6 flex flex-col flex-1">
-                <p class="text-sm text-slate-700 leading-relaxed flex-1 mb-4">{{ r.review|linebreaksbr }}</p>
-                <div class="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <span class="text-sm font-extrabold text-slate-900">{{ r.customer_name }}</span>
-                  <span class="text-xs text-slate-500 whitespace-nowrap">{{ r.created_at|date:"M j, Y" }}</span>
-                </div>
-              </div>
-            </article>
-            {% endfor %}
+              </article>
+              {% endfor %}
+            </div>
           </div>
         </div>
         {% endif %}

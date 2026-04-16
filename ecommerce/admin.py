@@ -755,6 +755,7 @@ class BlogPostAdmin(admin.ModelAdmin):
 class CustomerReviewAdmin(admin.ModelAdmin):
     list_display = (
         "customer_name",
+        "rating",
         "order",
         "is_published",
         "has_image",
@@ -771,6 +772,7 @@ class CustomerReviewAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "customer_name",
+                    "rating",
                     "review",
                     "image",
                     "order",
