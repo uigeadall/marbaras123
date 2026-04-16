@@ -4,6 +4,7 @@ import logging
 import time
 import uuid
 import hashlib
+from urllib.parse import urlencode
 from decimal import Decimal, ROUND_HALF_UP
 from types import SimpleNamespace
 from typing import Iterable, Optional
@@ -31,11 +32,13 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie, csrf_protect
 from django.middleware.csrf import get_token
@@ -1805,6 +1808,31 @@ def _finalize_checkout_purchase_tracking(request: HttpRequest, order: Order) -> 
         logger.warning("schedule_purchase_capi failed", exc_info=True)
 
 
+_ORDER_SUCCESS_TOKEN_SALT = "marbaras-order-success"
+_ORDER_SUCCESS_TOKEN_MAX_AGE = 60 * 60 * 24 * 14  # 14 days
+
+
+def _order_success_query_token(order_id: int) -> str:
+    return TimestampSigner(salt=_ORDER_SUCCESS_TOKEN_SALT).sign(str(order_id))
+
+
+def _order_id_from_success_token(request: HttpRequest) -> Optional[int]:
+    raw = (request.GET.get("o") or "").strip()
+    if not raw:
+        return None
+    try:
+        signer = TimestampSigner(salt=_ORDER_SUCCESS_TOKEN_SALT)
+        oid_str = signer.unsign(raw, max_age=_ORDER_SUCCESS_TOKEN_MAX_AGE)
+        return int(oid_str)
+    except (BadSignature, SignatureExpired, ValueError):
+        return None
+
+
+def _redirect_order_success(order: Order) -> HttpResponse:
+    q = urlencode({"o": _order_success_query_token(order.pk)})
+    return redirect(f"{reverse('order_success')}?{q}")
+
+
 def _notify_order_confirmed(request: HttpRequest, order: Order) -> None:
     """
     Send buyer order confirmation email after the checkout DB transaction has committed.
@@ -2263,7 +2291,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
         _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
 
-        return redirect("order_success")
+        return _redirect_order_success(order)
 
     if not _checkout_payment_intent_rate_allow(request):
         messages.error(
@@ -2486,7 +2514,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
         _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
 
-        return redirect("order_success")
+        return _redirect_order_success(order)
 
     _ensure_default_shipping_options()
     initiate_checkout_pixel = None
@@ -2739,10 +2767,11 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
 
+        ok_path = f"{reverse('order_success')}?{urlencode({'o': _order_success_query_token(order.pk)})}"
         return JsonResponse({
             'success': True,
             'order_id': order.id,
-            'redirect_url': '/order-success/'
+            'redirect_url': ok_path,
         })
         
     except json.JSONDecodeError:
@@ -3172,6 +3201,29 @@ Sitemap: {base_url}/sitemap.xml
 
 def order_success(request: HttpRequest) -> HttpResponse:
     purchase_pixel = request.session.pop("marbaras_purchase_pixel", None)
+    if purchase_pixel is None:
+        oid = _order_id_from_success_token(request)
+        if oid:
+            order = (
+                Order.objects.filter(pk=oid)
+                .prefetch_related(
+                    Prefetch(
+                        "items",
+                        queryset=OrderItem.objects.select_related("product", "variant"),
+                    )
+                )
+                .first()
+            )
+            if order:
+                try:
+                    purchase_pixel = _purchase_pixel_payload_from_order(order)
+                except Exception:
+                    logger.warning(
+                        "order_success purchase_pixel fallback failed oid=%s",
+                        oid,
+                        exc_info=True,
+                    )
+                    purchase_pixel = None
     return render(
         request,
         "order_success.html",

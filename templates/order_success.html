@@ -129,10 +129,22 @@
   }
 
   function marbarasStartPurchasePixels() {
-    if (typeof window.marbarasWhenMarketingAllowed === 'function') {
-      window.marbarasWhenMarketingAllowed(marbarasSchedulePurchasePixels);
-    } else {
+    function runSchedule() {
       marbarasSchedulePurchasePixels();
+    }
+    if (typeof window.marbarasWhenMarketingAllowed === 'function') {
+      window.marbarasWhenMarketingAllowed(runSchedule);
+    } else {
+      runSchedule();
+    }
+    if (typeof window.marbarasLoadMarketingPixels === 'function') {
+      try {
+        window.marbarasLoadMarketingPixels();
+      } catch (ePx) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('marbaras: loadMarketingPixels on thank-you', ePx);
+        }
+      }
     }
   }
   marbarasStartPurchasePixels();
