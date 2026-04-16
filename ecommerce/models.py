@@ -845,6 +845,14 @@ class CustomerReview(models.Model):
         validators=[MinValueValidator(1), MaxValueValidator(5)],
         help_text="Star rating from 1 to 5 (shown with the review on the home page).",
     )
+    related_product = models.ForeignKey(
+        "Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_reviews",
+        help_text="Optional: product thumbnail and Purchased link (Etsy-style card).",
+    )
     review = models.TextField(help_text="Review text shown on the home page.")
     image = models.ImageField(
         upload_to="reviews/",

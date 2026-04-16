@@ -756,6 +756,7 @@ class CustomerReviewAdmin(admin.ModelAdmin):
     list_display = (
         "customer_name",
         "rating",
+        "related_product",
         "order",
         "is_published",
         "has_image",
@@ -766,6 +767,7 @@ class CustomerReviewAdmin(admin.ModelAdmin):
     list_editable = ("order", "is_published")
     search_fields = ("customer_name", "review")
     ordering = ("order", "-created_at")
+    autocomplete_fields = ("related_product",)
     fieldsets = (
         (
             None,
@@ -774,6 +776,7 @@ class CustomerReviewAdmin(admin.ModelAdmin):
                     "customer_name",
                     "rating",
                     "review",
+                    "related_product",
                     "image",
                     "order",
                     "is_published",

@@ -89,7 +89,10 @@
     content-visibility: auto;
   }
 
-  /* Customer reviews: horizontal carousel (same idea as “recently viewed” on product page) */
+  /* Customer reviews: Etsy-style horizontal carousel + arrow controls */
+  .reviews-carousel-outer {
+    position: relative;
+  }
   .reviews-carousel-wrap {
     margin-left: -0.25rem;
     margin-right: -0.25rem;
@@ -100,7 +103,7 @@
     display: flex;
     gap: 1rem;
     overflow-x: auto;
-    padding: 0.35rem 0 0.75rem;
+    padding: 0.35rem 2.25rem 0.75rem;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
@@ -113,13 +116,58 @@
     border-radius: 3px;
   }
   .reviews-carousel-item {
-    flex: 0 0 min(300px, 88vw);
+    flex: 0 0 min(340px, 90vw);
     scroll-snap-align: start;
     min-height: 100%;
+  }
+  .reviews-carousel-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f172a;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .reviews-carousel-nav:hover {
+    background: #f8fafc;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.12);
+  }
+  .reviews-carousel-nav:focus-visible {
+    outline: 2px solid #0f172a;
+    outline-offset: 2px;
+  }
+  .reviews-carousel-nav--prev { left: 0; }
+  .reviews-carousel-nav--next { right: 0; }
+  @media (max-width: 640px) {
+    .reviews-carousel-container {
+      padding-left: 0.25rem;
+      padding-right: 0.25rem;
+    }
+    .reviews-carousel-nav--prev { left: -4px; }
+    .reviews-carousel-nav--next { right: -4px; }
   }
   @media (prefers-color-scheme: dark) {
     .reviews-carousel-container::-webkit-scrollbar-thumb {
       background: #475569;
+    }
+    .reviews-carousel-nav {
+      background: #1e293b;
+      border-color: #334155;
+      color: #f8fafc;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+    .reviews-carousel-nav:hover {
+      background: #334155;
     }
   }
 
@@ -612,40 +660,36 @@
         </div>
         {% endif %}
 
-        {# ======= Customer reviews: horizontal carousel + star rating (admin) ======= #}
+        {# ======= Customer reviews: Etsy-style cards + carousel + Show all ======= #}
         {% if customer_reviews %}
         <div class="mt-12">
-          <h3 class="section-title"><span>What our customers say</span></h3>
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+              All reviews <span class="text-slate-500 font-semibold">({{ customer_reviews_count }})</span>
+            </h3>
+            {% if customer_reviews_count %}
+            <a href="{% url 'customer_reviews' %}"
+               class="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold text-slate-900 border border-slate-900/85 hover:bg-slate-50 transition">
+              Show all
+            </a>
+            {% endif %}
+          </div>
 
-          <div class="reviews-carousel-wrap">
-            <div class="reviews-carousel-container" role="region" aria-label="Customer reviews carousel">
-              {% for r in customer_reviews %}
-              <article class="reviews-carousel-item rounded-2xl bg-white shadow-sm overflow-hidden hover:shadow-card transition flex flex-col h-full border border-slate-100/80">
-                {% if r.image %}
-                  <div class="w-full aspect-video overflow-hidden bg-slate-100 shrink-0">
-                    <img src="{{ r.image.url }}" alt="Customer photo — {{ r.customer_name }}"
-                         class="w-full h-full object-cover"
-                         loading="lazy" decoding="async">
-                  </div>
-                {% endif %}
-                <div class="p-5 flex flex-col flex-1">
-                  <div class="flex gap-0.5 mb-3 text-amber-500 leading-none" role="img" aria-label="Rating: {{ r.rating }} out of 5 stars">
-                    {% for _ in "12345" %}
-                      {% if forloop.counter <= r.rating %}
-                        <span class="text-base" aria-hidden="true">★</span>
-                      {% else %}
-                        <span class="text-base text-slate-300" aria-hidden="true">★</span>
-                      {% endif %}
-                    {% endfor %}
-                  </div>
-                  <p class="text-sm text-slate-700 leading-relaxed flex-1 mb-4">{{ r.review|linebreaksbr }}</p>
-                  <div class="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <span class="text-sm font-extrabold text-slate-900">{{ r.customer_name }}</span>
-                    <span class="text-xs text-slate-500 whitespace-nowrap">{{ r.created_at|date:"M j, Y" }}</span>
-                  </div>
-                </div>
-              </article>
-              {% endfor %}
+          <div class="reviews-carousel-outer">
+            {% if customer_reviews|length > 1 %}
+            <button type="button" class="reviews-carousel-nav reviews-carousel-nav--prev" data-reviews-prev aria-label="Previous reviews">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <button type="button" class="reviews-carousel-nav reviews-carousel-nav--next" data-reviews-next aria-label="Next reviews">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+            {% endif %}
+            <div class="reviews-carousel-wrap">
+              <div class="reviews-carousel-container" role="region" aria-label="Customer reviews carousel">
+                {% for r in customer_reviews %}
+                  {% include "includes/customer_review_card.html" with in_carousel=True %}
+                {% endfor %}
+              </div>
             </div>
           </div>
         </div>
@@ -1242,6 +1286,26 @@
       showSlide(0); // Ensure first slide is active
       startAutoSlide(); // Start auto-slide after initial display
     }, 100);
+  })();
+
+  (function () {
+    var outer = document.querySelector('.reviews-carousel-outer');
+    if (!outer) return;
+    var el = outer.querySelector('.reviews-carousel-container');
+    var prev = outer.querySelector('[data-reviews-prev]');
+    var next = outer.querySelector('[data-reviews-next]');
+    if (!el || !prev || !next) return;
+    function step() {
+      var card = el.querySelector('.reviews-carousel-item');
+      var w = card ? card.getBoundingClientRect().width : 320;
+      return w + 16;
+    }
+    prev.addEventListener('click', function () {
+      el.scrollBy({ left: -step(), behavior: 'smooth' });
+    });
+    next.addEventListener('click', function () {
+      el.scrollBy({ left: step(), behavior: 'smooth' });
+    });
   })();
 </script>
 {% endblock %}

@@ -696,6 +696,20 @@ def _get_categories():
     
     return categories
 
+
+def _published_customer_reviews_queryset():
+    return (
+        CustomerReview.objects.filter(is_published=True)
+        .select_related("related_product", "related_product__category")
+        .prefetch_related(
+            Prefetch(
+                "related_product__images",
+                queryset=ProductImage.objects.order_by("id"),
+            )
+        )
+    )
+
+
 @ensure_csrf_cookie
 def home(request: HttpRequest) -> HttpResponse:
     query = request.GET.get("q")
@@ -788,6 +802,9 @@ def home(request: HttpRequest) -> HttpResponse:
     # Get active banner images for carousel
     banner_images = BannerImage.objects.filter(is_active=True).order_by("order", "-created_at")[:4]
 
+    reviews_qs = _published_customer_reviews_queryset()
+    customer_reviews_count = reviews_qs.count()
+
     context = {
         "products": products,
         "recently_viewed_products": list(recently_viewed_qs[:5]),
@@ -801,7 +818,8 @@ def home(request: HttpRequest) -> HttpResponse:
         "popular_products": popular_products,
         "editors_choice": editors_choice,
         "blog_posts": BlogPost.objects.filter(is_published=True)[:3],
-        "customer_reviews": CustomerReview.objects.filter(is_published=True)[:6],
+        "customer_reviews": list(reviews_qs[:6]),
+        "customer_reviews_count": customer_reviews_count,
         "banner_images": banner_images,
         "sort": sort,
         "query": query,
@@ -811,6 +829,18 @@ def home(request: HttpRequest) -> HttpResponse:
     if request.headers.get("HX-Request") == "true":
         return render(request, "home_partial.html", context)
     return render(request, "home.html", context)
+
+
+def customer_reviews_list(request: HttpRequest) -> HttpResponse:
+    reviews = list(_published_customer_reviews_queryset())
+    return render(
+        request,
+        "customer_reviews.html",
+        {
+            "customer_reviews": reviews,
+            "customer_reviews_count": len(reviews),
+        },
+    )
 
 
 def products_by_category(request: HttpRequest, slug: str) -> HttpResponse:
