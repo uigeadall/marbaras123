@@ -1824,7 +1824,20 @@ def _order_id_from_success_token(request: HttpRequest) -> Optional[int]:
         signer = TimestampSigner(salt=_ORDER_SUCCESS_TOKEN_SALT)
         oid_str = signer.unsign(raw, max_age=_ORDER_SUCCESS_TOKEN_MAX_AGE)
         return int(oid_str)
-    except (BadSignature, SignatureExpired, ValueError):
+    except SignatureExpired:
+        logger.warning(
+            "order_success: signed param o= expired (max_age=%s days)",
+            _ORDER_SUCCESS_TOKEN_MAX_AGE // 86400,
+        )
+        return None
+    except BadSignature:
+        logger.warning(
+            "order_success: signed param o= invalid (truncated URL, proxy stripped query, "
+            "or SECRET_KEY changed since order was placed)",
+        )
+        return None
+    except ValueError:
+        logger.warning("order_success: signed param o= could not be parsed as order id")
         return None
 
 
@@ -3369,9 +3382,19 @@ def order_success(request: HttpRequest) -> HttpResponse:
                 )
                 .first()
             )
-            if order:
+            if not order:
+                logger.warning(
+                    "order_success: token decoded to oid=%s but no Order row (wrong DB?)",
+                    oid,
+                )
+            else:
                 try:
                     purchase_pixel = _purchase_pixel_payload_from_order(order)
+                    if purchase_pixel is None:
+                        logger.warning(
+                            "order_success: order #%s has no billable line items for pixel payload",
+                            oid,
+                        )
                 except Exception:
                     logger.warning(
                         "order_success purchase_pixel fallback failed oid=%s",
@@ -3379,6 +3402,10 @@ def order_success(request: HttpRequest) -> HttpResponse:
                         exc_info=True,
                     )
                     purchase_pixel = None
+        elif (request.GET.get("o") or "").strip():
+            logger.warning(
+                "order_success: query has o= but token did not decode to an order id",
+            )
     if purchase_pixel is None:
         logger.warning(
             "order_success: no purchase_pixel (browser Purchase will not fire) path=%s has_o=%s",
