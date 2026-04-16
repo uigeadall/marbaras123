@@ -3379,6 +3379,12 @@ def order_success(request: HttpRequest) -> HttpResponse:
                         exc_info=True,
                     )
                     purchase_pixel = None
+    if purchase_pixel is None:
+        logger.warning(
+            "order_success: no purchase_pixel (browser Purchase will not fire) path=%s has_o=%s",
+            request.path,
+            bool((request.GET.get("o") or "").strip()),
+        )
     return render(
         request,
         "order_success.html",

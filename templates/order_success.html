@@ -69,15 +69,19 @@
   function marbarasFirePurchase() {
     if (window.__marbarasPurchasePixelSent) return true;
     var el = document.getElementById('marbaras-purchase-pixel');
-    if (!el) return true;
+    if (!el) return false;
     var p;
     try {
       p = JSON.parse(el.textContent || '{}');
     } catch (e) {
-      return true;
+      return false;
     }
-    var wantMeta = {% if META_PIXEL_ID %}true{% else %}false{% endif %} && !!p.meta;
-    var wantTt = {% if TIKTOK_PIXEL_ID %}true{% else %}false{% endif %} && !!p.tiktok;
+    var needMeta = {% if META_PIXEL_ID %}true{% else %}false{% endif %};
+    var needTt = {% if TIKTOK_PIXEL_ID %}true{% else %}false{% endif %};
+    if (needMeta && !p.meta) return false;
+    if (needTt && !p.tiktok) return false;
+    var wantMeta = needMeta && !!p.meta;
+    var wantTt = needTt && !!p.tiktok;
     if (!wantMeta && !wantTt) {
       window.__marbarasPurchasePixelSent = true;
       return true;
@@ -147,7 +151,7 @@
       }
     }
   }
-  marbarasStartPurchasePixels();
+  setTimeout(marbarasStartPurchasePixels, 0);
 })();
 </script>
 {% endif %}
