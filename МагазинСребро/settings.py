@@ -665,6 +665,8 @@ COOKIE_CONSENT_ENABLED = env_bool("COOKIE_CONSENT_ENABLED", False)
 GOOGLE_ANALYTICS_ID = env("GOOGLE_ANALYTICS_ID", "G-J2DV3RWZ8D")
 STRIPE_PUBLISHABLE_KEY = _clean_stripe_key(env("STRIPE_PUBLISHABLE_KEY", ""))
 STRIPE_WEBHOOK_SECRET = _clean_stripe_key(env("STRIPE_WEBHOOK_SECRET", ""))
+# Lowercase ISO 4217 for Stripe PaymentIntent (must match prices charged in that currency)
+STRIPE_CHECKOUT_CURRENCY = (env("STRIPE_CHECKOUT_CURRENCY", "eur") or "eur").strip().lower()[:3]
 
 # Anti-abuse: cap Stripe PaymentIntent–related calls per IP / logged-in user per hour (see ecommerce.views)
 CHECKOUT_PI_RATE_LIMIT_ENABLED = env_bool("CHECKOUT_PI_RATE_LIMIT_ENABLED", True)

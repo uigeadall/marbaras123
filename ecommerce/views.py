@@ -402,7 +402,162 @@ def _get_shipping_option(shipping_option_id: Optional[str]) -> tuple[Optional[Sh
     return shipping_option, shipping_cost
 
 
-def _create_stripe_intent(amount: Decimal, session_key: Optional[str], is_guest: bool = False) -> Optional[stripe.PaymentIntent]:
+_CHECKOUT_COUNTRY_CODE_MAP = {
+    "AL": "Albania",
+    "AD": "Andorra",
+    "BA": "Bosnia and Herzegovina",
+    "VA": "Vatican",
+    "GB": "United Kingdom",
+    "IS": "Iceland",
+    "LI": "Liechtenstein",
+    "MC": "Monaco",
+    "ME": "Montenegro",
+    "NO": "Norway",
+    "SM": "San Marino",
+    "RS": "Serbia",
+    "CH": "Switzerland",
+    "BH": "Bahrain",
+    "JP": "Japan",
+    "QA": "Qatar",
+    "SA": "Saudi Arabia",
+    "AE": "United Arab Emirates",
+    "ZA": "South Africa",
+    "CA": "Canada",
+    "CR": "Costa Rica",
+    "US": "United States",
+    "AU": "Australia",
+    "NZ": "New Zealand",
+}
+
+_CHECKOUT_ALLOWED_COUNTRIES = {
+    "Albania",
+    "Andorra",
+    "Bosnia and Herzegovina",
+    "Vatican",
+    "United Kingdom",
+    "Iceland",
+    "Liechtenstein",
+    "Monaco",
+    "Montenegro",
+    "Norway",
+    "San Marino",
+    "Serbia",
+    "Switzerland",
+    "Bahrain",
+    "Japan",
+    "Qatar",
+    "Saudi Arabia",
+    "United Arab Emirates",
+    "South Africa",
+    "Canada",
+    "Costa Rica",
+    "United States",
+    "Australia",
+    "New Zealand",
+}
+
+
+def _ensure_default_shipping_options() -> None:
+    """Ensure standard shipping rows exist. Never delete all options (breaks FKs and orders)."""
+    defaults = [
+        ("Free Shipping", Decimal("0.00"), "7-10 business days"),
+        ("Standard Shipping", Decimal("5.99"), "5-7 business days"),
+        ("Express Shipping", Decimal("19.99"), "2-3 business days"),
+    ]
+    for name, price, delivery_time in defaults:
+        ShippingOption.objects.update_or_create(
+            name=name,
+            defaults={"price": price, "delivery_time": delivery_time},
+        )
+
+
+def _normalize_checkout_country(country: str) -> Optional[str]:
+    c = (country or "").strip()
+    if not c:
+        return None
+    if c in _CHECKOUT_COUNTRY_CODE_MAP:
+        c = _CHECKOUT_COUNTRY_CODE_MAP[c]
+    if c not in _CHECKOUT_ALLOWED_COUNTRIES:
+        return None
+    return c
+
+
+def _checkout_compute_total(
+    cart_items,
+    *,
+    coupon_code: str,
+    country_full: Optional[str],
+    shipping_option_id: Optional[str],
+    apply_coupon_usage: bool,
+) -> tuple[Optional[Decimal], Optional[ShippingOption], Optional[str], Optional[str], Optional[str]]:
+    """
+    Server-side payable total for Stripe and order creation.
+    Returns (total, shipping_option, coupon_applied, coupon_error, fatal_error).
+    """
+    subtotal = _compute_subtotal(cart_items)
+    subtotal, discount, coupon_applied, coupon_error = _process_coupon(
+        (coupon_code or "").strip().upper(),
+        subtotal,
+        apply_usage=apply_coupon_usage,
+        cart_items=cart_items,
+    )
+    if coupon_error:
+        return None, None, coupon_applied, coupon_error, "coupon"
+
+    shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
+    if shipping_option_id and not shipping_option:
+        return None, None, coupon_applied, None, "shipping_option"
+
+    if not shipping_option_id and country_full:
+        if country_full in ["Canada", "Australia", "New Zealand", "Norway"]:
+            standard_shipping = ShippingOption.objects.filter(price=Decimal("5.99")).first()
+            if standard_shipping:
+                shipping_option = standard_shipping
+                shipping_cost = standard_shipping.price
+            else:
+                shipping_cost = Decimal("5.99")
+        else:
+            shipping_cost = Decimal("0.00")
+
+    total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
+    return total, shipping_option, coupon_applied, coupon_error, None
+
+
+def _stripe_checkout_currency() -> str:
+    cur = (getattr(settings, "STRIPE_CHECKOUT_CURRENCY", None) or "eur").strip().lower()
+    if len(cur) != 3 or not cur.isalpha():
+        return "eur"
+    return cur
+
+
+def _verify_stripe_payment_intent_for_checkout(payment_intent_id: str, expected_minor: int) -> tuple[bool, str]:
+    """Ensure the browser-completed PaymentIntent matches server-computed charge (EUR)."""
+    if not (payment_intent_id or "").strip():
+        return False, "missing_payment_intent"
+    if not settings.STRIPE_SECRET_KEY:
+        return False, "stripe_not_configured"
+    try:
+        pi = stripe.PaymentIntent.retrieve((payment_intent_id or "").strip())
+    except stripe_error.StripeError as e:
+        return False, f"stripe:{e}"
+    want_cur = _stripe_checkout_currency()
+    if (pi.currency or "").lower() != want_cur:
+        return False, "currency_mismatch"
+    if pi.status != "succeeded":
+        return False, f"status:{pi.status}"
+    received = int(getattr(pi, "amount_received", None) or pi.amount or 0)
+    if received != int(expected_minor):
+        return False, f"amount:{received}!={expected_minor}"
+    return True, ""
+
+
+def _create_stripe_intent(
+    amount: Decimal,
+    session_key: Optional[str],
+    is_guest: bool = False,
+    *,
+    idempotency_salt: str = "",
+) -> Optional[stripe.PaymentIntent]:
     """Create Stripe PaymentIntent with error handling."""
     # Check if Stripe is configured
     if not settings.STRIPE_SECRET_KEY:
@@ -430,7 +585,9 @@ def _create_stripe_intent(amount: Decimal, session_key: Optional[str], is_guest:
             session_hash = 'nouser'
         
         cents = int(_to_cents(amount))
-        idempotency_key = f"pi-{'g' if is_guest else 'u'}-{session_hash}-{cents}"
+        salt = (idempotency_salt or "")[:120]
+        salt_hash = hashlib.sha256(salt.encode("utf-8", errors="ignore")).hexdigest()[:24] if salt else "nosalt"
+        idempotency_key = f"pi-{'g' if is_guest else 'u'}-{session_hash}-{cents}-{salt_hash}"
         
         # Ensure idempotency_key is ASCII-safe
         try:
@@ -442,7 +599,7 @@ def _create_stripe_intent(amount: Decimal, session_key: Optional[str], is_guest:
         # Ensure all parameters are ASCII-safe
         intent = stripe.PaymentIntent.create(
             amount=int(_to_cents(amount)),
-            currency="eur",  # Changed to EUR as base currency
+            currency=_stripe_checkout_currency(),
             idempotency_key=idempotency_key,
         )
         return intent
@@ -1917,6 +2074,56 @@ def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 
+@require_POST
+def checkout_refresh_payment_intent(request: HttpRequest) -> JsonResponse:
+    """Recreate Stripe PaymentIntent when coupon, country, or shipping changes (must match server total)."""
+    if not getattr(settings, "STRIPE_SECRET_KEY", ""):
+        return JsonResponse({"error": "Stripe is not configured"}, status=503)
+    _ensure_default_shipping_options()
+    cart_items = _cart_items_for(request)
+    if not cart_items.exists():
+        return JsonResponse({"error": "Cart is empty"}, status=400)
+    if not _checkout_payment_intent_rate_allow(request):
+        return JsonResponse({"error": "Too many requests"}, status=429)
+
+    coupon = (request.POST.get("coupon") or "").strip()
+    country_raw = (request.POST.get("country") or "").strip()
+    shipping_option_id = request.POST.get("shipping_option") or None
+    country_full = _normalize_checkout_country(country_raw)
+    if country_raw and not country_full:
+        return JsonResponse({"error": "Invalid country"}, status=400)
+
+    total, _so, _ca, coupon_err, fatal = _checkout_compute_total(
+        cart_items,
+        coupon_code=coupon,
+        country_full=country_full,
+        shipping_option_id=shipping_option_id,
+        apply_coupon_usage=False,
+    )
+    if fatal == "coupon":
+        return JsonResponse({"error": coupon_err or "Invalid coupon"}, status=400)
+    if fatal == "shipping_option":
+        return JsonResponse({"error": "Invalid shipping option"}, status=400)
+    if total is None:
+        return JsonResponse({"error": "Could not compute total"}, status=400)
+
+    salt = f"rf|{coupon}|{shipping_option_id or ''}|{country_raw}|{total}"
+    intent = _create_stripe_intent(
+        total,
+        request.session.session_key,
+        is_guest=not request.user.is_authenticated,
+        idempotency_salt=salt,
+    )
+    if not intent:
+        return JsonResponse({"error": "Could not create payment"}, status=500)
+    return JsonResponse(
+        {
+            "client_secret": intent.client_secret,
+            "amount_cents": intent.amount,
+        }
+    )
+
+
 @require_http_methods(["GET", "POST"])
 def checkout_view(request: HttpRequest) -> HttpResponse:
     cart_items = _cart_items_for(request)
@@ -1934,26 +2141,6 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
     shipping_cost = Decimal("0.00")
     total = None
     coupon_code = ""
-
-    # Map ISO codes to full country names
-    COUNTRY_CODE_MAP = {
-        'AL': 'Albania', 'AD': 'Andorra', 'BA': 'Bosnia and Herzegovina', 'VA': 'Vatican',
-        'GB': 'United Kingdom', 'IS': 'Iceland', 'LI': 'Liechtenstein', 'MC': 'Monaco',
-        'ME': 'Montenegro', 'NO': 'Norway', 'SM': 'San Marino', 'RS': 'Serbia',
-        'CH': 'Switzerland', 'BH': 'Bahrain', 'JP': 'Japan', 'QA': 'Qatar',
-        'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'ZA': 'South Africa',
-        'CA': 'Canada', 'CR': 'Costa Rica', 'US': 'United States', 'AU': 'Australia',
-        'NZ': 'New Zealand'
-    }
-    
-    # Allowed shipping countries
-    ALLOWED_COUNTRIES = {
-        "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
-        "Iceland", "Liechtenstein", "Monaco", "Montenegro", "Norway", "San Marino",
-        "Serbia", "Switzerland", "Bahrain", "Japan", "Qatar", "Saudi Arabia",
-        "United Arab Emirates", "South Africa", "Canada", "Costa Rica", "United States",
-        "Australia", "New Zealand"
-    }
 
     if request.method == "POST":
         if (request.POST.get("checkout_website_url") or "").strip():
@@ -1989,14 +2176,12 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
         if not all([full_name, address, city, postal_code, phone, country]):
             messages.error(request, "All fields are required.")
             return redirect("checkout")
-        
-        # Convert ISO code to full name if needed
-        if country in COUNTRY_CODE_MAP:
-            country = COUNTRY_CODE_MAP[country]
-        
-        if country not in ALLOWED_COUNTRIES:
+
+        country_full = _normalize_checkout_country(country)
+        if not country_full:
             messages.error(request, "Sorry, we don't ship to this country. Please select a country from the list.")
             return redirect("checkout")
+        country = country_full
 
         if not email:
             messages.error(request, "Email is required so we can send your order confirmation.")
@@ -2008,32 +2193,34 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             messages.error(request, "Invalid email address.")
             return redirect("checkout")
 
-
-        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True, cart_items=cart_items)
-
-        # Shipping logic: Canada and Australia require shipping, other countries can have free shipping
-        shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
-        if shipping_option_id and not shipping_option:
+        _ensure_default_shipping_options()
+        total, shipping_option, coupon_applied, coupon_error, fatal = _checkout_compute_total(
+            cart_items,
+            coupon_code=coupon_code,
+            country_full=country,
+            shipping_option_id=shipping_option_id,
+            apply_coupon_usage=True,
+        )
+        if fatal == "coupon":
+            messages.error(request, coupon_error or "Invalid promo code.")
+            return redirect("checkout")
+        if fatal == "shipping_option":
             messages.error(request, "Invalid shipping option.")
             return redirect("checkout")
-        
-        # If no shipping option selected:
-        # - Canada, Australia, New Zealand and Norway: default to Standard shipping ($5.99)
-        # - Other countries: free shipping
-        if not shipping_option_id:
-            if country in ["Canada", "Australia", "New Zealand", "Norway"]:
-                # Default to Standard shipping for Canada, Australia, New Zealand and Norway
-                standard_shipping = ShippingOption.objects.filter(price=Decimal("5.99")).first()
-                if standard_shipping:
-                    shipping_option = standard_shipping
-                    shipping_cost = standard_shipping.price
-                else:
-                    shipping_cost = Decimal("5.99")
-            else:
-                # Free shipping for other countries
-                shipping_cost = Decimal("0.00")
+        if total is None:
+            messages.error(request, "Could not calculate order total.")
+            return redirect("checkout")
 
-        total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
+        pi_id = (request.POST.get("payment_intent_id") or "").strip()
+        pi_ok, pi_err = _verify_stripe_payment_intent_for_checkout(pi_id, _to_cents(total))
+        if not pi_ok:
+            logger.warning("checkout payment verification failed err=%s pi=%s", pi_err, pi_id)
+            messages.error(
+                request,
+                "Payment could not be verified for this order total. Please refresh the page, re-enter card details, and try again.",
+            )
+            return redirect("checkout")
+
         currency = _get_currency_from_request(request)
 
         with transaction.atomic():
@@ -2085,12 +2272,6 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
         )
         return redirect("cart_view")
 
-    intent = _create_stripe_intent(subtotal, request.session.session_key, is_guest=not request.user.is_authenticated)
-    if not intent:
-        messages.error(request, "Payment system error. Please try again.")
-        return redirect("cart_view")
-
-
     stripe_public_key = settings.STRIPE_PUBLISHABLE_KEY
     if not stripe_public_key or not stripe_public_key.startswith(('pk_test_', 'pk_live_')):
         logger.error(f"Invalid Stripe publishable key format: {stripe_public_key[:20] if stripe_public_key else 'empty'}... (length: {len(stripe_public_key) if stripe_public_key else 0})")
@@ -2129,26 +2310,27 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             "country": "",
         }
 
-    # Ensure shipping options exist (Standard $5.99, Express $19.99, Free Shipping $0)
-    # Delete all existing shipping options to avoid duplicates
-    ShippingOption.objects.all().delete()
-    
-    # Create the three shipping options with correct names
-    free_shipping = ShippingOption.objects.create(
-        name="Free Shipping",
-        price=Decimal("0.00"),
-        delivery_time="7-10 business days"
+    _ensure_default_shipping_options()
+    prof_country = _normalize_checkout_country((profile_data.get("country") or "").strip())
+    total_pi, _, _, _, fatal_pi = _checkout_compute_total(
+        cart_items,
+        coupon_code="",
+        country_full=prof_country,
+        shipping_option_id=None,
+        apply_coupon_usage=False,
     )
-    express_shipping = ShippingOption.objects.create(
-        name="Express Shipping",
-        price=Decimal("19.99"),
-        delivery_time="2-3 business days"
+    if fatal_pi or total_pi is None:
+        total_pi = subtotal
+    pi_salt = f"init|{total_pi}|{(profile_data.get('country') or '')[:40]}"
+    intent = _create_stripe_intent(
+        total_pi,
+        request.session.session_key,
+        is_guest=not request.user.is_authenticated,
+        idempotency_salt=pi_salt,
     )
-    standard_shipping = ShippingOption.objects.create(
-        name="Standard Shipping",
-        price=Decimal("5.99"),
-        delivery_time="5-7 business days"
-    )
+    if not intent:
+        messages.error(request, "Payment system error. Please try again.")
+        return redirect("cart_view")
 
     initiate_checkout_pixel = None
     if getattr(settings, "META_PIXEL_ID", "") or getattr(settings, "TIKTOK_PIXEL_ID", ""):
@@ -2183,11 +2365,17 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
 
 @require_http_methods(["GET", "POST"])
 def guest_checkout_view(request: HttpRequest) -> HttpResponse:
+    """Guest URL kept for bookmarks; Stripe-enabled shops use the main checkout (card / wallets)."""
     _ensure_session(request)
+    pk = getattr(settings, "STRIPE_PUBLISHABLE_KEY", "") or ""
+    if getattr(settings, "STRIPE_SECRET_KEY", "") and pk.startswith(("pk_test_", "pk_live_")):
+        messages.info(request, "Please complete your order on the secure checkout page.")
+        return redirect("checkout")
+
     cart_qs = CartItem.objects.filter(session_key=request.session.session_key).select_related(
         "product", "variant"
     )
-    cart_items = cart_qs  # Alias for consistency with checkout_view
+    cart_items = cart_qs
 
     if not cart_qs.exists():
         messages.warning(request, "Your cart is empty.")
@@ -2200,26 +2388,6 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
     shipping_cost = Decimal("0.00")
     total = None
     coupon_code = ""
-
-    # Map ISO codes to full country names
-    COUNTRY_CODE_MAP = {
-        'AL': 'Albania', 'AD': 'Andorra', 'BA': 'Bosnia and Herzegovina', 'VA': 'Vatican',
-        'GB': 'United Kingdom', 'IS': 'Iceland', 'LI': 'Liechtenstein', 'MC': 'Monaco',
-        'ME': 'Montenegro', 'NO': 'Norway', 'SM': 'San Marino', 'RS': 'Serbia',
-        'CH': 'Switzerland', 'BH': 'Bahrain', 'JP': 'Japan', 'QA': 'Qatar',
-        'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'ZA': 'South Africa',
-        'CA': 'Canada', 'CR': 'Costa Rica', 'US': 'United States', 'AU': 'Australia',
-        'NZ': 'New Zealand'
-    }
-    
-    # Allowed shipping countries
-    ALLOWED_COUNTRIES = {
-        "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
-        "Iceland", "Liechtenstein", "Monaco", "Montenegro", "Norway", "San Marino",
-        "Serbia", "Switzerland", "Bahrain", "Japan", "Qatar", "Saudi Arabia",
-        "United Arab Emirates", "South Africa", "Canada", "Costa Rica", "United States",
-        "Australia", "New Zealand"
-    }
 
     if request.method == "POST":
         if (request.POST.get("checkout_website_url") or "").strip():
@@ -2245,14 +2413,12 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
         if not all([full_name, email, address, city, postal_code, phone, country]):
             messages.error(request, "All fields are required.")
             return redirect("guest_checkout")
-        
-        # Convert ISO code to full name if needed
-        if country in COUNTRY_CODE_MAP:
-            country = COUNTRY_CODE_MAP[country]
-        
-        if country not in ALLOWED_COUNTRIES:
+
+        country_full = _normalize_checkout_country(country)
+        if not country_full:
             messages.error(request, "Sorry, we don't ship to this country. Please select a country from the list.")
             return redirect("guest_checkout")
+        country = country_full
 
         try:
             validate_email(email)
@@ -2260,16 +2426,24 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
             messages.error(request, "Invalid email address.")
             return redirect("guest_checkout")
 
-
-        subtotal, discount, coupon_applied, coupon_error = _process_coupon(coupon_code, subtotal, apply_usage=True, cart_items=cart_items)
-
-
-        shipping_option, shipping_cost = _get_shipping_option(shipping_option_id)
-        if shipping_option_id and not shipping_option:
+        _ensure_default_shipping_options()
+        total, shipping_option, coupon_applied, coupon_error, fatal = _checkout_compute_total(
+            cart_items,
+            coupon_code=coupon_code,
+            country_full=country,
+            shipping_option_id=shipping_option_id,
+            apply_coupon_usage=True,
+        )
+        if fatal == "coupon":
+            messages.error(request, coupon_error or "Invalid promo code.")
+            return redirect("guest_checkout")
+        if fatal == "shipping_option":
             messages.error(request, "Invalid shipping option.")
             return redirect("guest_checkout")
+        if total is None:
+            messages.error(request, "Could not calculate order total.")
+            return redirect("guest_checkout")
 
-        total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
         currency = _get_currency_from_request(request)
 
         with transaction.atomic():
@@ -2314,6 +2488,7 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
 
         return redirect("order_success")
 
+    _ensure_default_shipping_options()
     initiate_checkout_pixel = None
     if getattr(settings, "META_PIXEL_ID", "") or getattr(settings, "TIKTOK_PIXEL_ID", ""):
         initiate_checkout_pixel = _initiate_checkout_pixel_payloads(cart_qs, subtotal)
@@ -2401,7 +2576,6 @@ def payment_success(request: HttpRequest) -> HttpResponse:
     return render(request, "payment_success.html")
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def create_order_from_product(request: HttpRequest) -> HttpResponse:
     """Create order directly from product detail page with Apple Pay."""
@@ -2420,7 +2594,10 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             )
         product_id = data.get('product_id')
         variant_id = data.get('variant_id')
-        quantity = int(data.get('quantity', 1))
+        try:
+            quantity = max(1, int(data.get('quantity', 1)))
+        except (TypeError, ValueError):
+            quantity = 1
         payment_method_id = data.get('payment_method_id')
         
         # Customer data from Apple Pay
@@ -2432,6 +2609,10 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         # Validate required fields
         if not all([product_id, payment_method_id, payer_name, payer_email, payer_phone]):
             return JsonResponse({'success': False, 'error': 'Missing required fields'}, status=400)
+        try:
+            validate_email(payer_email)
+        except ValidationError:
+            return JsonResponse({'success': False, 'error': 'Invalid email address'}, status=400)
         
         # Get product
         product = get_object_or_404(Product, pk=product_id)
@@ -2454,33 +2635,16 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         subtotal = product_price * quantity
         
         # Calculate shipping
-        country = shipping_address.get('country', '')
-        # Map ISO codes to full country names
-        COUNTRY_CODE_MAP = {
-            'AL': 'Albania', 'AD': 'Andorra', 'BA': 'Bosnia and Herzegovina', 'VA': 'Vatican',
-            'GB': 'United Kingdom', 'IS': 'Iceland', 'LI': 'Liechtenstein', 'MC': 'Monaco',
-            'ME': 'Montenegro', 'NO': 'Norway', 'SM': 'San Marino', 'RS': 'Serbia',
-            'CH': 'Switzerland', 'BH': 'Bahrain', 'JP': 'Japan', 'QA': 'Qatar',
-            'SA': 'Saudi Arabia', 'AE': 'United Arab Emirates', 'ZA': 'South Africa',
-            'CA': 'Canada', 'CR': 'Costa Rica', 'US': 'United States', 'AU': 'Australia',
-            'NZ': 'New Zealand'
-        }
-        
-        # Convert ISO code to full name if needed
-        if country in COUNTRY_CODE_MAP:
-            country = COUNTRY_CODE_MAP[country]
-        
-        ALLOWED_COUNTRIES = {
-            "Albania", "Andorra", "Bosnia and Herzegovina", "Vatican", "United Kingdom",
-            "Iceland", "Liechtenstein", "Monaco", "Montenegro", "Norway", "San Marino",
-            "Serbia", "Switzerland", "Bahrain", "Japan", "Qatar", "Saudi Arabia",
-            "United Arab Emirates", "South Africa", "Canada", "Costa Rica", "United States",
-            "Australia", "New Zealand"
-        }
-        
-        if country not in ALLOWED_COUNTRIES:
-            return JsonResponse({'success': False, 'error': f'We do not ship to {country}'}, status=400)
-        
+        country_raw = (shipping_address.get('country') or '').strip()
+        country = _normalize_checkout_country(country_raw)
+        if not country:
+            return JsonResponse(
+                {'success': False, 'error': 'We do not ship to this country or the address is incomplete.'},
+                status=400,
+            )
+
+        _ensure_default_shipping_options()
+
         # Determine shipping cost
         shipping_cost = Decimal("0.00")
         shipping_option = None
@@ -2499,7 +2663,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             # Create PaymentIntent with payment method
             intent_params = {
                 'amount': int(_to_cents(total)),
-                'currency': 'eur',
+                'currency': _stripe_checkout_currency(),
                 'payment_method': payment_method_id,
                 'automatic_payment_methods': {
                     'enabled': True,
@@ -2544,11 +2708,6 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
         
         # Create order
         with transaction.atomic():
-            # Ensure country is stored as full name (not ISO code)
-            country_name = country
-            if country in COUNTRY_CODE_MAP:
-                country_name = COUNTRY_CODE_MAP[country]
-            
             # Get currency from intent or request (default to EUR)
             currency = getattr(intent, 'currency', '').upper() or data.get('currency', '').upper() or _get_currency_from_request(request)
             
@@ -2560,7 +2719,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 city=shipping_address.get('city', ''),
                 postal_code=shipping_address.get('postalCode', ''),
                 phone=payer_phone,
-                country=country_name,
+                country=country,
                 shipping_option=shipping_option,
                 total_price=total,
                 currency=currency,

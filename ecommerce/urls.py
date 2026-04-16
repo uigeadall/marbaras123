@@ -16,6 +16,11 @@ urlpatterns = [
     path('cart/add/<int:pk>/', views.add_to_cart, name='add_to_cart'),
     path('favorites/add/<int:pk>/', views.toggle_favorite, name='add_to_favorites'),
     path('checkout/', views.checkout_view, name='checkout'),
+    path(
+        'checkout/refresh-payment-intent/',
+        views.checkout_refresh_payment_intent,
+        name='checkout_refresh_payment_intent',
+    ),
     # Category URLs - handle both old numeric slugs and new text slugs
     path('category/<slug:slug>/', views.products_by_category, name='products_by_category'),
     path('success/', views.payment_success, name='success'),

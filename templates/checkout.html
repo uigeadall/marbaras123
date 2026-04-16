@@ -981,6 +981,7 @@
             
             // Update Payment Request (Apple Pay / Google Pay) with new total
             updatePaymentRequestWithCoupon(data.new_subtotal, data.discount);
+            marbarasScheduleRefreshStripeIntent();
           } else {
             // Show error
             currentDiscount = 0;
@@ -1003,6 +1004,7 @@
             if (window.updateAllPrices) {
               window.updateAllPrices();
             }
+            marbarasScheduleRefreshStripeIntent();
           }
         })
         .catch(error => {
@@ -1033,6 +1035,7 @@
     shippingSelect?.addEventListener('change', function() {
       updateTotal();
       updatePaymentRequestShipping();
+      marbarasScheduleRefreshStripeIntent();
     });
     countrySelect?.addEventListener('change', function() {
       filterShippingOptions();
@@ -1040,6 +1043,7 @@
       shippingSelect.value = '';
       updateTotal();
       updatePaymentRequestShipping();
+      marbarasScheduleRefreshStripeIntent();
     });
     
     // Also filter when country field gets focus/blur to handle pre-filled values
@@ -1328,6 +1332,35 @@
   
   try {
     const stripe = Stripe('{{ stripe_public_key }}');
+    window.marbarasCheckoutClientSecret = '{{ client_secret|escapejs }}';
+    function marbarasClientSecret() {
+      return window.marbarasCheckoutClientSecret || '{{ client_secret|escapejs }}';
+    }
+    let marbarasRefreshIntentTimer = null;
+    function marbarasScheduleRefreshStripeIntent() {
+      if (!document.querySelector('[name=csrfmiddlewaretoken]')) return;
+      if (marbarasRefreshIntentTimer) clearTimeout(marbarasRefreshIntentTimer);
+      marbarasRefreshIntentTimer = setTimeout(marbarasRefreshStripeIntentNow, 400);
+    }
+    function marbarasRefreshStripeIntentNow() {
+      const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+      if (!csrf) return;
+      const fd = new URLSearchParams();
+      fd.set('coupon', (document.getElementById('coupon')?.value || '').trim());
+      fd.set('country', (document.getElementById('country')?.value || '').trim());
+      const so = document.getElementById('shipping_option');
+      if (so) fd.set('shipping_option', so.value || '');
+      fetch('{% url "checkout_refresh_payment_intent" %}', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf },
+        body: fd,
+        credentials: 'same-origin',
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.client_secret) {
+          window.marbarasCheckoutClientSecret = d.client_secret;
+        }
+      }).catch(function () {});
+    }
     console.log('Stripe initialized successfully');
     
     const elements = stripe.elements();
@@ -2296,7 +2329,7 @@
           console.log('Confirming payment with params:', confirmParams);
           
           const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
-            '{{ client_secret }}',
+            marbarasClientSecret(),
             confirmParams,
             { handleActions: false }
           );
@@ -2312,7 +2345,7 @@
 
           // If payment requires action (3D Secure, etc.), handle it
           if (paymentIntent.status === 'requires_action') {
-            const { error: actionError } = await stripe.confirmCardPayment('{{ client_secret }}');
+            const { error: actionError } = await stripe.confirmCardPayment(marbarasClientSecret());
             if (actionError) {
               console.error('Payment action error:', actionError);
               ev.complete('fail');
@@ -2573,7 +2606,7 @@
         e.preventDefault();
         const fullName = document.getElementById('full_name').value;
 
-        const { error, paymentIntent } = await stripe.confirmCardPayment('{{ client_secret }}', {
+        const { error, paymentIntent } = await stripe.confirmCardPayment(marbarasClientSecret(), {
           payment_method: { card, billing_details: { name: fullName } }
         });
 
