@@ -802,8 +802,8 @@ def home(request: HttpRequest) -> HttpResponse:
     # Get active banner images for carousel
     banner_images = BannerImage.objects.filter(is_active=True).order_by("order", "-created_at")[:4]
 
-    reviews_qs = _published_customer_reviews_queryset()
-    customer_reviews_count = reviews_qs.count()
+    customer_reviews_all = list(_published_customer_reviews_queryset())
+    customer_reviews_count = len(customer_reviews_all)
 
     context = {
         "products": products,
@@ -818,7 +818,8 @@ def home(request: HttpRequest) -> HttpResponse:
         "popular_products": popular_products,
         "editors_choice": editors_choice,
         "blog_posts": BlogPost.objects.filter(is_published=True)[:3],
-        "customer_reviews": list(reviews_qs[:6]),
+        "customer_reviews": customer_reviews_all[:6],
+        "customer_reviews_all": customer_reviews_all,
         "customer_reviews_count": customer_reviews_count,
         "banner_images": banner_images,
         "sort": sort,
