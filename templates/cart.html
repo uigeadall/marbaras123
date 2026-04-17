@@ -596,7 +596,8 @@
     try {
       const stripe = Stripe(stripePublicKey);
       const elements = stripe.elements();
-      
+      window.marbarasCartWalletShippingId = null;
+
       if (loadingDiv) loadingDiv.style.display = 'block';
       
       // Detect if mobile device
@@ -840,6 +841,10 @@
             
             // Store shipping options for use in shippingoptionchange
             storedShippingOptions = shippingOptions;
+
+            if (selectedShippingId) {
+              window.marbarasCartWalletShippingId = selectedShippingId;
+            }
             
             ev.updateWith({
               status: 'success',
@@ -935,6 +940,10 @@
             
             // Store shipping options for use in shippingoptionchange
             storedShippingOptions = shippingOptions;
+
+            if (selectedShippingId) {
+              window.marbarasCartWalletShippingId = selectedShippingId;
+            }
             
             ev.updateWith({
               status: 'success',
@@ -1094,6 +1103,10 @@
             
             // Call updateWith synchronously
             ev.updateWith(updateData);
+            if (shippingOption && shippingOption.id) {
+              window.marbarasCartWalletShippingId = shippingOption.id;
+            }
+
             
             console.log('✅ Cart - Updated total with shipping option:', shippingOption ? shippingOption.label : 'Unknown', 'Cost:', newShippingCost / 100, 'Total:', finalTotal / 100);
           } else {
@@ -1153,6 +1166,10 @@
               }
             }
             ev.updateWith(fallbackUpdate);
+            if (selectedOptionId) {
+              window.marbarasCartWalletShippingId = selectedOptionId;
+            }
+
 
           
             console.log('✅ Cart - Updated total with shipping option ID:', selectedOptionId, 'Cost:', shippingCost / 100, 'Total:', finalTotal / 100);
@@ -1363,30 +1380,95 @@
 
         console.log('Cart - Country validated for payment:', shippingCountry);
 
-        ev.complete('success');
+        const walletShipId = (window.marbarasCartWalletShippingId || (function () {
+          if (ev.shippingOption) {
+            if (typeof ev.shippingOption === 'string') return ev.shippingOption;
+            if (ev.shippingOption.id) return String(ev.shippingOption.id);
+          }
+          return 'free';
+        })());
 
-        if (payerNameCart || payerEmailCart || payerPhoneCart || shippingAddr) {
-          const paymentData = {
-            payerName: payerNameCart || ev.payerName,
-            payerEmail: payerEmailCart || ev.payerEmail,
-            payerPhone: payerPhoneCart || ev.payerPhone,
-            shippingAddress: shippingAddr ? {
-              addressLine: shippingAddr.addressLine,
-              city: shippingAddr.city,
-              postalCode: shippingAddr.postalCode,
-              country: shippingAddr.country,
-              region: shippingAddr.region,
-            } : null
-          };
-          sessionStorage.setItem('applePayData', JSON.stringify(paymentData));
-          console.log('Cart - Payment data stored, redirecting to checkout...');
+        const orderPayloadBase = {
+          payment_method_id: ev.paymentMethod.id,
+          payer_name: payerNameCart,
+          payer_email: payerEmailCart,
+          payer_phone: payerPhoneCart,
+          wallet_shipping_option_id: walletShipId,
+          coupon_code: '',
+          shipping_address: shippingAddr ? {
+            addressLine: shippingAddr.addressLine,
+            city: shippingAddr.city,
+            postalCode: shippingAddr.postalCode,
+            country: shippingAddr.country,
+            region: shippingAddr.region,
+          } : {}
+        };
+
+        try {
+          let response = await fetch('{% url "create_order_from_cart_wallet" %}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(orderPayloadBase),
+            credentials: 'same-origin'
+          });
+          let result;
+          try {
+            result = await response.json();
+          } catch (parseErr) {
+            console.error('Cart wallet: bad JSON', parseErr);
+            ev.complete('fail');
+            alert('Server error. Please try again.');
+            return;
+          }
+
+          if (result.requires_action && result.client_secret) {
+            const { error: actionErr, paymentIntent: piAfter } = await stripe.confirmCardPayment(result.client_secret);
+            if (actionErr || !piAfter || piAfter.status !== 'succeeded') {
+              console.error('Cart wallet 3DS failed', actionErr);
+              ev.complete('fail');
+              alert((actionErr && actionErr.message) || 'Payment authentication failed.');
+              return;
+            }
+            const finalizePayload = Object.assign({}, orderPayloadBase, {
+              completed_payment_intent_id: piAfter.id
+            });
+            delete finalizePayload.payment_method_id;
+            response = await fetch('{% url "create_order_from_cart_wallet" %}', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+              },
+              body: JSON.stringify(finalizePayload),
+              credentials: 'same-origin'
+            });
+            try {
+              result = await response.json();
+            } catch (parseErr2) {
+              console.error('Cart wallet finalize JSON', parseErr2);
+              ev.complete('fail');
+              alert('Server error after payment. Contact support with your receipt.');
+              return;
+            }
+          }
+
+          if (result.success) {
+            ev.complete('success');
+            window.location.href = result.redirect_url || '/order-success/';
+          } else {
+            console.error('Cart wallet order failed', result);
+            ev.complete('fail');
+            alert(result.error || 'Payment failed.');
+          }
+        } catch (err) {
+          console.error('Cart wallet', err);
+          ev.complete('fail');
+          alert('An error occurred. Please try again.');
         }
 
-        
-        // Small delay before redirect to ensure ev.complete is processed
-        setTimeout(function() {
-          window.location.href = "{% url 'checkout' %}";
-        }, 100);
       });
 
     } catch (error) {
