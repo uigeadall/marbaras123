@@ -166,14 +166,35 @@
     </div>
     
     <script>
-        // Auto-print when page loads (only if opened in new window)
-        if (window.opener) {
-            window.onload = function() {
-                setTimeout(function() {
-                    window.print();
-                }, 500);
-            };
-        }
+        (function () {
+            var params = new URLSearchParams(window.location.search);
+            var autoParam = params.get('auto');
+            var wantsAuto = autoParam === '1' || autoParam === 'true';
+            var hasOpener = !!window.opener;
+
+            if (!wantsAuto && !hasOpener) {
+                return;
+            }
+
+            {% if order.shipping_label_url %}
+            // Preferred path for thermal printers: open the carrier's native
+            // PDF in a dedicated tab and trigger the print dialog on it,
+            // because that PDF is already 4x6 formatted by the carrier.
+            try {
+                var w = window.open('{{ order.shipping_label_url|escapejs }}', '_pq_pdf_{{ order.id }}');
+                if (w) {
+                    // Still print this page too (with internal details/barcode)
+                    // as a backup/reference copy.
+                    setTimeout(function () { try { window.print(); } catch (e) {} }, 800);
+                    return;
+                }
+            } catch (e) {}
+            {% endif %}
+
+            window.addEventListener('load', function () {
+                setTimeout(function () { try { window.print(); } catch (e) {} }, 500);
+            });
+        })();
     </script>
 </body>
 </html>

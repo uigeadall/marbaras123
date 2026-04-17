@@ -1727,6 +1727,21 @@ class OrderAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.barcode_scanner_view),
                 name='barcode_scanner',
             ),
+            path(
+                'print-queue/',
+                self.admin_site.admin_view(self.print_queue_view),
+                name='print_queue',
+            ),
+            path(
+                'print-queue.json',
+                self.admin_site.admin_view(self.print_queue_feed_view),
+                name='print_queue_feed',
+            ),
+            path(
+                '<int:order_id>/auto-create-label/',
+                self.admin_site.admin_view(self.auto_create_label_view),
+                name='auto_create_shipping_label',
+            ),
         ]
         return custom_urls + urls
     
@@ -1779,6 +1794,123 @@ class OrderAdmin(admin.ModelAdmin):
         from django.urls import reverse
         return redirect(reverse('admin:ecommerce_order_change', args=[order_id]))
     
+    def _print_queue_orders_qs(self):
+        """
+        Orders that should appear in the automatic print queue:
+        not shipped yet, and either already have a label OR still have a
+        carrier to try with.
+        """
+        return (
+            Order.objects
+            .filter(is_shipped=False)
+            .exclude(shipping_label_url__isnull=True, tracking_number__isnull=True)
+            .select_related('shipping_option')
+            .order_by('created_at')
+        )
+
+    def print_queue_view(self, request):
+        """
+        Admin page that lists unprinted shipping labels and auto-opens each
+        newly arrived label in its own browser tab so a connected 4x6
+        thermal printer can pick it up.
+        """
+        from django.shortcuts import render
+        from django.urls import reverse
+
+        orders = list(self._print_queue_orders_qs()[:200])
+
+        initial = []
+        for o in orders:
+            initial.append({
+                'id': o.id,
+                'full_name': o.full_name,
+                'carrier': (o.shipping_carrier or '').upper() or '—',
+                'tracking_number': o.tracking_number or '',
+                'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
+                'print_url': reverse('admin:print_shipping_label', args=[o.pk]) + '?auto=1',
+                'change_url': reverse('admin:ecommerce_order_change', args=[o.pk]),
+                'has_label': bool(o.shipping_label_url),
+            })
+
+        ctx = {
+            'title': 'Shipping label print queue',
+            'feed_url': reverse('admin:print_queue_feed'),
+            'initial_orders': initial,
+            'initial_orders_json': json.dumps(initial),
+            'opts': Order._meta,
+            'app_label': Order._meta.app_label,
+            'has_permission': True,
+            'site_header': getattr(self.admin_site, 'site_header', 'Admin'),
+            'site_title': getattr(self.admin_site, 'site_title', 'Admin'),
+        }
+        return render(request, 'admin/shipping_print_queue.html', ctx)
+
+    def print_queue_feed_view(self, request):
+        """
+        JSON feed used by the print queue page to poll for new unprinted
+        labels. Client-side JavaScript tracks which orders it has already
+        opened and only auto-opens new ones.
+        """
+        from django.http import JsonResponse
+        from django.urls import reverse
+
+        try:
+            since_id = int(request.GET.get('since', '0') or '0')
+        except (TypeError, ValueError):
+            since_id = 0
+
+        qs = self._print_queue_orders_qs()
+        if since_id:
+            qs = qs.filter(id__gt=since_id)
+
+        orders_data = []
+        for o in qs[:100]:
+            orders_data.append({
+                'id': o.id,
+                'full_name': o.full_name,
+                'carrier': (o.shipping_carrier or '').upper() or '—',
+                'tracking_number': o.tracking_number or '',
+                'created_at': o.created_at.strftime('%Y-%m-%d %H:%M'),
+                'print_url': reverse('admin:print_shipping_label', args=[o.pk]) + '?auto=1',
+                'change_url': reverse('admin:ecommerce_order_change', args=[o.pk]),
+                'has_label': bool(o.shipping_label_url),
+            })
+
+        return JsonResponse({'orders': orders_data})
+
+    def auto_create_label_view(self, request, order_id):
+        """
+        Manual trigger to (re)run the automatic label creation for an order.
+        Useful if the background thread failed silently (e.g. carrier API
+        was down at checkout time).
+        """
+        from django.shortcuts import get_object_or_404, redirect
+        from django.urls import reverse
+        from ecommerce.utils.shipping import auto_create_shipping_label
+
+        order = get_object_or_404(Order, pk=order_id)
+        result = auto_create_shipping_label(order.pk)
+
+        if result and result.get('label_url'):
+            messages.success(
+                request,
+                f"✅ Label ready for Order #{order.id}. Tracking: {result.get('tracking_number') or 'N/A'}",
+            )
+        elif result and result.get('tracking_number'):
+            messages.warning(
+                request,
+                f"⚠️ Order #{order.id}: carrier returned tracking but no label URL. "
+                f"Tracking: {result.get('tracking_number')}",
+            )
+        else:
+            messages.error(
+                request,
+                f"❌ Could not auto-create label for Order #{order.id}. "
+                "Check carrier/credentials or server logs.",
+            )
+
+        return redirect(reverse('admin:print_queue'))
+
     def barcode_scanner_view(self, request):
         """View for barcode scanner to find orders."""
         from django.shortcuts import render

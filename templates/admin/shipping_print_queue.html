@@ -1,0 +1,352 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | {{ site_title|default:"Admin" }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=app_label %}">{{ opts.app_config.verbose_name|default:app_label }}</a>
+  &rsaquo; <a href="{% url 'admin:ecommerce_order_changelist' %}">Orders</a>
+  &rsaquo; Print queue
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="print-queue-root"
+     data-feed-url="{{ feed_url }}"
+     data-initial='{{ initial_orders_json|escapejs }}'>
+
+  <style>
+    .pq-wrap { max-width: 1100px; }
+    .pq-hero {
+      background: linear-gradient(135deg, #667eea, #5568d3);
+      color: #fff;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    }
+    .pq-hero h1 { margin: 0 0 4px 0; font-size: 20px; }
+    .pq-hero p { margin: 0; opacity: 0.9; font-size: 13px; }
+
+    .pq-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
+    .pq-btn {
+      background: #667eea;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .pq-btn.secondary { background: #6b7280; }
+    .pq-btn.success   { background: #10b981; }
+    .pq-btn.danger    { background: #ef4444; }
+    .pq-btn:hover     { filter: brightness(1.05); }
+
+    .pq-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #374151;
+      user-select: none;
+      cursor: pointer;
+    }
+    .pq-status {
+      font-size: 12px;
+      color: #6b7280;
+      margin-left: auto;
+    }
+    .pq-status .pq-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #d1d5db;
+      margin-right: 6px;
+    }
+    .pq-status.live .pq-dot { background: #10b981; }
+
+    .pq-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .pq-table th, .pq-table td {
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid #f3f4f6;
+      vertical-align: middle;
+    }
+    .pq-table th {
+      background: #f9fafb;
+      font-weight: 600;
+      color: #374151;
+    }
+    .pq-table tr.pq-new { background: #ecfdf5; }
+    .pq-table tr.pq-printed { opacity: 0.55; }
+    .pq-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #eef2ff;
+      color: #4338ca;
+    }
+    .pq-badge.nolabel { background: #fef3c7; color: #92400e; }
+    .pq-empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: #6b7280;
+    }
+  </style>
+
+  <div class="pq-wrap">
+    <div class="pq-hero">
+      <h1>🖨️ Shipping Label Print Queue</h1>
+      <p>Automatically opens new FedEx / Global Mail labels for printing on your 4x6 thermal printer as soon as a new order arrives.</p>
+    </div>
+
+    <div class="pq-controls">
+      <button type="button" class="pq-btn" id="pq-open-all">🖨️ Open all pending labels</button>
+      <label class="pq-toggle">
+        <input type="checkbox" id="pq-live-toggle" checked>
+        Live auto-print (polls every 15s)
+      </label>
+      <button type="button" class="pq-btn secondary" id="pq-clear-printed">Clear printed marks</button>
+      <span class="pq-status" id="pq-status">
+        <span class="pq-dot"></span>
+        <span class="pq-status-text">Idle</span>
+      </span>
+    </div>
+
+    <table class="pq-table" id="pq-table">
+      <thead>
+        <tr>
+          <th style="width: 70px;">Order</th>
+          <th>Customer</th>
+          <th style="width: 110px;">Carrier</th>
+          <th>Tracking</th>
+          <th style="width: 140px;">Created</th>
+          <th style="width: 230px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pq-tbody">
+        <tr class="pq-empty-row"><td colspan="6" class="pq-empty">No pending labels.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.getElementById('print-queue-root');
+  if (!root) { return; }
+
+  var feedUrl = root.getAttribute('data-feed-url');
+  var initial;
+  try {
+    initial = JSON.parse(root.getAttribute('data-initial') || '[]');
+  } catch (e) {
+    initial = [];
+  }
+
+  var tbody = document.getElementById('pq-tbody');
+  var statusEl = document.getElementById('pq-status');
+  var statusTextEl = statusEl.querySelector('.pq-status-text');
+  var liveToggle = document.getElementById('pq-live-toggle');
+  var openAllBtn = document.getElementById('pq-open-all');
+  var clearBtn = document.getElementById('pq-clear-printed');
+
+  var STORAGE_KEY = 'marbaras_pq_printed';
+  var printed = {};
+  try {
+    printed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {};
+  } catch (e) {
+    printed = {};
+  }
+  function persistPrinted() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(printed)); } catch (e) {}
+  }
+
+  var known = {};
+  var maxId = 0;
+  var autoOpenedSinceLoad = {}; // only auto-open once per page load
+
+  function renderAll() {
+    var ordersList = Object.keys(known)
+      .map(function (k) { return known[k]; })
+      .sort(function (a, b) { return a.id - b.id; });
+
+    if (!ordersList.length) {
+      tbody.innerHTML = '<tr class="pq-empty-row"><td colspan="6" class="pq-empty">No pending labels.</td></tr>';
+      return;
+    }
+
+    var html = '';
+    ordersList.forEach(function (o) {
+      var isPrinted = !!printed[o.id];
+      var isNew = !!o._isNew;
+      var rowCls = isPrinted ? 'pq-printed' : (isNew ? 'pq-new' : '');
+      var carrierBadge = '<span class="pq-badge">' + escapeHtml(o.carrier || '—') + '</span>';
+      var labelBadge = o.has_label
+        ? ''
+        : ' <span class="pq-badge nolabel" title="Label not created yet">no label</span>';
+      var openAttr = o.has_label
+        ? '<a class="pq-btn" href="' + escapeAttr(o.print_url) + '" target="_blank" rel="noopener" data-order-id="' + o.id + '">🖨️ Print</a>'
+        : '<a class="pq-btn danger" href="' + escapeAttr('/admin/ecommerce/order/' + o.id + '/auto-create-label/') + '">⚙️ Retry create</a>';
+
+      html += '<tr class="' + rowCls + '" data-order-id="' + o.id + '">'
+        + '<td>#' + o.id + '</td>'
+        + '<td>' + escapeHtml(o.full_name || '') + labelBadge + '</td>'
+        + '<td>' + carrierBadge + '</td>'
+        + '<td>' + escapeHtml(o.tracking_number || '—') + '</td>'
+        + '<td>' + escapeHtml(o.created_at || '') + '</td>'
+        + '<td>'
+          + openAttr
+          + ' <a class="pq-btn secondary" href="' + escapeAttr(o.change_url) + '">Edit</a>'
+        + '</td>'
+        + '</tr>';
+    });
+    tbody.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  function addOrders(list, treatAsNew) {
+    var added = 0;
+    (list || []).forEach(function (o) {
+      if (!o || typeof o.id !== 'number') { return; }
+      if (known[o.id]) {
+        // Update-in-place (e.g. label becomes available on retry).
+        known[o.id].has_label = o.has_label;
+        known[o.id].tracking_number = o.tracking_number;
+        known[o.id].carrier = o.carrier;
+        return;
+      }
+      o._isNew = !!treatAsNew;
+      known[o.id] = o;
+      if (o.id > maxId) { maxId = o.id; }
+      added++;
+    });
+    return added;
+  }
+
+  function autoOpenNewLabels() {
+    if (!liveToggle.checked) { return; }
+    Object.keys(known).forEach(function (k) {
+      var o = known[k];
+      if (!o.has_label) { return; }
+      if (printed[o.id]) { return; }
+      if (autoOpenedSinceLoad[o.id]) { return; }
+      if (!o._isNew) { return; }
+      autoOpenedSinceLoad[o.id] = true;
+      try {
+        window.open(o.print_url, '_pqlabel_' + o.id);
+      } catch (e) {}
+    });
+  }
+
+  function setStatus(text, live) {
+    statusTextEl.textContent = text;
+    statusEl.classList.toggle('live', !!live);
+  }
+
+  var pollTimer = null;
+  function poll() {
+    if (!liveToggle.checked) {
+      setStatus('Paused', false);
+      return;
+    }
+    setStatus('Checking for new orders…', true);
+    var url = feedUrl + '?since=' + encodeURIComponent(maxId);
+    fetch(url, {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(function (r) { return r.ok ? r.json() : { orders: [] }; })
+      .then(function (data) {
+        var added = addOrders(data.orders || [], true);
+        if (added) {
+          renderAll();
+          autoOpenNewLabels();
+        }
+        setStatus('Live · last check ' + new Date().toLocaleTimeString(), true);
+      })
+      .catch(function () {
+        setStatus('Offline — retrying…', false);
+      });
+  }
+
+  addOrders(initial, false);
+  renderAll();
+
+  liveToggle.addEventListener('change', function () {
+    if (liveToggle.checked) {
+      setStatus('Live', true);
+      poll();
+    } else {
+      setStatus('Paused', false);
+    }
+  });
+
+  openAllBtn.addEventListener('click', function () {
+    Object.keys(known).forEach(function (k) {
+      var o = known[k];
+      if (!o.has_label || printed[o.id]) { return; }
+      try { window.open(o.print_url, '_pqlabel_' + o.id); } catch (e) {}
+      printed[o.id] = Date.now();
+    });
+    persistPrinted();
+    renderAll();
+  });
+
+  tbody.addEventListener('click', function (ev) {
+    var a = ev.target.closest('a[data-order-id]');
+    if (!a) { return; }
+    var id = parseInt(a.getAttribute('data-order-id'), 10);
+    if (id) {
+      printed[id] = Date.now();
+      persistPrinted();
+    }
+  });
+
+  clearBtn.addEventListener('click', function () {
+    if (!confirm('Remove all "printed" marks? Previously printed orders will be eligible for auto-print again.')) {
+      return;
+    }
+    printed = {};
+    persistPrinted();
+    renderAll();
+  });
+
+  setStatus('Live', true);
+  pollTimer = setInterval(poll, 15000);
+  setTimeout(poll, 1500);
+})();
+</script>
+{% endblock %}

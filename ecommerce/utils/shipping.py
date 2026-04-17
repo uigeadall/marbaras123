@@ -1416,34 +1416,165 @@ def get_shipping_carrier(carrier_name: str) -> Optional[ShippingCarrierBase]:
     return None
 
 
+def detect_carrier_for_order(order) -> Optional[str]:
+    """
+    Determine the carrier key ('fedex', 'global_mail', ...) for an order.
+
+    Priority:
+      1. order.shipping_carrier if it is set to a known carrier key.
+      2. order.shipping_option.name (case-insensitive) matched against
+         known carrier keywords.
+    Returns None if no carrier can be confidently determined.
+    """
+    valid_keys = {'fedex', 'dhl', 'deutsche_post', 'global_mail', 'easypost'}
+
+    explicit = (getattr(order, 'shipping_carrier', '') or '').strip().lower()
+    if explicit in valid_keys:
+        return explicit
+
+    option = getattr(order, 'shipping_option', None)
+    option_name = (getattr(option, 'name', '') or '').lower()
+    if not option_name:
+        return None
+
+    if 'easypost' in option_name:
+        return 'easypost'
+    if 'fedex' in option_name:
+        return 'fedex'
+    # Global Mail / Global Post must match before the generic 'dhl' branch
+    # because Global Mail rides on the MyDHL API.
+    if 'global' in option_name and ('mail' in option_name or 'post' in option_name):
+        return 'global_mail'
+    if 'dhl' in option_name:
+        return 'dhl'
+    if 'deutsche' in option_name:
+        return 'deutsche_post'
+    return None
+
+
 def create_shipping_label(order, carrier_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Create shipping label for an order.
     If carrier_name is not provided, tries to determine from shipping_option.
     """
-    # Determine carrier from shipping option or use provided
-    if not carrier_name and order.shipping_option:
-        # Map shipping option names to carriers
-        option_name = order.shipping_option.name.lower()
-        if 'easypost' in option_name:
-            carrier_name = 'easypost'
-        elif 'fedex' in option_name:
-            carrier_name = 'fedex'
-        elif 'dhl' in option_name:
-            carrier_name = 'dhl'
-        elif 'deutsche' in option_name or 'post' in option_name:
-            carrier_name = 'deutsche_post'
-        elif 'global' in option_name and 'mail' in option_name:
-            carrier_name = 'global_mail'
-    
+    if not carrier_name:
+        carrier_name = detect_carrier_for_order(order)
+
     if not carrier_name:
         logger.warning(f"No carrier specified for order {order.id}")
         return None
-    
+
     carrier = get_shipping_carrier(carrier_name)
     if not carrier:
         logger.error(f"Unknown carrier: {carrier_name}")
         return None
-    
+
     return carrier.create_shipment(order)
+
+
+def auto_create_shipping_label(order_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Safe, idempotent wrapper used for automatic label creation right after
+    an order is placed.
+
+    - Reloads the order by id so this can be called from a background thread
+      without holding a stale ORM instance.
+    - Skips if the order already has a shipping label (idempotent).
+    - Detects the carrier (FedEx / Global Mail / ...) via
+      :func:`detect_carrier_for_order`.
+    - Persists ``tracking_number``, ``shipping_label_url``, ``shipment_id``
+      and ``shipping_carrier`` on the order.
+    - Catches and logs every exception so a failed label never breaks the
+      customer's checkout flow.
+    """
+    try:
+        from ecommerce.models import Order  # local import to avoid cycles
+    except Exception:
+        logger.exception("auto_create_shipping_label: failed to import Order model")
+        return None
+
+    try:
+        order = Order.objects.select_related('shipping_option').get(pk=order_id)
+    except Exception:
+        logger.exception(
+            "auto_create_shipping_label: order #%s could not be loaded", order_id
+        )
+        return None
+
+    if order.shipping_label_url:
+        logger.info(
+            "auto_create_shipping_label: order #%s already has a label, skipping",
+            order_id,
+        )
+        return {
+            'tracking_number': order.tracking_number,
+            'label_url': order.shipping_label_url,
+            'shipment_id': order.shipment_id,
+        }
+
+    carrier_name = detect_carrier_for_order(order)
+    if not carrier_name:
+        logger.info(
+            "auto_create_shipping_label: no carrier detected for order #%s "
+            "(shipping_option=%r)",
+            order_id,
+            getattr(order.shipping_option, 'name', None),
+        )
+        return None
+
+    logger.info(
+        "auto_create_shipping_label: creating %s label for order #%s",
+        carrier_name, order_id,
+    )
+
+    try:
+        result = create_shipping_label(order, carrier_name)
+    except Exception:
+        logger.exception(
+            "auto_create_shipping_label: carrier API raised for order #%s (%s)",
+            order_id, carrier_name,
+        )
+        return None
+
+    if not result:
+        logger.warning(
+            "auto_create_shipping_label: carrier returned no data for order #%s (%s)",
+            order_id, carrier_name,
+        )
+        return None
+
+    try:
+        update_fields = []
+        tracking = result.get('tracking_number')
+        label_url = result.get('label_url')
+        shipment_id = result.get('shipment_id')
+
+        if tracking and tracking != order.tracking_number:
+            order.tracking_number = tracking
+            update_fields.append('tracking_number')
+        if label_url and label_url != order.shipping_label_url:
+            order.shipping_label_url = label_url
+            update_fields.append('shipping_label_url')
+        if shipment_id and shipment_id != order.shipment_id:
+            order.shipment_id = shipment_id
+            update_fields.append('shipment_id')
+        if not order.shipping_carrier:
+            order.shipping_carrier = carrier_name
+            update_fields.append('shipping_carrier')
+
+        if update_fields:
+            order.save(update_fields=update_fields)
+            logger.info(
+                "auto_create_shipping_label: order #%s updated with fields=%s "
+                "(tracking=%s)",
+                order_id, update_fields, order.tracking_number,
+            )
+    except Exception:
+        logger.exception(
+            "auto_create_shipping_label: failed to persist label data for order #%s",
+            order_id,
+        )
+        return None
+
+    return result
 

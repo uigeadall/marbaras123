@@ -2081,6 +2081,39 @@ def _notify_order_confirmed(request: HttpRequest, order: Order) -> None:
     except Exception:
         logger.exception("_notify_order_confirmed: order_submitted signal failed for order #%s", order_db.pk)
 
+    _schedule_auto_shipping_label(order_db.pk)
+
+
+def _schedule_auto_shipping_label(order_id: int) -> None:
+    """
+    Fire-and-forget automatic shipping label creation for a freshly placed
+    order. Runs in a daemon thread so the customer response is not delayed
+    by the carrier API. The label ends up on the Print Queue page once the
+    carrier returns it (usually a few seconds later).
+    """
+    if not order_id:
+        return
+    try:
+        import threading
+        from ecommerce.utils.shipping import auto_create_shipping_label
+
+        thread = threading.Thread(
+            target=auto_create_shipping_label,
+            args=(order_id,),
+            name=f"auto-label-order-{order_id}",
+            daemon=True,
+        )
+        thread.start()
+        logger.info(
+            "_schedule_auto_shipping_label: background thread started for order #%s",
+            order_id,
+        )
+    except Exception:
+        logger.exception(
+            "_schedule_auto_shipping_label: failed to start background thread for order #%s",
+            order_id,
+        )
+
 
 @require_POST
 def add_to_cart(request: HttpRequest, pk: int) -> HttpResponse:

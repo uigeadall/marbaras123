@@ -1,0 +1,16 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block content_title %}
+  {{ block.super }}
+  <div style="margin: 10px 0 16px 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+    <a href="{% url 'admin:print_queue' %}"
+       style="background: linear-gradient(135deg, #667eea, #5568d3); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+      🖨️ Print queue (auto-print FedEx / Global Mail labels)
+    </a>
+    <a href="{% url 'admin:barcode_scanner' %}"
+       style="background: #6b7280; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600;">
+      🔎 Barcode scanner
+    </a>
+  </div>
+{% endblock %}
