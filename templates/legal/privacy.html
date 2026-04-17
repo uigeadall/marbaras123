@@ -22,6 +22,8 @@
   .legal-section{margin:28px 0}
   .legal-section h2{font-size:1.35rem;margin-bottom:8px}
   .legal-section p,.legal-section li{margin:8px 0;line-height:1.7}
+  .legal-section ul{padding-left:1.25rem}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#f2f2f2;font-size:.8rem;margin-right:6px}
 
   blockquote.notice{background:#fffceb;border-radius:8px;padding:12px 14px;margin-top:10px}
   address{font-style:normal;line-height:1.8}
@@ -43,99 +45,133 @@
   <header class="legal-hero">
     <h1>Privacy Policy <span class="badge">Last updated: {% now "F j, Y" %}</span></h1>
     <p class="legal-meta">
-      Marbaras (“we”, “us”, or “our”) respects your privacy. This policy explains what data we collect, why, and how you can control it.
+      This Privacy Policy explains how <strong>Marinova Trading Ltd</strong> (“we”, “us”, or “our”) collects, uses, and protects your personal data in accordance with the <strong>UK GDPR</strong> and the <strong>Data Protection Act 2018</strong>. For our general terms of sale, see our <a href="{% url 'terms' %}">Terms &amp; Conditions</a>.
     </p>
   </header>
 
-
-
-  <section id="consent" class="legal-section anchor">
-    <h2>Consent</h2>
-    <p>By using our website (<strong>www.marbaras.com</strong>), you consent to this Privacy Policy and agree to its terms.</p>
-  </section>
-
-  <section id="info-we-collect" class="legal-section anchor">
-    <h2>Information we collect</h2>
-    <p>The personal information requested will be clear at the point of collection. If you contact us directly, we may receive additional details like your name, email, phone number, message contents, and attachments.</p>
-    <p>When you register for an account or place an order, we may collect details such as name, company, address, email, telephone number, and order information.</p>
-  </section>
-
-  <section id="how-we-use" class="legal-section anchor">
-    <h2>How we use your information</h2>
+  <section id="controller" class="legal-section anchor">
+    <h2>1. Data Controller</h2>
+    <p>Marinova Trading Ltd is the data controller responsible for your personal data.</p>
     <ul>
-      <li>Process and fulfill your orders;</li>
-      <li>Provide, operate, and maintain our website;</li>
-      <li>Improve, personalize, and expand our services;</li>
-      <li>Understand and analyze how you use the site;</li>
-      <li>Develop new products, services, features, and functionality;</li>
-      <li>Communicate with you for support, updates, and marketing;</li>
-      <li>Send transactional/service emails;</li>
-      <li>Detect, prevent, and address fraud or abuse.</li>
+      <li><span class="pill">Company number</span> 14038608</li>
+      <li><span class="pill">Registered in</span> England and Wales</li>
+      <li><span class="pill">Registered office</span> Sanford House, 81 Skipper Way, St Neots, PE19 6LT, United Kingdom</li>
     </ul>
   </section>
 
-  <section id="logs" class="legal-section anchor">
-    <h2>Log files</h2>
-    <p>We use standard server logs (IP address, browser type, ISP, timestamp, referring/exit pages, clicks). These are not linked to personally identifiable information and are used for analytics, site administration, and aggregated statistics.</p>
+  <section id="collect" class="legal-section anchor">
+    <h2>2. Information We Collect</h2>
+    <p>We may collect the following personal data:</p>
+    <ul>
+      <li>Name</li>
+      <li>Billing address</li>
+      <li>Shipping address</li>
+      <li>Email address</li>
+      <li>Phone number (if provided)</li>
+      <li>Payment details (processed securely via third-party providers)</li>
+      <li>IP address and browser data (via cookies and analytics tools)</li>
+    </ul>
+  </section>
+
+  <section id="use" class="legal-section anchor">
+    <h2>3. How We Use Your Information</h2>
+    <p>We use your data to:</p>
+    <ul>
+      <li>Process and fulfil your orders (contractual necessity)</li>
+      <li>Communicate with you regarding your order</li>
+      <li>Provide customer support</li>
+      <li>Comply with legal obligations</li>
+      <li>Send marketing communications (with your consent)</li>
+      <li>Improve our website and services</li>
+    </ul>
+  </section>
+
+  <section id="legal-basis" class="legal-section anchor">
+    <h2>4. Legal Basis for Processing</h2>
+    <p>We rely on:</p>
+    <ul>
+      <li><strong>Contract</strong> (processing orders)</li>
+      <li><strong>Legal obligation</strong> (tax and accounting)</li>
+      <li><strong>Consent</strong> (marketing)</li>
+      <li><strong>Legitimate interest</strong> (website improvement, fraud prevention)</li>
+    </ul>
+  </section>
+
+  <section id="sharing" class="legal-section anchor">
+    <h2>5. Sharing Your Information</h2>
+    <p>We may share your data with trusted third parties including:</p>
+    <ul>
+      <li>Payment providers (e.g. Stripe, PayPal)</li>
+      <li>Delivery and logistics companies</li>
+      <li>Hosting providers and IT service providers</li>
+      <li>Analytics services (e.g. Google Analytics)</li>
+    </ul>
+  </section>
+
+  <section id="transfers" class="legal-section anchor">
+    <h2>6. International Transfers</h2>
+    <p>Your data may be transferred outside the UK. Where this occurs, appropriate safeguards are in place.</p>
+  </section>
+
+  <section id="retention" class="legal-section anchor">
+    <h2>7. Data Retention</h2>
+    <ul>
+      <li><strong>Order data:</strong> up to 6 years</li>
+      <li><strong>Customer communication:</strong> up to 2 years</li>
+      <li><strong>Marketing data:</strong> until you withdraw consent</li>
+    </ul>
+  </section>
+
+  <section id="rights" class="legal-section anchor">
+    <h2>8. Your Rights</h2>
+    <p>You have the right to:</p>
+    <ul>
+      <li>Access your data</li>
+      <li>Correct inaccurate data</li>
+      <li>Request deletion</li>
+      <li>Restrict or object to processing</li>
+      <li>Withdraw consent</li>
+    </ul>
+    <p>To exercise your rights, contact: <a href="mailto:support@marbaras.com">support@marbaras.com</a></p>
+  </section>
+
+  <section id="complaints" class="legal-section anchor">
+    <h2>9. Complaints</h2>
+    <p>You have the right to complain to the <a href="https://ico.org.uk/" target="_blank" rel="noopener noreferrer">Information Commissioner’s Office (ICO)</a>.</p>
   </section>
 
   <section id="cookies" class="legal-section anchor">
-    <h2>Cookies &amp; web beacons</h2>
-    <p>We use cookies to store preferences and improve your experience. You can control cookies in your browser settings. Disabling cookies may affect some features.</p>
-  </section>
-
-  <section id="ads" class="legal-section anchor">
-    <h2>Advertising partners</h2>
-    <p>Third-party ad networks may use cookies, JavaScript, or web beacons to personalize ads and measure performance. They receive your IP address automatically when serving ads. We do not control third-party cookies—please review their privacy policies.</p>
-  </section>
-
-  <section id="third-parties" class="legal-section anchor">
-    <h2>Third-party privacy</h2>
-    <p>Our policy does not apply to other websites or advertisers. Consult their policies for details, including opt-out instructions. You can also manage cookies via your browser settings.</p>
-  </section>
-
-  <section id="rights-ccpa" class="legal-section anchor">
-    <h2>CCPA privacy rights</h2>
+    <h2>10. Cookies</h2>
+    <p>We use cookies to:</p>
     <ul>
-      <li><strong>Disclosure:</strong> Request categories and specific pieces of personal data we have collected.</li>
-      <li><strong>Deletion:</strong> Request deletion of your personal data (subject to exceptions).</li>
-      <li><strong>Opt-out of sale:</strong> Request that we do not sell your personal data.</li>
+      <li>Ensure website functionality</li>
+      <li>Analyse traffic</li>
+      <li>Improve user experience</li>
+      <li>Support marketing</li>
     </ul>
-    <p>To exercise these rights, contact us as described below. We aim to respond within one month.</p>
+    <p>You can manage cookies via your browser or cookie banner. You will be asked to consent to non-essential cookies via our cookie banner.</p>
   </section>
 
-  <section id="rights-gdpr" class="legal-section anchor">
-    <h2>GDPR data protection rights</h2>
-    <ul>
-      <li><strong>Access:</strong> Request copies of your personal data.</li>
-      <li><strong>Rectification:</strong> Request corrections or completion.</li>
-      <li><strong>Erasure:</strong> Request deletion in certain circumstances.</li>
-      <li><strong>Restriction:</strong> Request limits on processing.</li>
-      <li><strong>Objection:</strong> Object to processing.</li>
-      <li><strong>Portability:</strong> Request transfer of your data to you or another organization.</li>
-    </ul>
-    <blockquote class="notice">
-      We may need to verify your identity before fulfilling requests. Our target response time is one month.
-    </blockquote>
+  <section id="security" class="legal-section anchor">
+    <h2>11. Data Security</h2>
+    <p>We take appropriate measures to protect your data.</p>
   </section>
 
-  <section id="children" class="legal-section anchor">
-    <h2>Children’s information</h2>
-    <p>We do not knowingly collect personal information from children under 13. If you believe a child has provided such information, please contact us so we can promptly remove it.</p>
+  <section id="third-party-links" class="legal-section anchor">
+    <h2>12. Third-Party Links</h2>
+    <p>We are not responsible for external websites.</p>
   </section>
 
   <section id="changes" class="legal-section anchor">
-    <h2>Changes to this policy</h2>
-    <p>We may update this policy from time to time. We will post the new policy on this page, and changes take effect immediately upon posting.</p>
+    <h2>13. Changes</h2>
+    <p>We may update this policy at any time.</p>
   </section>
 
   <section id="contact" class="legal-section anchor">
-    <h2>Contact us</h2>
+    <h2>14. Contact</h2>
     <address>
-      <strong>MARBARAS</strong><br>
-      Person to contact: Mariya Marinova<br>
-      Sanford House, 81 Skipper Way, St. Neots, PE19 6LT, United Kingdom<br>
-      Email: <a href="mailto:support@marbaras.com">support@marbaras.com</a>
+      <strong>Business name:</strong> Marinova Trading Ltd<br>
+      <strong>Email:</strong> <a href="mailto:support@marbaras.com">support@marbaras.com</a>
     </address>
   </section>
 
