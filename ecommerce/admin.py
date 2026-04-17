@@ -151,17 +151,31 @@ class ProductAdmin(admin.ModelAdmin):
     inventory_total_weight_display.short_description = "Общ грамаж"
     
     def get_list_display(self, request):
-        """Dynamically get list_display to handle missing sale_expires_at field."""
-        base_fields = ("name", "serial_number", "price", "discount_price", "category", "brand", "cart_add_count")
-        # Check if sale_expires_at field exists
+        """Changelist columns including inventory totals (not only the edit form)."""
+        base_fields = (
+            "name",
+            "serial_number",
+            "price",
+            "discount_price",
+            "category",
+            "brand",
+            "inventory_total_units_display",
+            "unit_weight_grams",
+            "inventory_total_weight_display",
+            "cart_add_count",
+        )
         try:
             from ecommerce.models import Product
-            if hasattr(Product, 'sale_expires_at'):
+            if hasattr(Product, "sale_expires_at"):
                 return base_fields + ("sale_expires_at",)
-        except:
+        except Exception:
             pass
         return base_fields
-    
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related("variants")
+
     list_filter = ("category", "brand", "categories")
     filter_horizontal = ("categories",)
     
