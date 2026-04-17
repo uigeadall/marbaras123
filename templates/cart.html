@@ -989,32 +989,41 @@
           let newShippingCost;
           
           if (typeof ev.shippingOption === 'string') {
-            // If it's an ID, find the option from currentShippingOptions
             if (currentShippingOptions && currentShippingOptions.length > 0) {
-              shippingOption = currentShippingOptions.find(opt => opt.id === ev.shippingOption);
+              shippingOption = currentShippingOptions.find(function (opt) {
+                return String(opt.id) === String(ev.shippingOption);
+              });
               if (shippingOption) {
                 newShippingCost = shippingOption.amount;
               }
             }
-          } else if (ev.shippingOption && typeof ev.shippingOption === 'object' && ev.shippingOption.amount !== undefined) {
-            // If it's already the option object (most common case), use it directly
+          } else if (ev.shippingOption && typeof ev.shippingOption === 'object') {
             shippingOption = ev.shippingOption;
-            newShippingCost = shippingOption.amount;
-            console.log('✅ Cart - Found shipping option object:', shippingOption);
-            console.log('✅ Cart - Shipping option ID:', shippingOption.id);
-            console.log('✅ Cart - Shipping option label:', shippingOption.label);
-            console.log('✅ Cart - Shipping option amount:', shippingOption.amount);
-            
-            // If user selected Express Shipping from dropdown but Apple Pay shows Free Shipping, override it
-            if (preferredShippingOption === 'express' && shippingOption.id === 'free' && currentShippingOptions && currentShippingOptions.length > 0) {
-              const expressOption = currentShippingOptions.find(opt => opt.id === 'express' || opt.label.includes('Express'));
+            if (shippingOption.amount !== undefined && shippingOption.amount !== null) {
+              newShippingCost = shippingOption.amount;
+            } else if (shippingOption.id && currentShippingOptions && currentShippingOptions.length > 0) {
+              const foundOpt = currentShippingOptions.find(function (opt) {
+                return String(opt.id) === String(shippingOption.id);
+              });
+              if (foundOpt) {
+                shippingOption = foundOpt;
+                newShippingCost = foundOpt.amount;
+              }
+            }
+            console.log('Cart wallet: shipping option resolved', shippingOption, 'amount cents', newShippingCost);
+
+            if (preferredShippingOption === 'express' && shippingOption && shippingOption.id === 'free' && currentShippingOptions && currentShippingOptions.length > 0) {
+              const expressOption = currentShippingOptions.find(function (opt) {
+                return opt.id === 'express' || (opt.label && opt.label.includes('Express'));
+              });
               if (expressOption) {
-                console.log('🔄 Cart - FORCING Express Shipping (user preference)');
+                console.log('Cart wallet: forcing Express (dropdown preference)');
                 shippingOption = expressOption;
                 newShippingCost = expressOption.amount;
               }
             }
           }
+
           
           if (newShippingCost !== undefined && newShippingCost !== null) {
             // Calculate base total (without shipping) - get subtotal from DOM or use originalTotalAmount
@@ -1108,7 +1117,11 @@
             };
             const currentCurrency = getCurrentCurrency().toLowerCase();
             const rate = exchangeRates[currentCurrency.toUpperCase()] || 1.0;
-            
+
+            const selectedOptionId = typeof ev.shippingOption === 'string'
+              ? ev.shippingOption
+              : (ev.shippingOption && ev.shippingOption.id) ? String(ev.shippingOption.id) : '';
+
             let shippingCostEUR = 0;
             if (selectedOptionId === 'standard') {
               shippingCostEUR = 5.99;
@@ -1121,15 +1134,26 @@
           const shippingCost = Math.round(shippingCostEUR * rate * 100);
             const finalTotal = Math.round(originalTotalAmount * 100) + shippingCost;
           
-            console.log('📦 Cart - Fallback: Original total:', originalTotalAmount, 'Shipping cost:', shippingCost / 100, 'Final total:', finalTotal / 100);
-            
-          ev.updateWith({
-            status: 'success',
-            total: {
-              label: 'Total',
-              amount: finalTotal,
-            },
-          });
+            console.log('Cart wallet fallback: subtotal', originalTotalAmount, 'shipping', shippingCost / 100, 'total', finalTotal / 100);
+
+            const fallbackShipOpts = (currentShippingOptions && currentShippingOptions.length)
+              ? currentShippingOptions
+              : (storedShippingOptions || []);
+            const fallbackUpdate = {
+              status: 'success',
+              total: {
+                label: 'Total',
+                amount: finalTotal,
+              },
+            };
+            if (fallbackShipOpts.length) {
+              fallbackUpdate.shippingOptions = fallbackShipOpts;
+              if (selectedOptionId) {
+                fallbackUpdate.shippingOption = selectedOptionId;
+              }
+            }
+            ev.updateWith(fallbackUpdate);
+
           
             console.log('✅ Cart - Updated total with shipping option ID:', selectedOptionId, 'Cost:', shippingCost / 100, 'Total:', finalTotal / 100);
           }
