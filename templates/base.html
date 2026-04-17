@@ -161,6 +161,8 @@
       background: #fff;
       color: #1e293b;
       box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+      max-height: min(78vh, 100%);
+      overflow-y: auto;
       pointer-events: auto !important;
       z-index: 999999;
       isolation: isolate;
@@ -815,6 +817,7 @@
       <nav class="flex flex-wrap gap-4 justify-center sm:justify-self-start items-center">
         <a href="{% url 'terms' %}" class="hover:text-slate-900">Terms</a>
         <a href="{% url 'privacy' %}" class="hover:text-slate-900">Privacy</a>
+        <a href="{% url 'cookie_policy' %}" class="hover:text-slate-900">Cookie policy</a>
         <a href="{% url 'refund_returns' %}" class="hover:text-slate-900">Returns</a>
         <a href="{% url 'shipping_policy' %}" class="hover:text-slate-900">Shipping</a>
         {% if COOKIE_CONSENT_ENABLED %}
@@ -1551,14 +1554,22 @@
     {# Buttons under text on all breakpoints so they do not align with the desktop right sticky column #}
     <div class="mx-auto max-w-site w-full flex flex-col gap-3">
       <div class="flex-1 min-w-0">
-        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies and privacy</p>
-        <p class="m-0 text-slate-600 leading-snug">
-          We use essential cookies for your cart, session, and security.
+        <p id="marbaras-cookie-banner-title" class="font-semibold text-slate-900 m-0 mb-1">Cookies</p>
+        <div class="m-0 text-slate-600 leading-snug space-y-2">
+          <p class="m-0">We use cookies to improve your experience. We also use essential cookies for your cart, session, and security.</p>
+          <p class="m-0">Cookies help us run the website, analyse traffic, improve performance, and support marketing.
           {% if marketing_pixels_json %}
-          With your consent, we also load analytics and advertising (Meta, TikTok, Google) to improve the store and our ads.
+          With your consent, we may load analytics and advertising (Meta, TikTok, Google).
           {% endif %}
-          Learn more in our <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Privacy Policy</a>.
-        </p>
+          </p>
+          <p class="m-0">Third-party services such as analytics providers may use cookies on this website.</p>
+          <p class="m-0">You will be asked to consent to non-essential cookies here. You can manage cookies via your browser or this banner.</p>
+          <p class="m-0">
+            Contact: <a href="mailto:support@marbaras.com" class="text-indigo-600 underline font-medium hover:text-indigo-800">support@marbaras.com</a>
+            · <a href="{% url 'cookie_policy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Cookie Policy</a>
+            · <a href="{% url 'privacy' %}" class="text-indigo-600 underline font-medium hover:text-indigo-800">Privacy Policy</a>
+          </p>
+        </div>
       </div>
       <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full" id="marbaras-cookie-banner-actions">
         {% if marketing_pixels_json %}

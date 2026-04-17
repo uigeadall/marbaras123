@@ -139,6 +139,10 @@ def breadcrumbs(request):
         trail.append({"name": "Shipping", "url": request.path})
         return {"breadcrumbs": trail}
 
+    if url_name == "cookie_policy":
+        trail.append({"name": "Cookie policy", "url": request.path})
+        return {"breadcrumbs": trail}
+
     if url_name == "contact":
         trail.append({"name": "Contact", "url": request.path})
         return {"breadcrumbs": trail}

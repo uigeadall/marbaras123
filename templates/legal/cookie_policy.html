@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Cookie Policy - Marbaras{% endblock %}
+
+{% block mobile_menu_content %}
+{% include "includes/shop_mobile_menu_block.html" %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .legal-wrap{max-width:900px;margin:0 auto;}
+  .legal-hero{margin-bottom:24px}
+  .legal-hero h1{font-size:2rem;margin-bottom:6px}
+  .legal-meta{font-size:.95rem;color:#777}
+  .badge{display:inline-block;background:#eef2ff;border-radius:999px;padding:4px 10px;font-size:.8rem;margin-left:8px}
+  .legal-section{margin:28px 0}
+  .legal-section h2{font-size:1.35rem;margin-bottom:8px}
+  .legal-section p,.legal-section li{margin:8px 0;line-height:1.7}
+  .legal-section ul{padding-left:1.25rem}
+  .anchor{scroll-margin-top:90px}
+  @media (max-width:768px){
+    .legal-hero h1{font-size:1.7rem}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-site px-4">
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[180px,minmax(0,1fr),180px]">
+    {% include "includes/shop_sidebar_left.html" %}
+    <section class="min-w-0">
+<section class="legal-wrap">
+  <div id="top"></div>
+  <header class="legal-hero">
+    <h1>Cookie Policy <span class="badge">Last updated: {% now "F j, Y" %}</span></h1>
+    <p class="legal-meta">
+      How we use cookies on Marbaras. For how we process personal data, see our <a href="{% url 'privacy' %}">Privacy Policy</a>.
+    </p>
+  </header>
+
+  <section id="overview" class="legal-section anchor">
+    <h2>Our use of cookies</h2>
+    <p>We use cookies to improve your experience.</p>
+  </section>
+
+  <section id="purposes" class="legal-section anchor">
+    <h2>What cookies help us do</h2>
+    <p>Cookies help us:</p>
+    <ul>
+      <li>Run the website</li>
+      <li>Analyse traffic</li>
+      <li>Improve performance</li>
+      <li>Support marketing</li>
+    </ul>
+  </section>
+
+  <section id="third-party" class="legal-section anchor">
+    <h2>Third-party cookies</h2>
+    <p>Third-party services such as analytics providers may use cookies on this website.</p>
+  </section>
+
+  <section id="consent" class="legal-section anchor">
+    <h2>Consent and your choices</h2>
+    <p>You will be asked to consent to non-essential cookies via our cookie banner.</p>
+    <p>You can manage cookies via your browser or cookie banner.</p>
+  </section>
+
+  <section id="contact" class="legal-section anchor">
+    <h2>Contact</h2>
+    <p>Questions about cookies: <a href="mailto:support@marbaras.com">support@marbaras.com</a></p>
+  </section>
+
+  <p><a href="#top">Back to top ↑</a></p>
+</section>
+    </section>
+    {% include "includes/shop_sidebar_right.html" %}
+  </div>
+  {% include "includes/shop_mobile_quick_auth.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% include "includes/shop_sidebar_wiring_js.html" %}
+{% endblock %}
