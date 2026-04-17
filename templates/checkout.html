@@ -1323,6 +1323,9 @@
     function marbarasEurToStripeMinor(eur) {
       return Math.round(Number(eur) * 100);
     }
+    if (typeof window.appliedCouponCode === 'undefined') {
+      window.appliedCouponCode = null;
+    }
     let marbarasRefreshIntentTimer = null;
     function marbarasScheduleRefreshStripeIntent() {
       if (!document.querySelector('[name=csrfmiddlewaretoken]')) return;
@@ -2354,11 +2357,17 @@
           const countryField = document.getElementById('country');
           const couponField = document.getElementById('coupon');
           
-          // Ensure coupon code is set if one was applied
-          if (appliedCouponCode && couponField) {
-            couponField.value = appliedCouponCode;
-            console.log('✅ Set coupon code in form:', appliedCouponCode);
+          // Coupon: Stripe script is outside coupon IIFE — use window + input (avoids ReferenceError)
+          const walletCouponCode = (
+            (window.appliedCouponCode && String(window.appliedCouponCode).trim()) ||
+            (couponField && couponField.value && String(couponField.value).trim()) ||
+            ''
+          );
+          if (walletCouponCode && couponField) {
+            couponField.value = walletCouponCode;
+            console.log('Set coupon code in form:', walletCouponCode);
           }
+
           
           if (ev.payerName && fullNameField) {
             fullNameField.value = ev.payerName;
@@ -2436,11 +2445,61 @@
               cityField.value = addr.region;
               console.log('✅ Filled city from region:', addr.region);
             }
+            if ((!addr.addressLine || !addr.addressLine.length) && addr.organization && addressField && !addressField.value.trim()) {
+              addressField.value = addr.organization;
+            }
           } else {
             console.warn('⚠️ No shipping address received from Apple Pay');
             console.warn('⚠️ ev.shippingAddress:', ev.shippingAddress);
             console.warn('⚠️ ev.payerAddress:', ev.payerAddress);
             console.warn('⚠️ Full event object:', ev);
+          }
+          
+
+
+          if (ev.paymentMethod && ev.paymentMethod.billing_details) {
+            const bd = ev.paymentMethod.billing_details;
+            const a = bd.address;
+            if (bd.name && fullNameField && !fullNameField.value.trim()) {
+              fullNameField.value = bd.name;
+            }
+            if (bd.email && emailField && !emailField.value.trim()) {
+              emailField.value = bd.email;
+            }
+            if (bd.phone && phoneField && !phoneField.value.trim()) {
+              phoneField.value = bd.phone;
+            }
+            if (a) {
+              const lines = [a.line1, a.line2].filter(function (x) { return x && String(x).trim(); });
+              if (lines.length && addressField && !addressField.value.trim()) {
+                addressField.value = lines.join(', ');
+              }
+              if (a.city && cityField && !cityField.value.trim()) {
+                cityField.value = a.city;
+              }
+              if (a.postal_code && postalCodeField && !postalCodeField.value.trim()) {
+                postalCodeField.value = a.postal_code;
+              }
+              if (a.country && countryField && !countryField.value.trim()) {
+                const fc = marbarasWalletCountryToFormValue(a.country);
+                if (fc) {
+                  countryField.value = fc;
+                  if (window.marbarasFilterShippingOptions) {
+                    window.marbarasFilterShippingOptions();
+                  }
+                }
+              }
+            }
+          }
+
+          if (addressField && !addressField.value.trim()) {
+            addressField.value = 'Provided via wallet (details in Stripe)';
+          }
+          if (cityField && !cityField.value.trim()) {
+            cityField.value = '—';
+          }
+          if (postalCodeField && !postalCodeField.value.trim()) {
+            postalCodeField.value = 'N/A';
           }
           
           // Set payment intent ID
@@ -2494,7 +2553,7 @@
             const form = document.getElementById('payment-form');
             if (form) {
               // Verify all required fields are filled
-              const requiredFields = ['full_name', 'address', 'city', 'postal_code', 'phone', 'country'];
+              const requiredFields = ['full_name', 'email', 'address', 'city', 'postal_code', 'phone', 'country'];
               let allFilled = true;
               requiredFields.forEach(function(fieldId) {
                 const field = document.getElementById(fieldId);
