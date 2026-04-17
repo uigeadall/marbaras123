@@ -3555,6 +3555,7 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
         ('terms', 0.4),
         ('privacy', 0.4),
         ('refund_returns', 0.4),
+        ('shipping_policy', 0.4),
         ('contact', 0.5),
     ]
     
@@ -3993,6 +3994,11 @@ def privacy(request: HttpRequest) -> HttpResponse:
 def refund_returns(request: HttpRequest) -> HttpResponse:
     """Refund & returns policy (static template)."""
     return render(request, "legal/refund_returns.html", _legal_pages_shop_context())
+
+
+def shipping_policy(request: HttpRequest) -> HttpResponse:
+    """Shipping policy (static template)."""
+    return render(request, "legal/shipping_policy.html", _legal_pages_shop_context())
 
 
 def contact(request: HttpRequest) -> HttpResponse:

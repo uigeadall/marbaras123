@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Shipping Policy - Marbaras{% endblock %}
+
+{% block mobile_menu_content %}
+{% include "includes/shop_mobile_menu_block.html" %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .legal-wrap{max-width:900px;margin:0 auto;}
+  .legal-hero{margin-bottom:24px}
+  .legal-hero h1{font-size:2rem;margin-bottom:6px}
+  .legal-meta{font-size:.95rem;color:#777}
+  .badge{display:inline-block;background:#eef2ff;border-radius:999px;padding:4px 10px;font-size:.8rem;margin-left:8px}
+  .legal-section{margin:28px 0}
+  .legal-section h2{font-size:1.35rem;margin-bottom:8px}
+  .legal-section p,.legal-section li{margin:8px 0;line-height:1.7}
+  .legal-section ul{padding-left:1.25rem}
+  .anchor{scroll-margin-top:90px}
+  @media (max-width:768px){
+    .legal-hero h1{font-size:1.7rem}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-site px-4">
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[180px,minmax(0,1fr),180px]">
+    {% include "includes/shop_sidebar_left.html" %}
+    <section class="min-w-0">
+<section class="legal-wrap">
+  <div id="top"></div>
+  <header class="legal-hero">
+    <h1>Shipping Policy <span class="badge">Last updated: {% now "F j, Y" %}</span></h1>
+    <p class="legal-meta">
+      We ship within the UK and selected international countries. For returns, see our <a href="{% url 'refund_returns' %}">Refund &amp; Returns Policy</a>.
+    </p>
+  </header>
+
+  <section id="processing" class="legal-section anchor">
+    <h2>Processing time</h2>
+    <p>Orders are processed within <strong>1–3 working days</strong>.</p>
+  </section>
+
+  <section id="delivery" class="legal-section anchor">
+    <h2>Delivery time</h2>
+    <ul>
+      <li><strong>Standard:</strong> 7–21 working days</li>
+      <li><strong>Express:</strong> 3–5 working days</li>
+    </ul>
+    <p>Delivery times are estimates only.</p>
+    <p>We are responsible for the goods until they are delivered to you.</p>
+  </section>
+
+  <section id="international" class="legal-section anchor">
+    <h2>International shipping</h2>
+    <p>Customers are responsible for customs duties and taxes. If customs charges are refused, return costs may be deducted.</p>
+  </section>
+
+  <section id="tracking" class="legal-section anchor">
+    <h2>Tracking</h2>
+    <p>Tracking details are provided after dispatch.</p>
+  </section>
+
+  <section id="delays" class="legal-section anchor">
+    <h2>Delays</h2>
+    <p>We are not responsible for delays caused by carriers or customs.</p>
+  </section>
+
+  <section id="lost" class="legal-section anchor">
+    <h2>Lost parcels</h2>
+    <p>If confirmed lost, we will offer a replacement or refund.</p>
+  </section>
+
+  <section id="address" class="legal-section anchor">
+    <h2>Incorrect address</h2>
+    <p>We are not responsible for incorrect addresses provided by the customer.</p>
+  </section>
+
+  <section id="contact" class="legal-section anchor">
+    <h2>Contact</h2>
+    <p>For shipping enquiries: <a href="mailto:support@marbaras.com">support@marbaras.com</a></p>
+  </section>
+
+  <p><a href="#top">Back to top ↑</a></p>
+</section>
+    </section>
+    {% include "includes/shop_sidebar_right.html" %}
+  </div>
+  {% include "includes/shop_mobile_quick_auth.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% include "includes/shop_sidebar_wiring_js.html" %}
+{% endblock %}
