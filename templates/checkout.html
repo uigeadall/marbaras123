@@ -799,6 +799,7 @@
         }
       });
     }
+    window.marbarasFilterShippingOptions = filterShippingOptions;
 
     // Store current discount state
     let currentDiscount = {{ discount|default:0 }};
@@ -1060,15 +1061,8 @@
         const shippingPrice = parseFloat(selectedOption.getAttribute('data-price')) || 0;
         const shippingName = selectedOption.getAttribute('data-name') || selectedOption.textContent.split('(')[0].trim();
         
-        // Get current currency
-        const getCurrentCurrency = window.getCurrentCurrency || function() {
-          return localStorage.getItem('selectedCurrency') || 'EUR';
-        };
-        const currentCurrency = getCurrentCurrency().toLowerCase();
-        
-        // Convert shipping cost to current currency
-        const shippingCostInCurrency = window.convertPrice ? window.convertPrice(shippingPrice, currentCurrency.toUpperCase()) : shippingPrice;
-        const shippingCostInCents = Math.round(shippingCostInCurrency * 100);
+        // data-price is EUR; Stripe PI uses same checkout currency (EUR)
+        const shippingCostInCents = Math.round(Number(shippingPrice) * 100);
         
         // Store selected shipping option globally for use in shippingaddresschange handler
         window.selectedShippingOptionForPayment = {
@@ -1122,18 +1116,9 @@
           }
         }
         
-        // Calculate total (subtotal after discount + shipping)
+        // Subtotal + shipping in EUR (same minor units as Stripe PaymentIntent)
         const totalEUR = currentSubtotal + shippingCost;
-        
-        // Get current currency
-        const getCurrentCurrency = window.getCurrentCurrency || function() {
-          return localStorage.getItem('selectedCurrency') || 'EUR';
-        };
-        const currentCurrency = getCurrentCurrency().toLowerCase();
-        
-        // Convert to current currency
-        const totalInCurrency = window.convertPrice ? window.convertPrice(totalEUR, currentCurrency.toUpperCase()) : totalEUR;
-        const totalInCents = Math.round(totalInCurrency * 100);
+        const totalInCents = Math.round(Number(totalEUR) * 100);
         
         // Update payment request
         window.paymentRequest.update({
@@ -1146,10 +1131,8 @@
         console.log('🔄 Updated Payment Request total:', {
           subtotal: currentSubtotal,
           shipping: shippingCost,
-          total: totalEUR,
-          totalInCurrency: totalInCurrency,
-          totalInCents: totalInCents,
-          currency: currentCurrency.toUpperCase()
+          totalEUR: totalEUR,
+          totalInCents: totalInCents
         });
       } catch (e) {
         console.error('Error updating Payment Request total:', e);
@@ -1336,6 +1319,10 @@
     function marbarasClientSecret() {
       return window.marbarasCheckoutClientSecret || '{{ client_secret|escapejs }}';
     }
+    const marbarasStripeChargeCurrency = '{{ stripe_checkout_currency|default:"eur"|escapejs }}'.toLowerCase();
+    function marbarasEurToStripeMinor(eur) {
+      return Math.round(Number(eur) * 100);
+    }
     let marbarasRefreshIntentTimer = null;
     function marbarasScheduleRefreshStripeIntent() {
       if (!document.querySelector('[name=csrfmiddlewaretoken]')) return;
@@ -1360,6 +1347,34 @@
           window.marbarasCheckoutClientSecret = d.client_secret;
         }
       }).catch(function () {});
+    }
+    function marbarasRefreshStripeIntentAsync() {
+      return new Promise(function (resolve, reject) {
+        const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        if (!csrf) {
+          resolve(null);
+          return;
+        }
+        const fd = new URLSearchParams();
+        fd.set('coupon', (document.getElementById('coupon')?.value || '').trim());
+        fd.set('country', (document.getElementById('country')?.value || '').trim());
+        const so = document.getElementById('shipping_option');
+        if (so) fd.set('shipping_option', so.value || '');
+        fetch('{% url "checkout_refresh_payment_intent" %}', {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrf },
+          body: fd,
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d.client_secret) {
+              window.marbarasCheckoutClientSecret = d.client_secret;
+            }
+            resolve(d);
+          })
+          .catch(function (e) { reject(e); });
+      });
     }
     console.log('Stripe initialized successfully');
     
@@ -1404,28 +1419,10 @@
           if (!isNaN(subtotalValue) && subtotalValue > 0) {
             totalAmountEUR = subtotalValue;
             console.log('📊 Using subtotal from DOM element:', totalAmountEUR);
-            // Update originalTotalAmount if Payment Request is already created
-            if (window.paymentRequest && typeof originalTotalAmount !== 'undefined') {
-              const getCurrentCurrency = window.getCurrentCurrency || function() {
-                return localStorage.getItem('selectedCurrency') || 'EUR';
-              };
-              const getExchangeRate = function() {
-                try {
-                  const cached = localStorage.getItem('exchangeRatesCache');
-                  if (cached) {
-                    const rates = JSON.parse(cached);
-                    return rates;
-                  }
-                } catch (e) {
-                  console.warn('Could not load exchange rates from cache');
-                }
-                return { EUR: 1.0, USD: 1.09, GBP: 0.86 };
-              };
-              const currentCurrency = getCurrentCurrency().toLowerCase();
-              const exchangeRates = getExchangeRate();
-              const rate = exchangeRates[currentCurrency.toUpperCase()] || 1.0;
-              originalTotalAmount = totalAmountEUR * rate;
-              console.log('📊 Updated originalTotalAmount from DOM:', originalTotalAmount);
+            // Keep EUR subtotal in sync for Payment Request shipping math
+            if (window.paymentRequest && typeof originalTotalAmountEur !== 'undefined') {
+              originalTotalAmountEur = subtotalValue;
+              console.log('Updated originalTotalAmountEur from DOM:', originalTotalAmountEur);
             }
           }
         }
@@ -1435,39 +1432,8 @@
     console.log('📊 Subtotal from template:', subtotalFromTemplate);
     console.log('📊 Subtotal amount (EUR, without shipping):', totalAmountEUR);
     
-    // Get current currency from localStorage (EUR, USD, or GBP)
-    const getCurrentCurrency = window.getCurrentCurrency || function() {
-      return localStorage.getItem('selectedCurrency') || 'EUR';
-    };
-    
-    // Get exchange rates (if available)
-    const getExchangeRate = function() {
-      try {
-        const cached = localStorage.getItem('exchangeRatesCache');
-        if (cached) {
-          const rates = JSON.parse(cached);
-          return rates;
-        }
-      } catch (e) {
-        console.warn('Could not load exchange rates from cache');
-      }
-      // Fallback rates
-      return { EUR: 1.0, USD: 1.09, GBP: 0.86 };
-    };
-    
-    const currentCurrency = getCurrentCurrency().toLowerCase();
-    const exchangeRates = getExchangeRate();
-    const rate = exchangeRates[currentCurrency.toUpperCase()] || 1.0;
-    const totalAmount = totalAmountEUR * rate;
-    // Store original total amount (without shipping) for use in shipping handlers
-    // Use 'let' instead of 'const' so we can update it later
-    let originalTotalAmount = totalAmount;
-    
-    console.log('Current currency:', currentCurrency.toUpperCase());
-    console.log('Exchange rate:', rate);
-    console.log('Subtotal amount (converted):', totalAmount);
-    console.log('Subtotal in cents:', Math.round(totalAmount * 100));
-    console.log('Country: BG (Bulgaria)');
+    let originalTotalAmountEur = totalAmountEUR;
+
     
     if (!totalAmountEUR || totalAmountEUR <= 0 || isNaN(totalAmountEUR)) {
       console.error('❌ Invalid total amount:', totalAmountEUR);
@@ -1491,19 +1457,13 @@
           const shippingPrice = parseFloat(selectedOption.getAttribute('data-price')) || 0;
           const shippingName = selectedOption.getAttribute('data-name') || selectedOption.textContent.split('(')[0].trim();
           selectedShippingCost = shippingPrice;
-          // Convert shipping cost to current currency
-          const shippingCostInCurrency = window.convertPrice ? window.convertPrice(shippingPrice, currentCurrency.toUpperCase()) : shippingPrice;
-          const shippingCostInCents = Math.round(shippingCostInCurrency * 100);
-          
+          const shippingCostInCents = marbarasEurToStripeMinor(shippingPrice);
           selectedShippingOption = {
             id: selectedOption.value,
             label: shippingName,
             amount: shippingCostInCents,
           };
-          console.log('📦 Selected shipping option from dropdown:', selectedShippingOption);
-          console.log('📦 Shipping cost in EUR:', shippingPrice);
-          console.log('📦 Shipping cost in', currentCurrency.toUpperCase() + ':', shippingCostInCurrency);
-          console.log('📦 Shipping cost in cents:', shippingCostInCents);
+          console.log('Selected shipping option from dropdown:', selectedShippingOption);
         }
       }
       
@@ -1522,16 +1482,14 @@
           if (selectedOption && selectedOption.value) {
             const shippingPrice = parseFloat(selectedOption.getAttribute('data-price')) || 0;
             const shippingName = selectedOption.getAttribute('data-name') || selectedOption.textContent.split('(')[0].trim();
-            const shippingCostInCurrency = window.convertPrice ? window.convertPrice(shippingPrice, currentCurrency.toUpperCase()) : shippingPrice;
-            const shippingCostInCents = Math.round(shippingCostInCurrency * 100);
-            
+            const shippingCostInCents = marbarasEurToStripeMinor(shippingPrice);
             window.selectedShippingOptionForPayment = {
               id: selectedOption.value,
               label: shippingName,
               amount: shippingCostInCents,
               price: shippingPrice,
             };
-            console.log('💾 Stored selected shipping option from dropdown:', window.selectedShippingOptionForPayment);
+            console.log('Stored selected shipping option from dropdown:', window.selectedShippingOptionForPayment);
           }
         }
       }
@@ -1539,32 +1497,23 @@
       // Check if coupon is already applied
       const couponInput = document.getElementById('coupon');
       const appliedCoupon = couponInput?.value?.trim().toUpperCase() || null;
-      let finalSubtotal = totalAmount;
-      
-      // If coupon is applied, get the discounted subtotal from the display
+      let finalSubtotalEur = totalAmountEUR;
       if (appliedCoupon) {
         const subtotalDisplay = document.getElementById('subtotal-display');
         if (subtotalDisplay) {
           const discountedSubtotal = parseFloat(subtotalDisplay.getAttribute('data-eur-price'));
           if (!isNaN(discountedSubtotal) && discountedSubtotal > 0) {
-            finalSubtotal = discountedSubtotal;
-            console.log('🎟️ Coupon applied, using discounted subtotal:', finalSubtotal);
+            finalSubtotalEur = discountedSubtotal;
+            console.log('Coupon applied, discounted subtotal EUR:', finalSubtotalEur);
           }
         }
       }
-      
-      // Convert final subtotal to current currency
-      const finalSubtotalInCurrency = finalSubtotal * rate;
-      
-      // Calculate initial total (subtotal after discount + selected shipping if any)
-      const shippingCostInCurrency = selectedShippingOption ? (selectedShippingOption.amount / 100) : 0;
-      const initialTotal = Math.round(finalSubtotalInCurrency * 100) + (selectedShippingOption ? selectedShippingOption.amount : 0);
-      console.log('📦 Initial total (subtotal + shipping):', initialTotal / 100);
-      console.log('📦 Subtotal (after discount):', finalSubtotal);
-      console.log('📦 Subtotal in currency:', finalSubtotalInCurrency);
-      console.log('📦 Shipping cost:', shippingCostInCurrency);
-      console.log('📦 Selected shipping option before Payment Request:', window.selectedShippingOptionForPayment);
-      
+      originalTotalAmountEur = finalSubtotalEur;
+      const initialSubtotalCents = marbarasEurToStripeMinor(finalSubtotalEur);
+      const initialShippingCents = selectedShippingOption ? selectedShippingOption.amount : 0;
+      const initialTotal = initialSubtotalCents + initialShippingCents;
+      console.log('Initial Payment Request total (minor units):', initialTotal, 'subtotalEUR:', finalSubtotalEur);
+
       // DEBUG: Log dropdown state before creating Payment Request
       const shippingSelectDebug = document.getElementById('shipping_option');
       if (shippingSelectDebug) {
@@ -1581,7 +1530,7 @@
       // Only create Payment Request if amount is valid
       window.paymentRequest = stripe.paymentRequest({
         country: 'BG', // Bulgaria
-        currency: currentCurrency, // Use selected currency (usd, eur, or gbp)
+        currency: marbarasStripeChargeCurrency,
         total: {
           label: 'Total',
           amount: initialTotal, // Include selected shipping if any
@@ -1713,6 +1662,55 @@
         // Check full name
         return ALLOWED_COUNTRIES[country] === true;
       }
+
+      function marbarasWalletCountryToFormValue(country) {
+        if (!country) return '';
+        const mapped = ALLOWED_COUNTRIES[country];
+        if (typeof mapped === 'string') return mapped;
+        if (ALLOWED_COUNTRIES[country] === true) return country;
+        return '';
+      }
+
+      async function marbarasApplyCheckoutFormFromWallet(wEv) {
+        const ship = wEv.shippingAddress || wEv.payerAddress;
+        const countryEl = document.getElementById('country');
+        const shipSel = document.getElementById('shipping_option');
+        if (ship && countryEl) {
+          const fv = marbarasWalletCountryToFormValue(ship.country);
+          if (fv) {
+            countryEl.value = fv;
+            if (window.marbarasFilterShippingOptions) {
+              window.marbarasFilterShippingOptions();
+            }
+          }
+          const aEl = document.getElementById('address');
+          const cEl = document.getElementById('city');
+          const pEl = document.getElementById('postal_code');
+          if (ship.addressLine && ship.addressLine.length > 0 && aEl) {
+            aEl.value = ship.addressLine.join(', ');
+          }
+          if (ship.city && cEl) cEl.value = ship.city;
+          if (ship.postalCode && pEl) pEl.value = ship.postalCode;
+        }
+        let wid = null;
+        if (wEv.shippingOption) {
+          wid = typeof wEv.shippingOption === 'string'
+            ? wEv.shippingOption
+            : (wEv.shippingOption.id || null);
+        }
+        if (wid && shipSel && shipSel.options.length > 1) {
+          const wantPrice = wid === 'express' ? 19.99 : wid === 'standard' ? 5.99 : 0;
+          for (let j = 0; j < shipSel.options.length; j++) {
+            const op = shipSel.options[j];
+            const pr = parseFloat(op.getAttribute('data-price'));
+            if (!isNaN(pr) && Math.abs(pr - wantPrice) < 0.02) {
+              shipSel.value = op.value;
+              break;
+            }
+          }
+          shipSel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
       
       // Store shipping options from shippingaddresschange for use in shippingoptionchange
       let storedShippingOptions = null;
@@ -1741,24 +1739,6 @@
           }
           
           console.log('✅ Country allowed:', country);
-          
-          // Get exchange rate for currency conversion
-          const getExchangeRate = function() {
-            try {
-              const cached = localStorage.getItem('exchangeRatesCache');
-              if (cached) {
-                const rates = JSON.parse(cached);
-                return rates;
-              }
-            } catch (e) {
-              console.warn('Could not load exchange rates from cache');
-            }
-            return { EUR: 1.0, USD: 1.09, GBP: 0.86 };
-          };
-          const exchangeRates = getExchangeRate();
-          const currentCurrency = window.getCurrentCurrency ? window.getCurrentCurrency() : 'EUR';
-          const rate = exchangeRates[currentCurrency.toUpperCase()] || 1.0;
-          
           // Check if user selected a shipping option from dropdown before clicking Apple Pay
           let defaultShippingOption = null;
           
@@ -1775,9 +1755,7 @@
             if (selectedOption && selectedOption.value) {
               const shippingPrice = parseFloat(selectedOption.getAttribute('data-price')) || 0;
               const shippingName = selectedOption.getAttribute('data-name') || selectedOption.textContent.split('(')[0].trim();
-              const shippingCostInCurrency = window.convertPrice ? window.convertPrice(shippingPrice, currentCurrency.toUpperCase()) : shippingPrice;
-              const shippingCostInCents = Math.round(shippingCostInCurrency * 100);
-              
+              const shippingCostInCents = marbarasEurToStripeMinor(shippingPrice);
               defaultShippingOption = {
                 id: selectedOption.value,
                 label: shippingName,
@@ -1822,8 +1800,8 @@
             // Canada, Australia, New Zealand and Norway: Standard Shipping ($5.99) and Express Shipping ($19.99)
             const standardCostEUR = 5.99;
             const expressCostEUR = 19.99;
-            const standardCost = Math.round(standardCostEUR * rate * 100);
-            const expressCost = Math.round(expressCostEUR * rate * 100);
+            const standardCost = marbarasEurToStripeMinor(standardCostEUR);
+            const expressCost = marbarasEurToStripeMinor(expressCostEUR);
             
             shippingOptions = [
               {
@@ -1850,7 +1828,7 @@
                   Math.abs(defaultShippingOption.price - 19.99) < 0.01 ||
                   defaultShippingOption.label === 'Express Shipping' ||
                   defaultShippingOption.label.includes('Express')) {
-                defaultTotal = Math.round(originalTotalAmount * 100) + expressCost;
+                defaultTotal = Math.round(originalTotalAmountEur * 100) + expressCost;
                 selectedShippingId = 'express';
                 console.log('📦 Using pre-selected Express Shipping (matched by price or label)');
               } else if (defaultShippingOption.price === 5.99 || 
@@ -1858,16 +1836,16 @@
                          Math.abs(defaultShippingOption.price - 5.99) < 0.01 ||
                          defaultShippingOption.label === 'Standard Shipping' ||
                          defaultShippingOption.label.includes('Standard')) {
-                defaultTotal = Math.round(originalTotalAmount * 100) + standardCost;
+                defaultTotal = Math.round(originalTotalAmountEur * 100) + standardCost;
                 selectedShippingId = 'standard';
                 console.log('📦 Using pre-selected Standard Shipping (matched by price or label)');
               } else {
-                defaultTotal = Math.round(originalTotalAmount * 100) + standardCost;
+                defaultTotal = Math.round(originalTotalAmountEur * 100) + standardCost;
                 selectedShippingId = 'standard';
                 console.log('📦 Could not match pre-selected option, defaulting to Standard Shipping');
               }
             } else {
-              defaultTotal = Math.round(originalTotalAmount * 100) + standardCost;
+              defaultTotal = Math.round(originalTotalAmountEur * 100) + standardCost;
               selectedShippingId = 'standard';
               console.log('📦 No pre-selected option, defaulting to Standard Shipping');
             }
@@ -1888,7 +1866,7 @@
             const freeCostEUR = 0;
             const expressCostEUR = 19.99;
             const freeCost = Math.round(freeCostEUR * 100);
-            const expressCost = Math.round(expressCostEUR * rate * 100);
+            const expressCost = marbarasEurToStripeMinor(expressCostEUR);
             
             shippingOptions = [
               {
@@ -1936,30 +1914,30 @@
               console.log('🔍 Is Free?', isFree);
               
               if (isExpress) {
-                defaultTotal = Math.round(originalTotalAmount * 100) + expressCost;
+                defaultTotal = Math.round(originalTotalAmountEur * 100) + expressCost;
                 selectedShippingId = 'express';
                 console.log('✅ Using pre-selected Express Shipping (matched by price, label, or amount)');
                 console.log('📦 Express cost:', expressCost / 100);
-                console.log('📦 Original total:', originalTotalAmount);
+                console.log('📦 Original total:', originalTotalAmountEur);
                 console.log('📦 Default total:', defaultTotal / 100);
               } else if (isFree) {
-                defaultTotal = Math.round(originalTotalAmount * 100) + freeCost;
+                defaultTotal = Math.round(originalTotalAmountEur * 100) + freeCost;
                 selectedShippingId = 'free';
                 console.log('✅ Using pre-selected Free Shipping (matched by price or label)');
               } else {
                 // If we can't match, default to Express if price is > 0, otherwise Free
                 if (defaultShippingOption.price > 0 || defaultShippingOption.amount > 0) {
-                  defaultTotal = Math.round(originalTotalAmount * 100) + expressCost;
+                  defaultTotal = Math.round(originalTotalAmountEur * 100) + expressCost;
                   selectedShippingId = 'express';
                   console.log('✅ Defaulting to Express Shipping (price > 0)');
                 } else {
-                  defaultTotal = Math.round(originalTotalAmount * 100) + freeCost;
+                  defaultTotal = Math.round(originalTotalAmountEur * 100) + freeCost;
                   selectedShippingId = 'free';
                   console.log('⚠️ Could not match pre-selected option, defaulting to Free Shipping');
                 }
               }
             } else {
-              defaultTotal = Math.round(originalTotalAmount * 100) + freeCost;
+              defaultTotal = Math.round(originalTotalAmountEur * 100) + freeCost;
               selectedShippingId = 'free';
               console.log('⚠️ No pre-selected option, defaulting to Free Shipping');
             }
@@ -1991,7 +1969,7 @@
         console.log('📦 Stored shipping options:', storedShippingOptions);
         console.log('📦 Shipping address:', ev.shippingAddress);
         console.log('📦 Current total from event:', ev.total);
-        console.log('📦 Original total amount:', originalTotalAmount);
+        console.log('📦 Original total amount:', originalTotalAmountEur);
         
         // Use stored shipping options if ev.shippingOptions is undefined
         const availableShippingOptions = ev.shippingOptions || storedShippingOptions || [];
@@ -2085,7 +2063,7 @@
           }
           
           if (newShippingCost !== undefined && newShippingCost !== null) {
-            // Calculate base total (without shipping) - get subtotal from DOM or use originalTotalAmount
+            // Calculate base total (without shipping) - get subtotal from DOM or use originalTotalAmountEur
             let baseTotal;
             
             // Try to get subtotal from DOM element first (most reliable)
@@ -2095,36 +2073,16 @@
               if (subtotalAttr) {
                 const subtotalValue = parseFloat(subtotalAttr);
                 if (!isNaN(subtotalValue) && subtotalValue > 0) {
-                  // Convert to current currency
-                  const getCurrentCurrency = window.getCurrentCurrency || function() {
-                    return localStorage.getItem('selectedCurrency') || 'EUR';
-                  };
-                  const getExchangeRate = function() {
-                    try {
-                      const cached = localStorage.getItem('exchangeRatesCache');
-                      if (cached) {
-                        const rates = JSON.parse(cached);
-                        return rates;
-                      }
-                    } catch (e) {
-                      console.warn('Could not load exchange rates from cache');
-                    }
-                    return { EUR: 1.0, USD: 1.09, GBP: 0.86 };
-                  };
-                  const currentCurrency = getCurrentCurrency().toLowerCase();
-                  const exchangeRates = getExchangeRate();
-                  const rate = exchangeRates[currentCurrency.toUpperCase()] || 1.0;
-                  const subtotalInCurrency = subtotalValue * rate;
-                  baseTotal = Math.round(subtotalInCurrency * 100);
-                  console.log('📦 Using subtotal from DOM:', subtotalValue, 'EUR, converted to', subtotalInCurrency, currentCurrency.toUpperCase());
+                  baseTotal = marbarasEurToStripeMinor(subtotalValue);
+                  console.log('Using subtotal from DOM (EUR minor):', subtotalValue, '->', baseTotal);
                 }
               }
             }
             
-            // Fallback to originalTotalAmount if DOM value not available
+            // Fallback to originalTotalAmountEur if DOM value not available
             if (!baseTotal) {
-              baseTotal = Math.round(originalTotalAmount * 100);
-              console.log('📦 Using originalTotalAmount:', originalTotalAmount);
+              baseTotal = marbarasEurToStripeMinor(originalTotalAmountEur);
+              console.log('📦 Using originalTotalAmountEur:', originalTotalAmountEur);
             }
             
             // Calculate final total: base total + new shipping cost
@@ -2159,23 +2117,6 @@
             console.log('✅ Updated total with shipping option:', shippingOption ? shippingOption.label : 'Unknown', 'Cost:', newShippingCost / 100, 'Total:', finalTotal / 100);
           } else {
             // Fallback: calculate based on option ID
-            // Get exchange rate for currency conversion
-            const getExchangeRate = function() {
-              try {
-                const cached = localStorage.getItem('exchangeRatesCache');
-                if (cached) {
-                  const rates = JSON.parse(cached);
-                  return rates;
-                }
-              } catch (e) {
-                console.warn('Could not load exchange rates from cache');
-              }
-              return { EUR: 1.0, USD: 1.09, GBP: 0.86 };
-            };
-            const exchangeRates = getExchangeRate();
-            const currentCurrency = window.getCurrentCurrency ? window.getCurrentCurrency() : 'EUR';
-            const rate = exchangeRates[currentCurrency.toUpperCase()] || 1.0;
-            
             let shippingCostEUR = 0;
             if (selectedOptionId === 'standard') {
               shippingCostEUR = 5.99;
@@ -2184,11 +2125,10 @@
             } else if (selectedOptionId === 'free') {
               shippingCostEUR = 0;
             }
-            
-          const shippingCost = Math.round(shippingCostEUR * rate * 100);
-            const finalTotal = Math.round(originalTotalAmount * 100) + shippingCost;
+            const shippingCost = marbarasEurToStripeMinor(shippingCostEUR);
+            const finalTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + shippingCost;
           
-            console.log('📦 Fallback: Original total:', originalTotalAmount, 'Shipping cost:', shippingCost / 100, 'Final total:', finalTotal / 100);
+            console.log('📦 Fallback: Original total:', originalTotalAmountEur, 'Shipping cost:', shippingCost / 100, 'Final total:', finalTotal / 100);
             
           ev.updateWith({
             status: 'success',
@@ -2309,6 +2249,38 @@
               return;
             }
           }
+
+          if (!shippingData && ev.payerAddress && isCountryAllowed(ev.payerAddress.country)) {
+            const addr = ev.payerAddress;
+            shippingData = {
+              name: ev.payerName || '',
+              phone: ev.payerPhone || '',
+              address: {
+                line1: addr.addressLine && addr.addressLine.length > 0 ? addr.addressLine[0] : '',
+                line2: addr.addressLine && addr.addressLine.length > 1 ? addr.addressLine.slice(1).join(', ') : '',
+                city: addr.city || '',
+                postal_code: addr.postalCode || '',
+                country: addr.country || '',
+              },
+            };
+          }
+          
+          await marbarasApplyCheckoutFormFromWallet(ev);
+          try {
+            const refreshed = await marbarasRefreshStripeIntentAsync();
+            if (!refreshed || !refreshed.client_secret) {
+              const msg = (refreshed && refreshed.error) || 'Could not prepare payment for this order total.';
+              ev.complete('fail');
+              const ce = document.getElementById('card-errors');
+              if (ce) ce.textContent = msg;
+              return;
+            }
+          } catch (errRefresh) {
+            console.error(errRefresh);
+            ev.complete('fail');
+            document.getElementById('card-errors').textContent = 'Connection error. Please try again.';
+            return;
+          }
           
           // Confirm payment with PaymentIntent using the payment method from Apple Pay/Google Pay
           // IMPORTANT: Include customer data (email, shipping) in the confirmation
@@ -2343,18 +2315,26 @@
 
           console.log('Payment Intent status:', paymentIntent.status);
 
-          // If payment requires action (3D Secure, etc.), handle it
-          if (paymentIntent.status === 'requires_action') {
-            const { error: actionError } = await stripe.confirmCardPayment(marbarasClientSecret());
-            if (actionError) {
+          let resolvedPaymentIntent = paymentIntent;
+          if (resolvedPaymentIntent.status === 'requires_action') {
+            const { error: actionError, paymentIntent: piAfter } = await stripe.confirmCardPayment(
+              marbarasClientSecret()
+            );
+            if (actionError || !piAfter) {
               console.error('Payment action error:', actionError);
               ev.complete('fail');
-              document.getElementById('card-errors').textContent = actionError.message || 'Payment failed.';
+              document.getElementById('card-errors').textContent = (actionError && actionError.message) || 'Payment failed.';
               return;
             }
+            resolvedPaymentIntent = piAfter;
           }
 
-          // Payment succeeded
+          if (resolvedPaymentIntent.status !== 'succeeded') {
+            ev.complete('fail');
+            document.getElementById('card-errors').textContent = 'Payment was not completed. Please try again.';
+            return;
+          }
+
           ev.complete('success');
           {% if initiate_checkout_pixel %}
           try {
@@ -2444,9 +2424,12 @@
               postalCodeField.dispatchEvent(new Event('input', { bubbles: true }));
             }
             if (country && countryField) {
-              countryField.value = country;
-              console.log('✅ Filled country:', country);
-              countryField.dispatchEvent(new Event('change', { bubbles: true }));
+              const countryFormVal = marbarasWalletCountryToFormValue(country) || country;
+              countryField.value = countryFormVal;
+              console.log('Filled country:', countryFormVal);
+              if (window.marbarasFilterShippingOptions) {
+                window.marbarasFilterShippingOptions();
+              }
             }
             if (addr.region && cityField && !cityField.value) {
               // Some Apple Pay implementations use 'region' instead of 'city'
@@ -2463,8 +2446,8 @@
           // Set payment intent ID
           const paymentIntentIdField = document.getElementById('payment_intent_id');
           if (paymentIntentIdField) {
-            paymentIntentIdField.value = paymentIntent.id;
-            console.log('✅ Set payment_intent_id:', paymentIntent.id);
+            paymentIntentIdField.value = resolvedPaymentIntent.id;
+            console.log('✅ Set payment_intent_id:', resolvedPaymentIntent.id);
           }
           
           // Ensure shipping option is selected if not already
@@ -2499,6 +2482,11 @@
             }
           }
           
+          await marbarasApplyCheckoutFormFromWallet(ev);
+          if (typeof marbarasScheduleRefreshStripeIntent === 'function') {
+            marbarasScheduleRefreshStripeIntent();
+          }
+
           // Wait a bit to ensure all fields are filled and visible
           console.log('✅ Form filled, waiting before submit...');
           setTimeout(function() {

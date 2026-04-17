@@ -2426,6 +2426,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             "shipping_options": list(ShippingOption.objects.all().order_by("price", "name").distinct()),
             "client_secret": intent.client_secret,
             "stripe_public_key": stripe_public_key,
+            "stripe_checkout_currency": _stripe_checkout_currency(),
             "is_guest": not request.user.is_authenticated,
             "profile_data": profile_data,
             "initiate_checkout_pixel": initiate_checkout_pixel,
