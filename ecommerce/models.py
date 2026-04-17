@@ -588,6 +588,36 @@ class Comment(models.Model):
         verbose_name_plural = "Comments"
 
 
+class ProductReview(models.Model):
+    """
+    Public product ratings and optional text reviews.
+    Ratings always count toward the average and are listed with stars.
+    Comment text is shown only after comment_approved is set in admin.
+    """
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="product_reviews",
+        db_index=True,
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    comment = models.TextField(blank=True)
+    comment_approved = models.BooleanField(default=False, db_index=True)
+    reviewer_name = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Product review"
+        verbose_name_plural = "Product reviews"
+
+    def __str__(self) -> str:
+        who = self.reviewer_name.strip() if self.reviewer_name else "Anonymous"
+        return f"{self.product.name} — {self.rating}★ ({who})"
+
+
 class ShippingOption(models.Model):
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=6, decimal_places=2)

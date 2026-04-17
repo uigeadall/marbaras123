@@ -31,6 +31,7 @@ from .models import (
     ShippingOption,
     Coupon,
     ProductBundleItem,
+    ProductReview,
 )
 from .utils.emailing import send_order_shipped_email
 
@@ -988,6 +989,31 @@ class CategoryAdmin(admin.ModelAdmin):
         return form
 admin.site.register(ProductImage)
 admin.site.register(CartItem)
+
+
+@admin.register(ProductReview)
+class ProductReviewAdmin(admin.ModelAdmin):
+    list_display = (
+        "product",
+        "rating",
+        "reviewer_name",
+        "comment_preview",
+        "comment_approved",
+        "created_at",
+    )
+    list_filter = ("comment_approved", "rating", "created_at")
+    list_editable = ("comment_approved",)
+    search_fields = ("product__name", "comment", "reviewer_name")
+    readonly_fields = ("created_at",)
+    ordering = ("-created_at",)
+    autocomplete_fields = ("product",)
+
+    @admin.display(description="Comment")
+    def comment_preview(self, obj):
+        t = (obj.comment or "").strip()
+        if not t:
+            return "—"
+        return (t[:100] + "…") if len(t) > 100 else t
 
 
 def order_item_variant_summary(obj: OrderItem) -> str:

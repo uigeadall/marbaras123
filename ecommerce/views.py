@@ -23,6 +23,7 @@ from django.db import transaction
 from django.db.models import (
     Avg,
     Case,
+    Count,
     F,
     IntegerField,
     Prefetch,
@@ -44,22 +45,21 @@ from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie, csrf_p
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_http_methods, require_POST
 
-from .forms import RatingForm
+from .forms import ProductReviewForm
 from .models import (
     BannerImage,
     BlogPost,
     CustomerReview,
     CartItem,
     Category,
-    Comment,
     Coupon,
+    ProductReview,
     Favorite,
     Order,
     OrderItem,
     Product,
     ProductImage,
     ProductVariant,
-    Rating,
     ShippingOption, ProductBundleItem,
     UserProfile,
 )
@@ -1196,9 +1196,6 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     )
     product = get_object_or_404(product_qs, slug=slug)
 
-    comments = Comment.objects.filter(product=product).order_by("-created_at")
-
-
     # Get all product images
     all_product_images = list(ProductImage.objects.filter(product=product).order_by('id'))
     
@@ -1263,32 +1260,37 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
             # Fallback: use all variants if variant_type check fails
             filtered_variants = list(product.variants.all().order_by('size'))
     
-    rating_form = None
     categories = _get_categories()
 
+    product_reviews = list(
+        ProductReview.objects.filter(product=product).order_by("-created_at")
+    )
+    review_agg = ProductReview.objects.filter(product=product).aggregate(
+        avg=Avg("rating"),
+        cnt=Count("id"),
+    )
+    average_rating = review_agg["avg"]
+    review_count = review_agg["cnt"] or 0
 
-    if request.user.is_authenticated:
-        existing_rating = Rating.objects.filter(user=request.user, product=product).first()
-        rating_form = RatingForm(instance=existing_rating)
-
-        if request.method == "POST":
-            value = request.POST.get("value")
-            if value:
-                rating_form = RatingForm(request.POST, instance=existing_rating)
-                if rating_form.is_valid():
-                    rating = rating_form.save(commit=False)
-                    rating.user = request.user
-                    rating.product = product
-                    rating.save()
-
-            comment_text = (request.POST.get("comment") or "").strip()
-            if comment_text:
-                Comment.objects.create(product=product, user=request.user, text=comment_text)
-
-            return redirect("product_detail", slug=product.slug)
-
-    average_rating = product.ratings.aggregate(Avg("value"))["value__avg"]
-
+    review_form = ProductReviewForm()
+    if request.method == "POST" and request.POST.get("submit_product_review"):
+        if (request.POST.get("website") or "").strip():
+            messages.error(request, "Unable to submit review.")
+        else:
+            review_form = ProductReviewForm(request.POST)
+            if review_form.is_valid():
+                rev = review_form.save(commit=False)
+                rev.product = product
+                rev.comment_approved = False
+                rev.save()
+                if (rev.comment or "").strip():
+                    messages.success(
+                        request,
+                        "Thank you! Your comment will appear after we approve it. Your rating is visible already.",
+                    )
+                else:
+                    messages.success(request, "Thank you for your rating!")
+                return redirect("product_detail", slug=product.slug)
 
     rv = [int(i) for i in request.session.get("recently_viewed", []) if str(i).isdigit()]
     pk_i = product.pk
@@ -1401,13 +1403,14 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "has_zodiac_variants": has_zodiac_variants,
         "has_earring_hoop_variants": has_earring_hoop_variants,
         "filtered_variants": filtered_variants,
-        "comments": comments,
+        "product_reviews": product_reviews,
+        "review_form": review_form,
+        "review_count": review_count,
         "favorite_ids": (
             list(Favorite.objects.filter(user=request.user).values_list("product_id", flat=True))
             if request.user.is_authenticated
             else []
         ),
-        "rating_form": rating_form,
         "average_rating": average_rating,
         "recently_viewed_products": recently_viewed_products,
         "you_might_like": you_might_like,
