@@ -126,7 +126,13 @@ class PriceDecreaseForm(forms.Form):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
-    actions = ['increase_prices_action', 'decrease_prices_action', 'create_zodiac_variants_action', 'create_earring_hoop_variants_action']
+    actions = [
+        "export_products_csv_action",
+        "increase_prices_action",
+        "decrease_prices_action",
+        "create_zodiac_variants_action",
+        "create_earring_hoop_variants_action",
+    ]
     readonly_fields = (
         "inventory_total_units_display",
         "inventory_total_weight_display",
@@ -149,7 +155,80 @@ class ProductAdmin(admin.ModelAdmin):
         return f"{q} g"
 
     inventory_total_weight_display.short_description = "Общ грамаж"
-    
+
+    def export_products_csv_action(self, request, queryset):
+        """Download selected products as UTF-8 CSV (Excel-friendly with BOM)."""
+        queryset = queryset.select_related("category").prefetch_related("variants", "categories")
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="products_export.csv"'
+        response.write("\ufeff")
+        writer = csv.writer(response)
+        header = [
+            "id",
+            "name",
+            "slug",
+            "serial_number",
+            "brand",
+            "category",
+            "categories_all",
+            "price",
+            "discount_price",
+            "stock",
+            "total_units",
+            "unit_weight_grams",
+            "total_weight_grams",
+            "variants_size_stock",
+            "recently_sold",
+            "cart_add_count",
+        ]
+        if hasattr(Product, "sale_expires_at"):
+            header.append("sale_expires_at")
+        writer.writerow(header)
+
+        for p in queryset:
+            cats_all = ", ".join(c.name for c in p.categories.all())
+            tw = p.total_weight_grams_value()
+            tw_str = str(tw.quantize(Decimal("0.001"))) if tw is not None else ""
+            variants_bits = []
+            for v in p.variants.all():
+                label = getattr(v, "display_name", None) or v.size or str(v.pk)
+                variants_bits.append(f"{label}={v.stock}")
+            variants_col = "; ".join(variants_bits)
+            row = [
+                p.pk,
+                p.name,
+                p.slug or "",
+                p.serial_number or "",
+                p.brand or "",
+                p.category.name if p.category else "",
+                cats_all,
+                str(p.price),
+                str(p.discount_price) if p.discount_price is not None else "",
+                p.stock,
+                p.total_stock_units(),
+                str(p.unit_weight_grams) if p.unit_weight_grams is not None else "",
+                tw_str,
+                variants_col,
+                p.recently_sold,
+                p.cart_add_count,
+            ]
+            if hasattr(Product, "sale_expires_at"):
+                row.append(
+                    timezone.localtime(p.sale_expires_at).strftime("%Y-%m-%d %H:%M")
+                    if p.sale_expires_at
+                    else ""
+                )
+            writer.writerow(row)
+
+        self.message_user(
+            request,
+            f"Exported {queryset.count()} product(s) to CSV.",
+            messages.SUCCESS,
+        )
+        return response
+
+    export_products_csv_action.short_description = "Export selected products to CSV"
+
     def get_list_display(self, request):
         """Changelist columns including inventory totals (not only the edit form)."""
         base_fields = (
