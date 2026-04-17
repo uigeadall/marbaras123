@@ -811,8 +811,8 @@
 
   <footer class="border-t border-slate-200">
   <div class="mx-auto max-w-site px-4 py-3 text-[11px] leading-tight">
-    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-slate-600">
-      <nav class="flex flex-wrap gap-4 justify-center sm:justify-start items-center">
+    <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-4 items-center text-slate-600">
+      <nav class="flex flex-wrap gap-4 justify-center sm:justify-self-start items-center">
         <a href="{% url 'terms' %}" class="hover:text-slate-900">Terms</a>
         <a href="{% url 'privacy' %}" class="hover:text-slate-900">Privacy</a>
         {% if COOKIE_CONSENT_ENABLED %}
@@ -838,17 +838,16 @@
         </a>
       </nav>
       
-      <!-- Payment Methods -->
-      <div class="flex items-center justify-center">
-        {% load static %}
+      <!-- Payment methods: true horizontal center (equal1fr side columns) -->
+      <div class="flex justify-center justify-self-center w-full sm:w-auto">
         <img src="{% static 'images/image3.jpg' %}" 
              alt="Accepted payment methods: Apple Pay, Google Pay, VISA, American Express, Mastercard" 
-             class="h-12 sm:h-16 object-contain opacity-90 hover:opacity-100 transition-opacity"
+             class="h-12 sm:h-16 object-contain opacity-90 hover:opacity-100 transition-opacity max-w-full"
              loading="lazy"
              onerror="console.error('Payment methods image failed to load:', this.src); this.style.display='none';">
       </div>
       
-      <span class="text-center sm:text-left">© {% now "Y" %} Marbaras</span>
+      <span class="text-center sm:justify-self-end sm:text-right">© {% now "Y" %} Marbaras</span>
     </div>
   </div>
 </footer>
