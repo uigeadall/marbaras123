@@ -127,6 +127,28 @@ class PriceDecreaseForm(forms.Form):
 class ProductAdmin(admin.ModelAdmin):
     inlines = [ProductImageInline, ProductVariantInline, ProductBundleItemInline]
     actions = ['increase_prices_action', 'decrease_prices_action', 'create_zodiac_variants_action', 'create_earring_hoop_variants_action']
+    readonly_fields = (
+        "inventory_total_units_display",
+        "inventory_total_weight_display",
+    )
+
+    def inventory_total_units_display(self, obj):
+        if obj is None or not getattr(obj, "pk", None):
+            return "—"
+        return obj.total_stock_units()
+
+    inventory_total_units_display.short_description = "Общо бройки"
+
+    def inventory_total_weight_display(self, obj):
+        if obj is None or not getattr(obj, "pk", None):
+            return "—"
+        tw = obj.total_weight_grams_value()
+        if tw is None:
+            return "—"
+        q = tw.quantize(Decimal("0.001"))
+        return f"{q} g"
+
+    inventory_total_weight_display.short_description = "Общ грамаж"
     
     def get_list_display(self, request):
         """Dynamically get list_display to handle missing sale_expires_at field."""
@@ -153,7 +175,15 @@ class ProductAdmin(admin.ModelAdmin):
                 "fields": ("price", "discount_price")
             }),
             ("Inventory", {
-                "fields": ("stock", "recently_sold", "cart_add_count")
+                "fields": (
+                    "stock",
+                    "recently_sold",
+                    "cart_add_count",
+                    "unit_weight_grams",
+                    "inventory_total_units_display",
+                    "inventory_total_weight_display",
+                ),
+                "description": "Общите бройки и общият грамаж се изчисляват автоматично. При продукти с варианти се сумира наличността от таба „Product variants“.",
             }),
             ("Images", {
                 "fields": ("image",)

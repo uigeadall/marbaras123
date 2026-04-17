@@ -164,10 +164,23 @@ class Product(models.Model):
     brand = models.CharField(max_length=50, blank=True, null=True)
 
     cart_add_count = models.PositiveIntegerField(default=0, db_index=True)
-    stock = models.PositiveIntegerField(default=0, db_index=True)
+    stock = models.PositiveIntegerField(
+        default=0,
+        db_index=True,
+        verbose_name="Наличност (бройки)",
+        help_text="За продукт без варианти: бройки на склад. При варианти наличността е по редовете „Variants“; общата сума се показва в админа по-долу.",
+    )
     recently_sold = models.PositiveIntegerField(
         default=0,
         help_text="Number of items recently sold (displayed on product page)"
+    )
+    unit_weight_grams = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        verbose_name="Грамаж на една бройка (g)",
+        help_text="Тегло на един артикул в грамове (за склад / метал).",
     )
     sale_expires_at = models.DateTimeField(
         null=True,
@@ -226,6 +239,20 @@ class Product(models.Model):
             if timezone.now() > self.sale_expires_at:
                 return False
         return True
+
+    def total_stock_units(self) -> int:
+        """Общо продаваеми бройки: сума от варианти, ако има, иначе полето stock."""
+        if not self.pk:
+            return int(self.stock or 0)
+        if self.variants.exists():
+            return sum(int(v.stock or 0) for v in self.variants.all())
+        return int(self.stock or 0)
+
+    def total_weight_grams_value(self):
+        """Общ грамаж = бройки × грамаж на една бройка (ако е зададен)."""
+        if self.unit_weight_grams is None:
+            return None
+        return Decimal(self.total_stock_units()) * self.unit_weight_grams
 
     def save(self, *args, **kwargs):
         """Generate random slug if not provided and ensure primary category is in categories."""
