@@ -533,8 +533,119 @@ def _stripe_checkout_currency() -> str:
     return cur
 
 
-def _verify_stripe_payment_intent_for_checkout(payment_intent_id: str, expected_minor: int) -> tuple[bool, str]:
-    """Ensure the browser-completed PaymentIntent matches server-computed charge (EUR)."""
+_CHECKOUT_CHARGE_CURRENCIES = frozenset({"eur", "usd", "gbp"})
+
+
+def _checkout_fx_fallback_rates() -> dict[str, Decimal]:
+    """Foreign currency units per 1 EUR (same convention as frontend convertPrice)."""
+    try:
+        usd = Decimal(str(getattr(settings, "CHECKOUT_FX_FALLBACK_USD", "1.09")))
+    except Exception:
+        usd = Decimal("1.09")
+    try:
+        gbp = Decimal(str(getattr(settings, "CHECKOUT_FX_FALLBACK_GBP", "0.86")))
+    except Exception:
+        gbp = Decimal("0.86")
+    if usd <= 0:
+        usd = Decimal("1.09")
+    if gbp <= 0:
+        gbp = Decimal("0.86")
+    return {"eur": Decimal("1"), "usd": usd, "gbp": gbp}
+
+
+def _normalize_checkout_charge_currency(raw: Optional[str]) -> str:
+    c = (raw or "").strip().lower()
+    if len(c) != 3 or not c.isalpha():
+        c = _stripe_checkout_currency()
+    if c not in _CHECKOUT_CHARGE_CURRENCIES:
+        c = "eur"
+    return c
+
+
+def _parse_client_fx_multiplier(val: object) -> Optional[Decimal]:
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        d = Decimal(s)
+    except Exception:
+        return None
+    if d <= 0:
+        return None
+    return d
+
+
+def _fx_client_sane_for_charge(client: Decimal, fallback: Decimal) -> bool:
+    if fallback <= 0:
+        return False
+    lo = fallback * Decimal("0.80")
+    hi = fallback * Decimal("1.25")
+    return lo <= client <= hi
+
+
+def _resolve_eur_to_charge_multiplier(
+    charge_cur: str,
+    *,
+    fx_usd: Optional[Decimal] = None,
+    fx_gbp: Optional[Decimal] = None,
+) -> Decimal:
+    charge_cur = (charge_cur or "eur").strip().lower()
+    fb = _checkout_fx_fallback_rates()
+    if charge_cur == "eur":
+        return Decimal("1")
+    if charge_cur == "usd":
+        fbf = fb["usd"]
+        if fx_usd is not None and _fx_client_sane_for_charge(fx_usd, fbf):
+            return fx_usd
+        return fbf
+    if charge_cur == "gbp":
+        fbf = fb["gbp"]
+        if fx_gbp is not None and _fx_client_sane_for_charge(fx_gbp, fbf):
+            return fx_gbp
+        return fbf
+    return Decimal("1")
+
+
+def _checkout_total_eur_to_charge(
+    total_eur: Decimal,
+    charge_cur: str,
+    *,
+    fx_usd: Optional[Decimal] = None,
+    fx_gbp: Optional[Decimal] = None,
+) -> tuple[Decimal, int, str]:
+    """Amount in charge currency, Stripe minor units, normalized lowercase ISO currency."""
+    charge_cur = _normalize_checkout_charge_currency(charge_cur)
+    mult = _resolve_eur_to_charge_multiplier(charge_cur, fx_usd=fx_usd, fx_gbp=fx_gbp)
+    if charge_cur == "eur":
+        amount = total_eur.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    else:
+        amount = (total_eur * mult).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    minor = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return amount, minor, charge_cur
+
+
+def _checkout_fx_from_http_post(request: HttpRequest) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    return (
+        _parse_client_fx_multiplier(request.POST.get("fx_usd")),
+        _parse_client_fx_multiplier(request.POST.get("fx_gbp")),
+    )
+
+
+def _checkout_fx_from_wallet_json(data: dict) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    return (
+        _parse_client_fx_multiplier(data.get("fx_usd")),
+        _parse_client_fx_multiplier(data.get("fx_gbp")),
+    )
+
+
+def _verify_stripe_payment_intent_for_checkout(
+    payment_intent_id: str,
+    expected_minor: int,
+    expected_currency: str,
+) -> tuple[bool, str]:
+    """Ensure the browser-completed PaymentIntent matches server-computed charge."""
     if not (payment_intent_id or "").strip():
         return False, "missing_payment_intent"
     if not settings.STRIPE_SECRET_KEY:
@@ -543,7 +654,7 @@ def _verify_stripe_payment_intent_for_checkout(payment_intent_id: str, expected_
         pi = stripe.PaymentIntent.retrieve((payment_intent_id or "").strip())
     except stripe_error.StripeError as e:
         return False, f"stripe:{e}"
-    want_cur = _stripe_checkout_currency()
+    want_cur = _normalize_checkout_charge_currency(expected_currency)
     if (pi.currency or "").lower() != want_cur:
         return False, "currency_mismatch"
     if pi.status != "succeeded":
@@ -555,13 +666,16 @@ def _verify_stripe_payment_intent_for_checkout(payment_intent_id: str, expected_
 
 
 def _create_stripe_intent(
-    amount: Decimal,
+    amount_eur: Decimal,
     session_key: Optional[str],
     is_guest: bool = False,
     *,
     idempotency_salt: str = "",
+    charge_currency: Optional[str] = None,
+    fx_usd: Optional[Decimal] = None,
+    fx_gbp: Optional[Decimal] = None,
 ) -> Optional[stripe.PaymentIntent]:
-    """Create Stripe PaymentIntent with error handling."""
+    """Create Stripe PaymentIntent (amount is catalog total in EUR; charged in charge_currency)."""
     # Check if Stripe is configured
     if not settings.STRIPE_SECRET_KEY:
         logger.error("Stripe secret key is not configured")
@@ -575,6 +689,15 @@ def _create_stripe_intent(
         return None
     
     try:
+        charge_cur = _normalize_checkout_charge_currency(
+            charge_currency or _stripe_checkout_currency()
+        )
+        _, cents, charge_cur = _checkout_total_eur_to_charge(
+            amount_eur,
+            charge_cur,
+            fx_usd=fx_usd,
+            fx_gbp=fx_gbp,
+        )
         # Create a safe idempotency key (only ASCII characters, no Cyrillic)
         # Use hash of session_key to avoid encoding issues
         if session_key:
@@ -587,22 +710,21 @@ def _create_stripe_intent(
         else:
             session_hash = 'nouser'
         
-        cents = int(_to_cents(amount))
         salt = (idempotency_salt or "")[:120]
         salt_hash = hashlib.sha256(salt.encode("utf-8", errors="ignore")).hexdigest()[:24] if salt else "nosalt"
-        idempotency_key = f"pi-{'g' if is_guest else 'u'}-{session_hash}-{cents}-{salt_hash}"
+        idempotency_key = f"pi-{'g' if is_guest else 'u'}-{session_hash}-{charge_cur}-{cents}-{salt_hash}"
         
         # Ensure idempotency_key is ASCII-safe
         try:
             idempotency_key.encode('latin-1')
         except UnicodeEncodeError:
             logger.error("Idempotency key contains non-ASCII characters: %s", idempotency_key)
-            idempotency_key = f"pi-{session_hash}-{cents}"
+            idempotency_key = f"pi-{session_hash}-{charge_cur}-{cents}"
         
         # Ensure all parameters are ASCII-safe
         intent = stripe.PaymentIntent.create(
-            amount=int(_to_cents(amount)),
-            currency=_stripe_checkout_currency(),
+            amount=int(cents),
+            currency=charge_cur,
             idempotency_key=idempotency_key,
         )
         return intent
@@ -2180,12 +2302,17 @@ def checkout_refresh_payment_intent(request: HttpRequest) -> JsonResponse:
     if total is None:
         return JsonResponse({"error": "Could not compute total"}, status=400)
 
-    salt = f"rf|{coupon}|{shipping_option_id or ''}|{country_raw}|{total}"
+    charge_currency = _normalize_checkout_charge_currency(request.POST.get("charge_currency"))
+    fx_usd, fx_gbp = _checkout_fx_from_http_post(request)
+    salt = f"rf|{coupon}|{shipping_option_id or ''}|{country_raw}|{total}|{charge_currency}|{fx_usd}|{fx_gbp}"
     intent = _create_stripe_intent(
         total,
         request.session.session_key,
         is_guest=not request.user.is_authenticated,
         idempotency_salt=salt,
+        charge_currency=charge_currency,
+        fx_usd=fx_usd,
+        fx_gbp=fx_gbp,
     )
     if not intent:
         return JsonResponse({"error": "Could not create payment"}, status=500)
@@ -2193,6 +2320,7 @@ def checkout_refresh_payment_intent(request: HttpRequest) -> JsonResponse:
         {
             "client_secret": intent.client_secret,
             "amount_cents": intent.amount,
+            "currency": intent.currency,
         }
     )
 
@@ -2285,7 +2413,17 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             return redirect("checkout")
 
         pi_id = (request.POST.get("payment_intent_id") or "").strip()
-        pi_ok, pi_err = _verify_stripe_payment_intent_for_checkout(pi_id, _to_cents(total))
+        charge_currency = _normalize_checkout_charge_currency(request.POST.get("currency"))
+        fx_usd, fx_gbp = _checkout_fx_from_http_post(request)
+        charged_amount, expected_minor, charge_cur = _checkout_total_eur_to_charge(
+            total,
+            charge_currency,
+            fx_usd=fx_usd,
+            fx_gbp=fx_gbp,
+        )
+        pi_ok, pi_err = _verify_stripe_payment_intent_for_checkout(
+            pi_id, expected_minor, charge_cur
+        )
         if not pi_ok:
             logger.warning("checkout payment verification failed err=%s pi=%s", pi_err, pi_id)
             messages.error(
@@ -2293,8 +2431,6 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 "Payment could not be verified for this order total. Please refresh the page, re-enter card details, and try again.",
             )
             return redirect("checkout")
-
-        currency = _get_currency_from_request(request)
 
         with transaction.atomic():
             order = Order.objects.create(
@@ -2307,8 +2443,8 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
                 phone=phone,
                 country=country,
                 shipping_option=shipping_option,
-                total_price=total,
-                currency=currency,
+                total_price=charged_amount,
+                currency=charge_cur.upper(),
             )
 
             order_items = []
@@ -2394,12 +2530,16 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
     )
     if fatal_pi or total_pi is None:
         total_pi = subtotal
-    pi_salt = f"init|{total_pi}|{(profile_data.get('country') or '')[:40]}"
+    init_charge_cur = _normalize_checkout_charge_currency(request.GET.get("charge_currency"))
+    pi_salt = f"init|{total_pi}|{(profile_data.get('country') or '')[:40]}|{init_charge_cur}"
     intent = _create_stripe_intent(
         total_pi,
         request.session.session_key,
         is_guest=not request.user.is_authenticated,
         idempotency_salt=pi_salt,
+        charge_currency=init_charge_cur,
+        fx_usd=None,
+        fx_gbp=None,
     )
     if not intent:
         messages.error(request, "Payment system error. Please try again.")
@@ -2427,7 +2567,7 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             "shipping_options": list(ShippingOption.objects.all().order_by("price", "name").distinct()),
             "client_secret": intent.client_secret,
             "stripe_public_key": stripe_public_key,
-            "stripe_checkout_currency": _stripe_checkout_currency(),
+            "stripe_checkout_currency": init_charge_cur,
             "is_guest": not request.user.is_authenticated,
             "profile_data": profile_data,
             "initiate_checkout_pixel": initiate_checkout_pixel,
@@ -2897,8 +3037,16 @@ def create_order_from_cart_wallet(request: HttpRequest) -> HttpResponse:
                 status=400,
             )
 
-        expected_minor = int(_to_cents(total))
-        want_cur = _stripe_checkout_currency()
+        charge_currency = _normalize_checkout_charge_currency(
+            data.get("charge_currency") or data.get("currency")
+        )
+        fx_usd, fx_gbp = _checkout_fx_from_wallet_json(data)
+        charged_amount, expected_minor, want_cur = _checkout_total_eur_to_charge(
+            total,
+            charge_currency,
+            fx_usd=fx_usd,
+            fx_gbp=fx_gbp,
+        )
 
         cached = _cached_order_response_for_pi(completed_pi_id) if completed_pi_id else None
         if cached:
@@ -2948,6 +3096,7 @@ def create_order_from_cart_wallet(request: HttpRequest) -> HttpResponse:
 
                 currency = (
                     getattr(pi_done, "currency", "").upper()
+                    or want_cur.upper()
                     or data.get("currency", "").upper()
                     or _get_currency_from_request(request)
                 )
@@ -2958,7 +3107,7 @@ def create_order_from_cart_wallet(request: HttpRequest) -> HttpResponse:
                     payer_email=payer_email,
                     payer_phone=payer_phone,
                     shipping_address=shipping_address,
-                    total=total,
+                    total=charged_amount,
                     country=country,
                     shipping_option=shipping_option,
                     currency=currency,
@@ -3032,6 +3181,7 @@ def create_order_from_cart_wallet(request: HttpRequest) -> HttpResponse:
 
         currency = (
             getattr(intent, "currency", "").upper()
+            or want_cur.upper()
             or data.get("currency", "").upper()
             or _get_currency_from_request(request)
         )
@@ -3042,7 +3192,7 @@ def create_order_from_cart_wallet(request: HttpRequest) -> HttpResponse:
             payer_email=payer_email,
             payer_phone=payer_phone,
             shipping_address=shipping_address,
-            total=total,
+            total=charged_amount,
             country=country,
             shipping_option=shipping_option,
             currency=currency,
@@ -3156,8 +3306,16 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                 shipping_cost = Decimal("5.99")
 
         total = (subtotal + shipping_cost).quantize(Decimal("0.01"))
-        expected_minor = int(_to_cents(total))
-        want_cur = _stripe_checkout_currency()
+        charge_currency = _normalize_checkout_charge_currency(
+            data.get("charge_currency") or data.get("currency")
+        )
+        fx_usd, fx_gbp = _checkout_fx_from_wallet_json(data)
+        charged_amount, expected_minor, want_cur = _checkout_total_eur_to_charge(
+            total,
+            charge_currency,
+            fx_usd=fx_usd,
+            fx_gbp=fx_gbp,
+        )
 
         cached = _cached_order_response_for_pi(completed_pi_id) if completed_pi_id else None
         if cached:
@@ -3207,6 +3365,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
 
                 currency = (
                     getattr(pi_done, "currency", "").upper()
+                    or want_cur.upper()
                     or data.get("currency", "").upper()
                     or _get_currency_from_request(request)
                 )
@@ -3219,7 +3378,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
                     payer_email=payer_email,
                     payer_phone=payer_phone,
                     shipping_address=shipping_address,
-                    total=total,
+                    total=charged_amount,
                     country=country,
                     shipping_option=shipping_option,
                     currency=currency,
@@ -3291,6 +3450,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
 
         currency = (
             getattr(intent, "currency", "").upper()
+            or want_cur.upper()
             or data.get("currency", "").upper()
             or _get_currency_from_request(request)
         )
@@ -3303,7 +3463,7 @@ def create_order_from_product(request: HttpRequest) -> HttpResponse:
             payer_email=payer_email,
             payer_phone=payer_phone,
             shipping_address=shipping_address,
-            total=total,
+            total=charged_amount,
             country=country,
             shipping_option=shipping_option,
             currency=currency,

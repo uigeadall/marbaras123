@@ -387,6 +387,9 @@
               </div>
 
               <input type="hidden" id="payment_intent_id" name="payment_intent_id">
+              <input type="hidden" name="currency" id="checkout_order_currency" value="EUR">
+              <input type="hidden" name="fx_usd" id="checkout_fx_usd" value="">
+              <input type="hidden" name="fx_gbp" id="checkout_fx_gbp" value="">
 
               <div class="marbaras-checkout-hp" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
                 <label for="checkout_website_url">Leave blank</label>
@@ -1116,9 +1119,9 @@
           }
         }
         
-        // Subtotal + shipping in EUR (same minor units as Stripe PaymentIntent)
+        // Subtotal + shipping in EUR, converted to selected currency minor units (matches Stripe PI)
         const totalEUR = currentSubtotal + shippingCost;
-        const totalInCents = Math.round(Number(totalEUR) * 100);
+        const totalInCents = marbarasEurToStripeMinor(totalEUR);
         
         // Update payment request
         window.paymentRequest.update({
@@ -1319,9 +1322,48 @@
     function marbarasClientSecret() {
       return window.marbarasCheckoutClientSecret || '{{ client_secret|escapejs }}';
     }
-    const marbarasStripeChargeCurrency = '{{ stripe_checkout_currency|default:"eur"|escapejs }}'.toLowerCase();
+    function marbarasReadFxRatesFromStorage() {
+      var base = { EUR: 1.0, USD: 1.09, GBP: 0.86 };
+      try {
+        var raw = localStorage.getItem('exchangeRatesCache');
+        if (raw) {
+          var o = JSON.parse(raw);
+          if (o && typeof o === 'object') {
+            if (o.USD != null) base.USD = Number(o.USD);
+            if (o.GBP != null) base.GBP = Number(o.GBP);
+            if (o.EUR != null) base.EUR = Number(o.EUR);
+          }
+        }
+      } catch (e0) {}
+      return base;
+    }
+    function marbarasStripeChargeCurrencyLower() {
+      var c = (typeof getCurrentCurrency === 'function' ? getCurrentCurrency() : 'EUR').toLowerCase();
+      if (c !== 'eur' && c !== 'usd' && c !== 'gbp') c = 'eur';
+      return c;
+    }
     function marbarasEurToStripeMinor(eur) {
-      return Math.round(Number(eur) * 100);
+      var rates = marbarasReadFxRatesFromStorage();
+      var cur = (typeof getCurrentCurrency === 'function' ? getCurrentCurrency() : 'EUR').toUpperCase();
+      var rate = rates[cur] != null ? Number(rates[cur]) : 1.0;
+      if (!isFinite(rate) || rate <= 0) rate = 1.0;
+      return Math.round(Number(eur) * rate * 100);
+    }
+    function marbarasAppendStripeRefreshFx(fd) {
+      if (!fd || !fd.set) return;
+      fd.set('charge_currency', marbarasStripeChargeCurrencyLower());
+      var rates = marbarasReadFxRatesFromStorage();
+      fd.set('fx_usd', String(rates.USD != null ? rates.USD : 1.09));
+      fd.set('fx_gbp', String(rates.GBP != null ? rates.GBP : 0.86));
+    }
+    function marbarasSyncCheckoutCurrencyHiddenFields() {
+      var curEl = document.getElementById('checkout_order_currency');
+      if (curEl) curEl.value = (typeof getCurrentCurrency === 'function' ? getCurrentCurrency() : 'EUR').toUpperCase();
+      var rates = marbarasReadFxRatesFromStorage();
+      var u = document.getElementById('checkout_fx_usd');
+      var g = document.getElementById('checkout_fx_gbp');
+      if (u) u.value = String(rates.USD != null ? rates.USD : 1.09);
+      if (g) g.value = String(rates.GBP != null ? rates.GBP : 0.86);
     }
     if (typeof window.appliedCouponCode === 'undefined') {
       window.appliedCouponCode = null;
@@ -1340,6 +1382,7 @@
       fd.set('country', (document.getElementById('country')?.value || '').trim());
       const so = document.getElementById('shipping_option');
       if (so) fd.set('shipping_option', so.value || '');
+      marbarasAppendStripeRefreshFx(fd);
       fetch('{% url "checkout_refresh_payment_intent" %}', {
         method: 'POST',
         headers: { 'X-CSRFToken': csrf },
@@ -1363,6 +1406,7 @@
         fd.set('country', (document.getElementById('country')?.value || '').trim());
         const so = document.getElementById('shipping_option');
         if (so) fd.set('shipping_option', so.value || '');
+        marbarasAppendStripeRefreshFx(fd);
         fetch('{% url "checkout_refresh_payment_intent" %}', {
           method: 'POST',
           headers: { 'X-CSRFToken': csrf },
@@ -1533,7 +1577,7 @@
       // Only create Payment Request if amount is valid
       window.paymentRequest = stripe.paymentRequest({
         country: 'BG', // Bulgaria
-        currency: marbarasStripeChargeCurrency,
+        currency: marbarasStripeChargeCurrencyLower(),
         total: {
           label: 'Total',
           amount: initialTotal, // Include selected shipping if any
@@ -1829,7 +1873,7 @@
                   Math.abs(defaultShippingOption.price - 19.99) < 0.01 ||
                   defaultShippingOption.label === 'Express Shipping' ||
                   defaultShippingOption.label.includes('Express')) {
-                defaultTotal = Math.round(originalTotalAmountEur * 100) + expressCost;
+                defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + expressCost;
                 selectedShippingId = 'express';
                 console.log('📦 Using pre-selected Express Shipping (matched by price or label)');
               } else if (defaultShippingOption.price === 5.99 || 
@@ -1837,16 +1881,16 @@
                          Math.abs(defaultShippingOption.price - 5.99) < 0.01 ||
                          defaultShippingOption.label === 'Standard Shipping' ||
                          defaultShippingOption.label.includes('Standard')) {
-                defaultTotal = Math.round(originalTotalAmountEur * 100) + standardCost;
+                defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + standardCost;
                 selectedShippingId = 'standard';
                 console.log('📦 Using pre-selected Standard Shipping (matched by price or label)');
               } else {
-                defaultTotal = Math.round(originalTotalAmountEur * 100) + standardCost;
+                defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + standardCost;
                 selectedShippingId = 'standard';
                 console.log('📦 Could not match pre-selected option, defaulting to Standard Shipping');
               }
             } else {
-              defaultTotal = Math.round(originalTotalAmountEur * 100) + standardCost;
+              defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + standardCost;
               selectedShippingId = 'standard';
               console.log('📦 No pre-selected option, defaulting to Standard Shipping');
             }
@@ -1915,30 +1959,30 @@
               console.log('🔍 Is Free?', isFree);
               
               if (isExpress) {
-                defaultTotal = Math.round(originalTotalAmountEur * 100) + expressCost;
+                defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + expressCost;
                 selectedShippingId = 'express';
                 console.log('✅ Using pre-selected Express Shipping (matched by price, label, or amount)');
                 console.log('📦 Express cost:', expressCost / 100);
                 console.log('📦 Original total:', originalTotalAmountEur);
                 console.log('📦 Default total:', defaultTotal / 100);
               } else if (isFree) {
-                defaultTotal = Math.round(originalTotalAmountEur * 100) + freeCost;
+                defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + freeCost;
                 selectedShippingId = 'free';
                 console.log('✅ Using pre-selected Free Shipping (matched by price or label)');
               } else {
                 // If we can't match, default to Express if price is > 0, otherwise Free
                 if (defaultShippingOption.price > 0 || defaultShippingOption.amount > 0) {
-                  defaultTotal = Math.round(originalTotalAmountEur * 100) + expressCost;
+                  defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + expressCost;
                   selectedShippingId = 'express';
                   console.log('✅ Defaulting to Express Shipping (price > 0)');
                 } else {
-                  defaultTotal = Math.round(originalTotalAmountEur * 100) + freeCost;
+                  defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + freeCost;
                   selectedShippingId = 'free';
                   console.log('⚠️ Could not match pre-selected option, defaulting to Free Shipping');
                 }
               }
             } else {
-              defaultTotal = Math.round(originalTotalAmountEur * 100) + freeCost;
+              defaultTotal = marbarasEurToStripeMinor(originalTotalAmountEur) + freeCost;
               selectedShippingId = 'free';
               console.log('⚠️ No pre-selected option, defaulting to Free Shipping');
             }
@@ -2595,7 +2639,10 @@
               });
               
               if (allFilled) {
-                console.log('✅ All fields filled, submitting form');
+                console.log('All fields filled, submitting form');
+                if (typeof marbarasSyncCheckoutCurrencyHiddenFields === 'function') {
+                  marbarasSyncCheckoutCurrencyHiddenFields();
+                }
                 form.submit();
               } else {
                 console.error('❌ Some required fields are missing, cannot submit');
@@ -2682,6 +2729,17 @@
         }
         
         e.preventDefault();
+        marbarasSyncCheckoutCurrencyHiddenFields();
+        try {
+          const refreshed = await marbarasRefreshStripeIntentAsync();
+          if (!refreshed || !refreshed.client_secret) {
+            document.getElementById('card-errors').textContent = (refreshed && refreshed.error) || 'Could not prepare payment for this total.';
+            return;
+          }
+        } catch (eRef) {
+          document.getElementById('card-errors').textContent = 'Connection error. Please try again.';
+          return;
+        }
         const fullName = document.getElementById('full_name').value;
 
         const { error, paymentIntent } = await stripe.confirmCardPayment(marbarasClientSecret(), {
@@ -2702,6 +2760,28 @@
         form.submit();
       });
     }
+
+    document.addEventListener('marbarasCurrencyChanged', function () {
+      if (document.getElementById('payment-form')) {
+        window.location.reload();
+      }
+    });
+    document.addEventListener('marbarasExchangeRatesReady', function () {
+      if (typeof marbarasSyncCheckoutCurrencyHiddenFields === 'function') {
+        marbarasSyncCheckoutCurrencyHiddenFields();
+      }
+      if (typeof marbarasRefreshStripeIntentNow === 'function') {
+        marbarasRefreshStripeIntentNow();
+      }
+    });
+    setTimeout(function () {
+      if (typeof marbarasSyncCheckoutCurrencyHiddenFields === 'function') {
+        marbarasSyncCheckoutCurrencyHiddenFields();
+      }
+      if (typeof marbarasRefreshStripeIntentNow === 'function') {
+        marbarasRefreshStripeIntentNow();
+      }
+    }, 800);
     
   } catch (error) {
     console.error('Error initializing Stripe Payment Request:', error);

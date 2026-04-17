@@ -1012,6 +1012,7 @@
           newMobileSelector.addEventListener('change', function() {
             setCurrentCurrency(this.value);
             updateAllPrices();
+            document.dispatchEvent(new CustomEvent('marbarasCurrencyChanged', { detail: { currency: this.value } }));
           });
         }
         
@@ -1026,12 +1027,14 @@
             newDesktopSelector.addEventListener('change', function() {
               setCurrentCurrency(this.value);
               updateAllPrices();
+              document.dispatchEvent(new CustomEvent('marbarasCurrencyChanged', { detail: { currency: this.value } }));
             });
           }
         });
 
         // Update prices on page load
         updateAllPrices();
+        document.dispatchEvent(new CustomEvent('marbarasExchangeRatesReady'));
       }
 
       // Initialize when DOM is ready

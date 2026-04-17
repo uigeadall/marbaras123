@@ -2435,7 +2435,28 @@
           confirmParams.receipt_email = payerEmailResolved;
         }
         
-        const orderPayload = {
+        function marbarasWalletFxPayload() {
+          var rates = { EUR: 1.0, USD: 1.09, GBP: 0.86 };
+          try {
+            var raw = localStorage.getItem('exchangeRatesCache');
+            if (raw) {
+              var o = JSON.parse(raw);
+              if (o && typeof o === 'object') {
+                if (o.USD != null) rates.USD = Number(o.USD);
+                if (o.GBP != null) rates.GBP = Number(o.GBP);
+              }
+            }
+          } catch (eFx) {}
+          var cur = (typeof getCurrentCurrency === 'function' ? getCurrentCurrency() : 'EUR').toLowerCase();
+          if (cur !== 'eur' && cur !== 'usd' && cur !== 'gbp') cur = 'eur';
+          return {
+            charge_currency: cur,
+            fx_usd: String(rates.USD),
+            fx_gbp: String(rates.GBP),
+          };
+        }
+
+        const orderPayload = Object.assign(marbarasWalletFxPayload(), {
           product_id: {{ product.pk }},
           variant_id: variantId || null,
           quantity: quantity,
@@ -2450,7 +2471,7 @@
             country: shippingAddr.country,
             region: shippingAddr.region,
           } : null
-        };
+        });
 
         let response = await fetch('{% url "create_order_from_product" %}', {
           method: 'POST',
