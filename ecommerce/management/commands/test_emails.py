@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 from ecommerce.models import Order, OrderItem, Product, ShippingOption
 from ecommerce.utils.emailing import (
+    _order_email_money_bundle,
     send_welcome_email,
     send_order_confirmation_email,
     send_order_shipped_email,
@@ -151,22 +152,10 @@ class Command(BaseCommand):
                         quantity=2,
                     )
 
-                items = order.items.select_related("product", "variant").all()
-                subtotal = sum(
-                    (item.product.get_discounted_price() * Decimal(item.quantity))
-                    for item in items
-                )
-                shipping_cost = (
-                    order.shipping_option.price if order.shipping_option else Decimal("0.00")
-                )
-                discount_amount = Decimal("0.00")
-                if order.coupon:
-                    discount_amount = subtotal - order.coupon.apply(subtotal)
-                total = order.total_price
+                items = list(order.items.select_related("product", "variant").all())
+                money = _order_email_money_bundle(order, items)
 
-                if send_admin_order_notification(
-                    order, base_url, items, subtotal, shipping_cost, discount_amount, total
-                ):
+                if send_admin_order_notification(order, base_url, items, money):
                     self.stdout.write(self.style.SUCCESS("Admin order notification sent.\n"))
                     self.stdout.write(
                         self.style.SUCCESS(

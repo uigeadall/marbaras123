@@ -1,5 +1,5 @@
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, mail_admins, send_mail
@@ -192,6 +192,102 @@ def send_welcome_email_with_promo(user, base_url, promo_code, discount_display="
         return False
 
 
+def _currency_symbol_for_code(code: str) -> str:
+    c = (code or "EUR").strip().upper()
+    if c == "GBP":
+        return "£"
+    if c == "USD":
+        return "$"
+    if c == "EUR":
+        return "€"
+    return f"{c} "
+
+
+def _q2(x: Decimal) -> Decimal:
+    return x.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _order_email_money_bundle(order, items: list) -> dict:
+    """
+    Amounts for transactional emails in the order's charged currency.
+    Scales EUR catalog lines so subtotal − discount + shipping matches order.total_price.
+    """
+    subtotal_eur = Decimal("0.00")
+    for it in items:
+        try:
+            p = it.product.get_discounted_price()
+            if not isinstance(p, Decimal):
+                p = Decimal(str(p))
+            subtotal_eur += p * Decimal(it.quantity)
+        except Exception:
+            log.warning("Email money: skip line item for order #%s", getattr(order, "id", "?"), exc_info=True)
+
+    shipping_eur = Decimal("0.00")
+    if order.shipping_option:
+        try:
+            shipping_eur = Decimal(str(order.shipping_option.price))
+        except Exception:
+            shipping_eur = Decimal("0.00")
+
+    sub_after_eur = subtotal_eur
+    discount_eur = Decimal("0.00")
+    if order.coupon:
+        try:
+            applied = order.coupon.apply(subtotal_eur)
+            if not isinstance(applied, Decimal):
+                applied = Decimal(str(applied))
+            sub_after_eur = applied
+            discount_eur = max(Decimal("0"), subtotal_eur - sub_after_eur)
+        except Exception:
+            sub_after_eur = subtotal_eur
+            discount_eur = Decimal("0.00")
+
+    net_eur = sub_after_eur + shipping_eur
+    currency = (getattr(order, "currency", None) or "EUR").strip().upper() or "EUR"
+    total_charged = getattr(order, "total_price", None)
+    if total_charged is None:
+        total_charged = Decimal("0.00")
+    else:
+        total_charged = Decimal(str(total_charged))
+
+    if currency == "EUR":
+        mult = Decimal("1")
+    else:
+        mult = (total_charged / net_eur) if net_eur > 0 else Decimal("1")
+
+    subtotal_disp = _q2(subtotal_eur * mult)
+    shipping_disp = _q2(shipping_eur * mult)
+    discount_disp = _q2(discount_eur * mult)
+    total_disp = _q2(total_charged)
+
+    email_item_rows = []
+    for it in items:
+        try:
+            unit_eur = it.product.get_discounted_price()
+            if not isinstance(unit_eur, Decimal):
+                unit_eur = Decimal(str(unit_eur))
+        except Exception:
+            unit_eur = Decimal("0")
+        line_eur = unit_eur * Decimal(it.quantity)
+        email_item_rows.append(
+            {
+                "order_item": it,
+                "unit_display": _q2(unit_eur * mult),
+                "line_display": _q2(line_eur * mult),
+            }
+        )
+
+    return {
+        "currency_code": currency,
+        "currency_symbol": _currency_symbol_for_code(currency),
+        "subtotal": subtotal_disp,
+        "shipping_cost": shipping_disp,
+        "discount_amount": discount_disp,
+        "total": total_disp,
+        "email_item_rows": email_item_rows,
+    }
+
+
 def _order_confirmation_recipient(order) -> str:
     """Resolve buyer address: order email, account email, then profile shipping email."""
     direct = (getattr(order, "email", None) or "").strip()
@@ -225,34 +321,13 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
 
     # Avoid N+1 when templates access item.product and variant
     items = list(order.items.select_related("product", "variant").all())
-
-    # Calculate totals (never block email if a line item misbehaves)
-    subtotal = Decimal("0.00")
-    try:
-        subtotal = sum(
-            (item.product.get_discounted_price() * Decimal(item.quantity)) for item in items
-        )
-    except Exception:
-        log.warning("Subtotal calculation failed for order #%s, using total_price", order.id, exc_info=True)
-        subtotal = getattr(order, "total_price", None) or Decimal("0.00")
-    shipping_cost = order.shipping_option.price if order.shipping_option else Decimal("0.00")
-    discount_amount = Decimal("0.00")
-    if order.coupon:
-        try:
-            discount_amount = subtotal - order.coupon.apply(subtotal)
-        except Exception:
-            log.warning("Coupon discount calc failed for order #%s", order.id, exc_info=True)
-            discount_amount = Decimal("0.00")
-    total = order.total_price
+    money = _order_email_money_bundle(order, items)
 
     ctx = {
         "order": order,
         "items": items,
         "base_url": base_url,
-        "subtotal": subtotal,
-        "shipping_cost": shipping_cost,
-        "discount_amount": discount_amount,
-        "total": total,
+        **money,
     }
     
     # Log email configuration and sending attempt
@@ -262,13 +337,18 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
     log.info("  To: %s", recipient)
     log.info("  From: %s", from_email)
     log.info("  Subject: Order #%s - Marbaras ✨", order.id)
-    log.info("  Total: $%s", total)
+    log.info(
+        "  Total: %s%s %s",
+        money["currency_symbol"],
+        money["total"],
+        money["currency_code"],
+    )
     log.info("  Base URL: %s", base_url)
     
     def _send_fallback_plain() -> bool:
         body = (
             f"Thank you for your order #{order.id}.\n\n"
-            f"Total: {total} {getattr(order, 'currency', '') or ''}\n"
+            f"Total: {money['currency_symbol']}{money['total']} {money['currency_code']}\n"
             f"Shipping to: {getattr(order, 'full_name', '')}, {getattr(order, 'address', '')}, "
             f"{getattr(order, 'city', '')}\n\n"
             f"If you have questions, reply to this email.\n"
@@ -299,9 +379,7 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
                 log.info("✅ Sent fallback plain-text order confirmation to %s", recipient)
                 if notify_admin:
                     try:
-                        send_admin_order_notification(
-                            order, base_url, items, subtotal, shipping_cost, discount_amount, total
-                        )
+                        send_admin_order_notification(order, base_url, items, money)
                     except Exception as adm_err:
                         log.warning(
                             "Admin order notification failed after fallback mail #%s: %s",
@@ -324,9 +402,7 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
                 log.info("✅ Sent fallback plain-text after primary send error for order #%s", order.id)
                 if notify_admin:
                     try:
-                        send_admin_order_notification(
-                            order, base_url, items, subtotal, shipping_cost, discount_amount, total
-                        )
+                        send_admin_order_notification(order, base_url, items, money)
                     except Exception as adm_err:
                         log.warning(
                             "Admin order notification failed after fallback #%s: %s",
@@ -341,9 +417,7 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
                 log.info("✅ Sent fallback plain-text after zero-result send for order #%s", order.id)
                 if notify_admin:
                     try:
-                        send_admin_order_notification(
-                            order, base_url, items, subtotal, shipping_cost, discount_amount, total
-                        )
+                        send_admin_order_notification(order, base_url, items, money)
                     except Exception as adm_err:
                         log.warning(
                             "Admin order notification failed after fallback #%s: %s",
@@ -357,9 +431,7 @@ def send_order_confirmation_email(order, base_url, notify_admin=False) -> bool:
         if notify_admin:
             log.info("  Sending admin notification email...")
             try:
-                send_admin_order_notification(
-                    order, base_url, items, subtotal, shipping_cost, discount_amount, total
-                )
+                send_admin_order_notification(order, base_url, items, money)
             except Exception as adm_err:
                 log.warning(
                     "Admin order notification failed for order #%s (customer mail already sent): %s",
@@ -382,7 +454,8 @@ def send_order_shipped_email(order, base_url, tracking_number=None) -> bool:
         return False
 
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
-    items = order.items.select_related("product", "variant").all()
+    items = list(order.items.select_related("product", "variant").all())
+    money = _order_email_money_bundle(order, items)
 
     # Use tracking_number from parameter if provided, otherwise use order.tracking_number
     final_tracking_number = tracking_number or order.tracking_number
@@ -393,6 +466,7 @@ def send_order_shipped_email(order, base_url, tracking_number=None) -> bool:
         "base_url": base_url,
         "tracking_number": final_tracking_number,
         "shipping_option": order.shipping_option,
+        **money,
     }
     
     # Log email configuration and sending attempt
@@ -423,56 +497,58 @@ def send_order_shipped_email(order, base_url, tracking_number=None) -> bool:
         return False
 
 
-def send_admin_order_notification(order, base_url, items, subtotal, shipping_cost, discount_amount, total) -> bool:
-    """Send detailed order notification email to admin."""
+def send_admin_order_notification(order, base_url, items, money: dict) -> bool:
+    """Send detailed order notification email to admin (amounts in order currency)."""
     try:
         from django.conf import settings
-        
-        # Get admin email from settings
-        admin_email = getattr(settings, 'ADMIN_EMAIL', None)
+
+        admin_email = getattr(settings, "ADMIN_EMAIL", None)
         if not admin_email:
-            # Try to get from ADMINS setting
-            admins = getattr(settings, 'ADMINS', [])
+            admins = getattr(settings, "ADMINS", [])
             if admins and len(admins) > 0:
                 admin_email = admins[0][1] if isinstance(admins[0], tuple) else admins[0]
-        
+
         if not admin_email:
-            log.warning("⚠️  No admin email configured. Set ADMIN_EMAIL in settings.")
+            log.warning("No admin email configured. Set ADMIN_EMAIL in settings.")
             return False
-        
+
         from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or "no-reply@example.com"
         recipient = getattr(order, "email", None) or getattr(getattr(order, "user", None), "email", None)
-        customer_name = getattr(order, "full_name", None) or (getattr(order.user, "username", None) if order.user else "Guest")
-        
+        customer_name = getattr(order, "full_name", None) or (
+            getattr(order.user, "username", None) if order.user else "Guest"
+        )
+
+        sym = money.get("currency_symbol") or "€"
         ctx = {
             "order": order,
             "items": items,
             "base_url": base_url,
-            "subtotal": subtotal,
-            "shipping_cost": shipping_cost,
-            "discount_amount": discount_amount,
-            "total": total,
+            "subtotal": money["subtotal"],
+            "shipping_cost": money["shipping_cost"],
+            "discount_amount": money["discount_amount"],
+            "total": money["total"],
+            "currency_symbol": money["currency_symbol"],
+            "currency_code": money["currency_code"],
+            "email_item_rows": money["email_item_rows"],
             "customer_name": customer_name,
             "customer_email": recipient,
             "admin_url": f"{base_url}/admin/ecommerce/order/{order.id}/",
         }
-        
-        log.info("📧 ATTEMPTING TO SEND ADMIN ORDER NOTIFICATION")
+
+        log.info("ATTEMPTING TO SEND ADMIN ORDER NOTIFICATION")
         log.info("  Order ID: #%s", order.id)
         log.info("  To: %s", admin_email)
         log.info("  From: %s", from_email)
-        log.info("  Subject: 🛒 New Order #%s - %s", order.id, customer_name)
-        
+        log.info("  Subject: New Order #%s - %s", order.id, customer_name)
+
         try:
-            subject = f"🛒 New Order #%s - %s" % (order.id, customer_name)
-            
-            # Try to render HTML template, fallback to text if not available
+            subject = "New Order #%s - %s" % (order.id, customer_name)
+
             try:
                 html = render_to_string("emails/admin_order_notification.html", ctx)
                 text = render_to_string("emails/admin_order_notification.txt", ctx)
             except Exception as template_error:
                 log.warning("  Template not found, using simple text email: %s", template_error)
-                # Fallback to simple text email
                 text = f"""New Order #{order.id}
 
 Customer: {customer_name}
@@ -486,40 +562,41 @@ Shipping Address:
 
 Order Items:
 """
-                for item in items:
+                for row in money["email_item_rows"]:
+                    item = row["order_item"]
                     product_name = item.product.name
                     if item.variant:
                         product_name += f" (Size: {item.variant.size})"
-                    text += f"- {item.quantity}x {product_name} - ${item.product.get_discounted_price() * Decimal(item.quantity)}\n"
-                
+                    text += f"- {item.quantity}x {product_name} - {sym}{row['line_display']}\n"
+
                 text += f"""
-Subtotal: ${subtotal}
-Shipping: ${shipping_cost}
+Subtotal: {sym}{money['subtotal']}
+Shipping: {sym}{money['shipping_cost']}
 """
-                if discount_amount > 0:
-                    text += f"Discount: -${discount_amount}\n"
+                if money["discount_amount"] > 0:
+                    text += f"Discount: -{sym}{money['discount_amount']}\n"
                 text += f"""
-Total: ${total}
+Total: {sym}{money['total']} {money['currency_code']}
 
 View order: {base_url}/admin/ecommerce/order/{order.id}/
 """
                 html = None
-            
+
             msg = EmailMultiAlternatives(subject, text, from_email, [admin_email])
             if html:
                 msg.attach_alternative(html, "text/html")
-            
+
             result = msg.send(fail_silently=True)
-            log.info("✅ Admin order notification email sent successfully to %s (result: %s)", admin_email, result)
+            log.info("Admin order notification email sent to %s (result: %s)", admin_email, result)
             return True
-            
+
         except Exception as e:
-            log.error("❌ Failed to send admin notification email: %s", e)
+            log.error("Failed to send admin notification email: %s", e)
             log.exception("Exception details:")
             return False
-            
+
     except Exception as e:
-        log.error("❌ Error in send_admin_order_notification: %s", e)
+        log.error("Error in send_admin_order_notification: %s", e)
         log.exception("Exception details:")
         return False
 

@@ -2,17 +2,21 @@ Hello, {% if order.full_name %}{{ order.full_name }}{% elif order.user %}{{ orde
 
 Thank you for your order! Your order #{{ order.id }} has been received and is being processed.
 
+All amounts are in {{ currency_code }} (charged currency).
+
 Ordered products:
-{% for item in items %}
-- {{ item.product.name }}{% if item.variant %} (Size: {{ item.variant.size }}){% endif %} × {{ item.quantity }} = ${{ item.product.get_discounted_price|floatformat:2 }}
+{% for row in email_item_rows %}
+{% with item=row.order_item %}
+- {{ item.product.name }}{% if item.variant %} (Size: {{ item.variant.size }}){% endif %} × {{ item.quantity }} @ {{ currency_symbol }}{{ row.unit_display|floatformat:2 }} (line {{ currency_symbol }}{{ row.line_display|floatformat:2 }})
+{% endwith %}
 {% endfor %}
 
 Order details:
-Subtotal: ${{ subtotal|floatformat:2 }}
-{% if discount_amount > 0 %}Discount{% if order.coupon %} ({{ order.coupon.code }}){% endif %}: -${{ discount_amount|floatformat:2 }}
-{% endif %}{% if shipping_cost > 0 %}Shipping{% if order.shipping_option %} ({{ order.shipping_option.name }}){% endif %}: ${{ shipping_cost|floatformat:2 }}
+Subtotal: {{ currency_symbol }}{{ subtotal|floatformat:2 }}
+{% if discount_amount > 0 %}Discount{% if order.coupon %} ({{ order.coupon.code }}){% endif %}: -{{ currency_symbol }}{{ discount_amount|floatformat:2 }}
+{% endif %}{% if shipping_cost > 0 %}Shipping{% if order.shipping_option %} ({{ order.shipping_option.name }}){% endif %}: {{ currency_symbol }}{{ shipping_cost|floatformat:2 }}
 {% endif %}
-Total: ${{ total|floatformat:2 }}
+Total: {{ currency_symbol }}{{ total|floatformat:2 }}
 
 Shipping address:
 {{ order.full_name }}

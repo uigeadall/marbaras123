@@ -49,13 +49,15 @@
     <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0;">
       <h3 style="margin-top: 0;">Ordered products:</h3>
       <ul style="list-style: none; padding: 0;">
-        {% for item in items %}
+        {% for row in email_item_rows %}
+        {% with item=row.order_item %}
         <li style="padding: 10px 0; border-bottom: 1px solid #eee;">
           <strong>{{ item.product.name }}</strong>
           {% if item.variant %} (Size: {{ item.variant.size }}){% endif %}
           <br>
-          <span style="color: #666;">Quantity: {{ item.quantity }} × ${{ item.product.get_discounted_price|floatformat:2 }}</span>
+          <span style="color: #666;">Quantity: {{ item.quantity }} × {{ currency_symbol }}{{ row.unit_display|floatformat:2 }} ({{ currency_code }})</span>
         </li>
+        {% endwith %}
         {% endfor %}
       </ul>
     </div>

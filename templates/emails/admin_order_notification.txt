@@ -1,4 +1,4 @@
-🛒 NEW ORDER RECEIVED!
+NEW ORDER RECEIVED!
 
 Order #{{ order.id }}
 
@@ -22,13 +22,15 @@ SHIPPING ADDRESS
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ORDER ITEMS
+ORDER ITEMS ({{ currency_code }})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{% for item in items %}
+{% for row in email_item_rows %}
+{% with item=row.order_item %}
 {{ item.quantity }}x {{ item.product.name }}{% if item.variant %} (Size: {{ item.variant.size }}){% endif %}
-   {{ item.quantity }} × ${{ item.product.get_discounted_price|floatformat:2 }} each
+   {{ item.quantity }} × {{ currency_symbol }}{{ row.unit_display|floatformat:2 }} each
 
+{% endwith %}
 {% endfor %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -36,12 +38,12 @@ ORDER ITEMS
 ORDER SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Subtotal:        ${{ subtotal|floatformat:2 }}
-Shipping:        ${{ shipping_cost|floatformat:2 }}
-{% if discount_amount > 0 %}Discount:        -${{ discount_amount|floatformat:2 }}
+Subtotal:        {{ currency_symbol }}{{ subtotal|floatformat:2 }}
+Shipping:        {{ currency_symbol }}{{ shipping_cost|floatformat:2 }}
+{% if discount_amount > 0 %}Discount:        -{{ currency_symbol }}{{ discount_amount|floatformat:2 }}
 {% endif %}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TOTAL:           ${{ total|floatformat:2 }}
+TOTAL:           {{ currency_symbol }}{{ total|floatformat:2 }} {{ currency_code }}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {% if order.shipping_option %}
