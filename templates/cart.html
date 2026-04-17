@@ -676,11 +676,9 @@
         requestPayerName: true,
         requestPayerEmail: true,
         requestPayerPhone: true,
-        requestShipping: true, // Changed from requestPayerAddress to requestShipping
-        // For mobile devices, explicitly request shipping address
-        ...(isMobile && {
-          shippingAddressRequired: true,
-        }),
+        requestShipping: true,
+        shippingAddressRequired: true,
+        requestPayerAddress: true,
       });
 
       // Handle shipping address change (REQUIRED for mobile devices)
@@ -1255,14 +1253,49 @@
         console.log('Payer Address:', ev.payerAddress);
         console.log('Full event object keys:', Object.keys(ev));
         
-        // Store payment method data in sessionStorage to pass to checkout
-        // Check both shippingAddress and payerAddress (for compatibility)
-        const shippingAddr = ev.shippingAddress || ev.payerAddress;
-        let shippingCountry = shippingAddr ? shippingAddr.country : null;
-        
-        // Validate country before proceeding
+        function marbarasCartMergeBillingIntoWalletAddr(shippingAddr, walletEv) {
+          const pm = walletEv.paymentMethod;
+          const bd = pm && pm.billing_details;
+          const ba = bd && bd.address;
+          if (!ba) return shippingAddr;
+          const billingLines = [ba.line1, ba.line2].filter(function (x) {
+            return x && String(x).trim();
+          });
+          if (!shippingAddr || (!shippingAddr.country && ba.country)) {
+            const lineArr = (shippingAddr && shippingAddr.addressLine && shippingAddr.addressLine.length)
+              ? shippingAddr.addressLine
+              : (billingLines.length ? billingLines : []);
+            return {
+              addressLine: lineArr,
+              city: (shippingAddr && shippingAddr.city) || ba.city || '',
+              postalCode: (shippingAddr && shippingAddr.postalCode) || ba.postal_code || '',
+              country: (shippingAddr && shippingAddr.country) || ba.country || '',
+              region: (shippingAddr && shippingAddr.region) || ba.state || '',
+            };
+          }
+          const out = Object.assign({}, shippingAddr);
+          if ((!out.addressLine || !out.addressLine.length) && billingLines.length) {
+            out.addressLine = billingLines;
+          }
+          if (!out.city && ba.city) out.city = ba.city;
+          if (!out.postalCode && ba.postal_code) out.postalCode = ba.postal_code;
+          if (!out.country && ba.country) out.country = ba.country;
+          return out;
+        }
+
+        let shippingAddr = ev.shippingAddress || ev.payerAddress;
+        shippingAddr = marbarasCartMergeBillingIntoWalletAddr(shippingAddr, ev);
+        let shippingCountry = shippingAddr && shippingAddr.country ? shippingAddr.country : null;
+
+        const payerNameCart = (ev.payerName || '').trim()
+          || (((ev.paymentMethod && ev.paymentMethod.billing_details && ev.paymentMethod.billing_details.name) || '').trim());
+        const payerEmailCart = (ev.payerEmail || '').trim()
+          || (((ev.paymentMethod && ev.paymentMethod.billing_details && ev.paymentMethod.billing_details.email) || '').trim());
+        const payerPhoneCart = (ev.payerPhone || '').trim()
+          || (((ev.paymentMethod && ev.paymentMethod.billing_details && ev.paymentMethod.billing_details.phone) || '').trim());
+
         if (shippingCountry && !isCountryAllowed(shippingCountry)) {
-          console.error('❌ Cart - Country not allowed for payment:', shippingCountry);
+          console.error('Cart - Country not allowed for payment:', shippingCountry);
           ev.complete('fail');
           const cardErrors = document.getElementById('card-errors');
           if (cardErrors) {
@@ -1273,14 +1306,13 @@
           alert('We do not ship to ' + (shippingCountry || 'this country') + '. Please select a country from the allowed list.');
           return;
         }
-        
-        // If no shipping address, check country from form (if available)
+
         if (!shippingCountry) {
           const countryField = document.getElementById('country');
           if (countryField && countryField.value) {
             shippingCountry = countryField.value;
             if (!isCountryAllowed(shippingCountry)) {
-              console.error('❌ Cart - Country not allowed for payment:', shippingCountry);
+              console.error('Cart - Country not allowed for payment:', shippingCountry);
               ev.complete('fail');
               const cardErrors = document.getElementById('card-errors');
               if (cardErrors) {
@@ -1292,7 +1324,7 @@
               return;
             }
           } else {
-            console.error('❌ Cart - No country information available for payment validation');
+            console.error('Cart - No country information available for payment validation');
             ev.complete('fail');
             const cardErrors = document.getElementById('card-errors');
             if (cardErrors) {
@@ -1304,18 +1336,16 @@
             return;
           }
         }
-        
-        console.log('✅ Cart - Country validated for payment:', shippingCountry);
-        
-        // Complete payment first (before redirect)
+
+        console.log('Cart - Country validated for payment:', shippingCountry);
+
         ev.complete('success');
-        
-        // Store data in sessionStorage
-        if (ev.payerName || ev.payerEmail || ev.payerPhone || shippingAddr) {
+
+        if (payerNameCart || payerEmailCart || payerPhoneCart || shippingAddr) {
           const paymentData = {
-            payerName: ev.payerName,
-            payerEmail: ev.payerEmail,
-            payerPhone: ev.payerPhone,
+            payerName: payerNameCart || ev.payerName,
+            payerEmail: payerEmailCart || ev.payerEmail,
+            payerPhone: payerPhoneCart || ev.payerPhone,
             shippingAddress: shippingAddr ? {
               addressLine: shippingAddr.addressLine,
               city: shippingAddr.city,
@@ -1325,8 +1355,9 @@
             } : null
           };
           sessionStorage.setItem('applePayData', JSON.stringify(paymentData));
-          console.log('✅ Cart - Payment data stored, redirecting to checkout...');
+          console.log('Cart - Payment data stored, redirecting to checkout...');
         }
+
         
         // Small delay before redirect to ensure ev.complete is processed
         setTimeout(function() {

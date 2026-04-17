@@ -1541,11 +1541,9 @@
         requestPayerName: true,
         requestPayerEmail: true,
         requestPayerPhone: true,
-        requestShipping: true, // Request shipping address
-        // For mobile devices, explicitly request shipping address
-        ...(isMobile && {
-          shippingAddressRequired: true,
-        }),
+        requestShipping: true,
+        shippingAddressRequired: true,
+        requestPayerAddress: true,
       });
       console.log('✅ Payment Request object created with initial total:', initialTotal / 100);
       console.log('✅ Payment Request initial total includes shipping:', selectedShippingOption ? 'YES (' + selectedShippingOption.label + ')' : 'NO');
@@ -2222,12 +2220,12 @@
             }
             console.log('✅ Country validated for payment (from payer address):', shippingCountry);
           } else {
-            // No shipping address available - check country from form
-            const countryField = document.getElementById('country');
-            if (countryField && countryField.value) {
-              shippingCountry = countryField.value;
+            const bdAp = ev.paymentMethod && ev.paymentMethod.billing_details;
+            const baAp = bdAp && bdAp.address;
+            if (baAp && baAp.country) {
+              shippingCountry = baAp.country;
               if (!isCountryAllowed(shippingCountry)) {
-                console.error('❌ Country not allowed for payment:', shippingCountry);
+                console.error('Country not allowed for payment:', shippingCountry);
                 ev.complete('fail');
                 const cardErrors = document.getElementById('card-errors');
                 if (cardErrors) {
@@ -2238,9 +2236,40 @@
                 alert('We do not ship to ' + (shippingCountry || 'this country') + '. Please select a country from the allowed list.');
                 return;
               }
-              console.log('✅ Country validated for payment (from form):', shippingCountry);
+              const nmAp = ((bdAp && bdAp.name) || ev.payerName || '').trim();
+              const phAp = ((bdAp && bdAp.phone) || ev.payerPhone || '').trim();
+              shippingData = {
+                name: nmAp,
+                phone: phAp,
+                address: {
+                  line1: baAp.line1 || '',
+                  line2: baAp.line2 || '',
+                  city: baAp.city || '',
+                  postal_code: baAp.postal_code || '',
+                  country: baAp.country || '',
+                },
+              };
+              console.log('Country validated for payment (from billing address):', shippingCountry);
             } else {
-              console.error('❌ No country information available for payment validation');
+            // No shipping address available - check country from form
+            const countryField = document.getElementById('country');
+            if (countryField && countryField.value) {
+              shippingCountry = countryField.value;
+              if (!isCountryAllowed(shippingCountry)) {
+                console.error('Country not allowed for payment:', shippingCountry);
+                ev.complete('fail');
+                const cardErrors = document.getElementById('card-errors');
+                if (cardErrors) {
+                  cardErrors.textContent = 'We do not ship to ' + (shippingCountry || 'this country') + '. Please select a country from the allowed list.';
+                  cardErrors.style.display = 'block';
+                  cardErrors.style.color = 'red';
+                }
+                alert('We do not ship to ' + (shippingCountry || 'this country') + '. Please select a country from the allowed list.');
+                return;
+              }
+              console.log('Country validated for payment (from form):', shippingCountry);
+            } else {
+              console.error('No country information available for payment validation');
               ev.complete('fail');
               const cardErrors = document.getElementById('card-errors');
               if (cardErrors) {
@@ -2251,7 +2280,9 @@
               alert('Please select a shipping country before completing payment.');
               return;
             }
+            }
           }
+
 
           if (!shippingData && ev.payerAddress && isCountryAllowed(ev.payerAddress.country)) {
             const addr = ev.payerAddress;
