@@ -32,6 +32,8 @@ RUN mkdir -p /app/logs /app/staticfiles /app/media /app/media/products /app/medi
 # Expose port
 EXPOSE 8000
 
-# Use entrypoint script
+# Migrations run inside entrypoint.sh before Gunicorn. In Railway: use Dockerfile builder
+# and leave "Custom Start Command" empty so this ENTRYPOINT is used (do not set only gunicorn).
 ENTRYPOINT ["/app/entrypoint.sh"]
+CMD []
 

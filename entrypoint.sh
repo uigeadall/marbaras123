@@ -53,7 +53,7 @@ mkdir -p /app/media/products /app/media/products/multiple || {
     echo "Could not create media directories, but continuing..."
 }
 
-# Run migrations with error handling for existing tables
+# Migrations run here before Gunicorn. Use Dockerfile ENTRYPOINT on Railway; do not replace with gunicorn-only start.
 echo "Running migrations..."
 python manage.py migrate --noinput 2>&1 | tee /tmp/migration_output.log
 MIGRATION_EXIT_CODE=${PIPESTATUS[0]}
@@ -108,15 +108,21 @@ try:
 except Exception as e:
     print(f"⚠️  Could not mark migration as applied: {e}")
 EOF
-        
-        # Try to continue with remaining migrations
-        echo "Continuing with remaining migrations..."
-        python manage.py migrate --noinput || {
-            echo "⚠️  Some migrations failed, but continuing..."
-        }
+
+        echo "Retrying migrations after 0008 workaround..."
+        python manage.py migrate --noinput 2>&1 | tee /tmp/migration_output_retry.log
+        RETRY_CODE=${PIPESTATUS[0]}
+        if [ $RETRY_CODE -ne 0 ]; then
+            echo "Migrations still failing after retry (exit $RETRY_CODE). See logs above."
+            exit $RETRY_CODE
+        fi
+        echo "Migrations completed after retry."
     else
-        echo "Migration failed with different error, but continuing..."
+        echo "Migration failed — not starting Gunicorn. Fix the error in logs, then redeploy."
+        exit $MIGRATION_EXIT_CODE
     fi
+else
+    echo "Migrations applied successfully."
 fi
 
 # Collect static files
