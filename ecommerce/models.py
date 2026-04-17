@@ -593,6 +593,7 @@ class ProductReview(models.Model):
     Public product ratings and optional text reviews.
     Ratings always count toward the average and are listed with stars.
     Comment text is shown only after comment_approved is set in admin.
+    At most one review per logged-in user per product, or one per session for guests.
     """
     product = models.ForeignKey(
         Product,
@@ -600,6 +601,14 @@ class ProductReview(models.Model):
         related_name="product_reviews",
         db_index=True,
     )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="product_reviews",
+    )
+    session_key = models.CharField(max_length=40, blank=True, db_index=True)
     rating = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(1), MaxValueValidator(5)],
     )
@@ -612,9 +621,24 @@ class ProductReview(models.Model):
         ordering = ["-created_at"]
         verbose_name = "Product review"
         verbose_name_plural = "Product reviews"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("product", "user"),
+                condition=models.Q(user__isnull=False),
+                name="ecommerce_productreview_unique_product_user",
+            ),
+            models.UniqueConstraint(
+                fields=("product", "session_key"),
+                condition=models.Q(session_key__gt=""),
+                name="ecommerce_productreview_unique_product_session",
+            ),
+        ]
 
     def __str__(self) -> str:
-        who = self.reviewer_name.strip() if self.reviewer_name else "Anonymous"
+        if self.user_id:
+            who = self.user.get_username()
+        else:
+            who = self.reviewer_name.strip() if self.reviewer_name else "Guest"
         return f"{self.product.name} — {self.rating}★ ({who})"
 
 

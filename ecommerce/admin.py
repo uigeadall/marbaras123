@@ -996,6 +996,8 @@ class ProductReviewAdmin(admin.ModelAdmin):
     list_display = (
         "product",
         "rating",
+        "user",
+        "session_key_short",
         "reviewer_name",
         "comment_preview",
         "comment_approved",
@@ -1003,7 +1005,7 @@ class ProductReviewAdmin(admin.ModelAdmin):
     )
     list_filter = ("comment_approved", "rating", "created_at")
     list_editable = ("comment_approved",)
-    search_fields = ("product__name", "comment", "reviewer_name")
+    search_fields = ("product__name", "comment", "reviewer_name", "user__username", "session_key")
     readonly_fields = ("created_at",)
     ordering = ("-created_at",)
     autocomplete_fields = ("product",)
@@ -1014,6 +1016,13 @@ class ProductReviewAdmin(admin.ModelAdmin):
         if not t:
             return "—"
         return (t[:100] + "…") if len(t) > 100 else t
+
+    @admin.display(description="Session")
+    def session_key_short(self, obj):
+        sk = (obj.session_key or "").strip()
+        if not sk:
+            return "—"
+        return f"{sk[:6]}…" if len(sk) > 8 else sk
 
 
 def order_item_variant_summary(obj: OrderItem) -> str:

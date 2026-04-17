@@ -19,7 +19,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.core.cache import cache
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import (
     Avg,
     Case,
@@ -1262,6 +1262,9 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     
     categories = _get_categories()
 
+    _ensure_session(request)
+    session_key = request.session.session_key or ""
+
     product_reviews = list(
         ProductReview.objects.filter(product=product).order_by("-created_at")
     )
@@ -1272,17 +1275,46 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     average_rating = review_agg["avg"]
     review_count = review_agg["cnt"] or 0
 
+    if request.user.is_authenticated:
+        user_has_reviewed = ProductReview.objects.filter(
+            product=product, user=request.user
+        ).exists()
+    else:
+        user_has_reviewed = bool(session_key) and ProductReview.objects.filter(
+            product=product, session_key=session_key
+        ).exists()
+
     review_form = ProductReviewForm()
+    review_form_has_errors = False
     if request.method == "POST" and request.POST.get("submit_product_review"):
         if (request.POST.get("website") or "").strip():
             messages.error(request, "Unable to submit review.")
+        elif user_has_reviewed:
+            messages.warning(
+                request,
+                "You have already rated this product.",
+            )
+            return redirect("product_detail", slug=product.slug)
         else:
             review_form = ProductReviewForm(request.POST)
             if review_form.is_valid():
                 rev = review_form.save(commit=False)
                 rev.product = product
                 rev.comment_approved = False
-                rev.save()
+                if request.user.is_authenticated:
+                    rev.user = request.user
+                    rev.session_key = ""
+                else:
+                    rev.user = None
+                    rev.session_key = session_key
+                try:
+                    rev.save()
+                except IntegrityError:
+                    messages.warning(
+                        request,
+                        "You have already submitted a review for this product.",
+                    )
+                    return redirect("product_detail", slug=product.slug)
                 if (rev.comment or "").strip():
                     messages.success(
                         request,
@@ -1291,6 +1323,7 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
                 else:
                     messages.success(request, "Thank you for your rating!")
                 return redirect("product_detail", slug=product.slug)
+            review_form_has_errors = True
 
     rv = [int(i) for i in request.session.get("recently_viewed", []) if str(i).isdigit()]
     pk_i = product.pk
@@ -1395,7 +1428,6 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
                 sale_expires_at = product.sale_expires_at
 
     stripe_public_key = getattr(settings, 'STRIPE_PUBLISHABLE_KEY', None) or ""
-    _ensure_session(request)
 
     context = {
         "product": product,
@@ -1405,6 +1437,8 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "filtered_variants": filtered_variants,
         "product_reviews": product_reviews,
         "review_form": review_form,
+        "review_form_has_errors": review_form_has_errors,
+        "user_has_reviewed": user_has_reviewed,
         "review_count": review_count,
         "favorite_ids": (
             list(Favorite.objects.filter(user=request.user).values_list("product_id", flat=True))

@@ -559,6 +559,102 @@
   .product-review-honeypot { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   .product-review-form .errorlist { color: #b91c1c; font-size: 0.8rem; margin: 4px 0 0 0; padding-left: 1rem; }
 
+  .product-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .product-review-actions button {
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .product-review-actions button:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+  }
+  .product-review-actions button.product-review-btn-primary {
+    background: #0f172a;
+    color: #fff;
+    border-color: #0f172a;
+  }
+  .product-review-actions button.product-review-btn-primary:hover {
+    opacity: 0.92;
+  }
+  .product-review-already {
+    font-size: 0.85rem;
+    color: #64748b;
+  }
+
+  .marbaras-review-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100050;
+    background: rgba(15, 23, 42, 0.45);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .marbaras-review-modal-backdrop.is-open {
+    display: flex;
+  }
+  .marbaras-review-modal-panel {
+    background: #fff;
+    border-radius: 16px;
+    max-width: 520px;
+    width: 100%;
+    max-height: min(88vh, 640px);
+    overflow: auto;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    padding: 18px 20px 20px;
+    box-sizing: border-box;
+    position: relative;
+  }
+  .marbaras-review-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .marbaras-review-modal-header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .marbaras-review-modal-close {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #64748b;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  .marbaras-review-modal-close:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+  .marbaras-review-modal-panel .product-review-list {
+    margin-bottom: 0;
+  }
+  .marbaras-review-modal-panel .product-review-form .form-row:last-of-type {
+    margin-bottom: 0;
+  }
+
   .description { margin-top: 30px; }
   .description h3 { font-weight: 700; }
   .description-text { font-size: 0.90rem; line-height: 1.6; background: transparent; border: none; }
@@ -1262,8 +1358,8 @@
               </div>
               {% endif %}
 
-              <!-- Product ratings & reviews (comments moderated in admin) -->
-              <section class="product-review-section" aria-labelledby="product-reviews-heading">
+              <!-- Product ratings: summary + modals (read / write); comments moderated in admin -->
+              <section class="product-review-section" id="product-review-section-root" aria-labelledby="product-reviews-heading" {% if review_form_has_errors %}data-open-write-review="1"{% endif %}>
                 <h3 id="product-reviews-heading">Customer ratings</h3>
                 <div class="product-review-summary">
                   {% if review_count %}
@@ -1278,62 +1374,103 @@
                     <span>No ratings yet. Be the first to rate this product.</span>
                   {% endif %}
                 </div>
+                <div class="product-review-actions">
+                  <button type="button" class="product-review-btn-secondary" id="marbaras-open-reviews-modal">See reviews</button>
+                  {% if not user_has_reviewed %}
+                  <button type="button" class="product-review-btn-primary" id="marbaras-open-write-review-modal">Write a review</button>
+                  {% else %}
+                  <span class="product-review-already">You already rated this product.</span>
+                  {% endif %}
+                </div>
+              </section>
 
-                {% if product_reviews %}
-                <ul class="product-review-list">
-                  {% for r in product_reviews %}
-                  <li class="product-review-item">
-                    <div class="product-review-meta">
-                      <span class="product-review-stars-static" aria-label="{{ r.rating }} out of 5 stars">
+              <div class="marbaras-review-modal-backdrop" id="marbaras-reviews-read-backdrop" aria-hidden="true">
+                <div class="marbaras-review-modal-panel" role="dialog" aria-modal="true" aria-labelledby="marbaras-reviews-read-title" onclick="event.stopPropagation();">
+                  <div class="marbaras-review-modal-header">
+                    <h3 id="marbaras-reviews-read-title">Reviews</h3>
+                    <button type="button" class="marbaras-review-modal-close" id="marbaras-close-reviews-modal" aria-label="Close">&times;</button>
+                  </div>
+                  <div class="product-review-summary" style="margin-bottom:14px;">
+                    {% if review_count %}
+                      <span class="product-review-stars-static" aria-hidden="true">
                         {% for _ in "12345" %}
-                          {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
+                          {% if forloop.counter <= average_rating %}★{% else %}☆{% endif %}
                         {% endfor %}
                       </span>
-                      {% if r.reviewer_name %}
-                        {% if not r.comment or r.comment_approved %}
-                        <span>{{ r.reviewer_name }}</span>
-                        {% endif %}
-                      {% endif %}
-                      <time datetime="{{ r.created_at|date:'c' }}">{{ r.created_at|date:"M j, Y" }}</time>
-                    </div>
-                    {% if r.comment_approved and r.comment %}
-                      <div class="product-review-comment-text">{{ r.comment|linebreaksbr }}</div>
+                      <strong>{{ average_rating|floatformat:1 }}</strong> / 5
+                      <span>· {{ review_count }} rating{{ review_count|pluralize }}</span>
+                    {% else %}
+                      <span>No ratings yet.</span>
                     {% endif %}
-                  </li>
-                  {% endfor %}
-                </ul>
-                {% endif %}
-
-                <h3 class="mt-4" style="margin-top:14px;font-size:1rem;">Rate this product</h3>
-                <form method="post" class="product-review-form" action="">
-                  {% csrf_token %}
-                  <input type="hidden" name="submit_product_review" value="1">
-                  <div class="product-review-honeypot" aria-hidden="true">
-                    <label for="id_product_review_website">Website</label>
-                    <input type="text" name="website" id="id_product_review_website" value="" tabindex="-1" autocomplete="off">
                   </div>
-                  {% if review_form.non_field_errors %}
-                    {{ review_form.non_field_errors }}
+                  {% if product_reviews %}
+                  <ul class="product-review-list">
+                    {% for r in product_reviews %}
+                    <li class="product-review-item">
+                      <div class="product-review-meta">
+                        <span class="product-review-stars-static" aria-label="{{ r.rating }} out of 5 stars">
+                          {% for _ in "12345" %}
+                            {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
+                          {% endfor %}
+                        </span>
+                        {% if r.reviewer_name %}
+                          {% if not r.comment or r.comment_approved %}
+                          <span>{{ r.reviewer_name }}</span>
+                          {% endif %}
+                        {% endif %}
+                        <time datetime="{{ r.created_at|date:'c' }}">{{ r.created_at|date:"M j, Y" }}</time>
+                      </div>
+                      {% if r.comment_approved and r.comment %}
+                        <div class="product-review-comment-text">{{ r.comment|linebreaksbr }}</div>
+                      {% endif %}
+                    </li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p style="margin:0;color:#64748b;font-size:0.9rem;">No written reviews to show yet.</p>
                   {% endif %}
-                  <div class="form-row">
-                    {{ review_form.rating.errors }}
-                    <label for="id_rating">{{ review_form.rating.label }}</label>
-                    {{ review_form.rating }}
+                </div>
+              </div>
+
+              {% if not user_has_reviewed %}
+              <div class="marbaras-review-modal-backdrop" id="marbaras-reviews-write-backdrop" aria-hidden="true">
+                <div class="marbaras-review-modal-panel" role="dialog" aria-modal="true" aria-labelledby="marbaras-reviews-write-title" onclick="event.stopPropagation();">
+                  <div class="marbaras-review-modal-header">
+                    <h3 id="marbaras-reviews-write-title">Write a review</h3>
+                    <button type="button" class="marbaras-review-modal-close" id="marbaras-close-write-review-modal" aria-label="Close">&times;</button>
                   </div>
-                  <div class="form-row">
-                    {{ review_form.reviewer_name.errors }}
-                    <label for="id_reviewer_name">{{ review_form.reviewer_name.label }}</label>
-                    {{ review_form.reviewer_name }}
-                  </div>
-                  <div class="form-row">
-                    {{ review_form.comment.errors }}
-                    <label for="id_comment">{{ review_form.comment.label }}</label>
-                    {{ review_form.comment }}
-                  </div>
-                  <p style="margin:0 0 8px 0;font-size:0.8rem;color:#64748b;">Comments are published after approval. Your star rating appears right away.</p>
-                  <button type="submit" class="product-review-submit">Submit rating</button>
-                </form>
-              </section>
+                  <form method="post" class="product-review-form" action="">
+                    {% csrf_token %}
+                    <input type="hidden" name="submit_product_review" value="1">
+                    <div class="product-review-honeypot" aria-hidden="true">
+                      <label for="id_product_review_website">Website</label>
+                      <input type="text" name="website" id="id_product_review_website" value="" tabindex="-1" autocomplete="off">
+                    </div>
+                    {% if review_form.non_field_errors %}
+                      {{ review_form.non_field_errors }}
+                    {% endif %}
+                    <div class="form-row">
+                      {{ review_form.rating.errors }}
+                      <label for="id_rating">{{ review_form.rating.label }}</label>
+                      {{ review_form.rating }}
+                    </div>
+                    <div class="form-row">
+                      {{ review_form.reviewer_name.errors }}
+                      <label for="id_reviewer_name">{{ review_form.reviewer_name.label }}</label>
+                      {{ review_form.reviewer_name }}
+                    </div>
+                    <div class="form-row">
+                      {{ review_form.comment.errors }}
+                      <label for="id_comment">{{ review_form.comment.label }}</label>
+                      {{ review_form.comment }}
+                    </div>
+                    <p style="margin:0 0 8px 0;font-size:0.8rem;color:#64748b;">Comments are published after approval. Your star rating appears right away. You can only submit one rating per product.</p>
+                    <button type="submit" class="product-review-submit">Submit rating</button>
+                  </form>
+                </div>
+              </div>
+              {% endif %}
+
 
               <div class="description">
                 <h3>Description</h3>
@@ -2784,6 +2921,20 @@
   // Close modal with Escape key
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Escape') {
+      const writeBd = document.getElementById('marbaras-reviews-write-backdrop');
+      const readBd = document.getElementById('marbaras-reviews-read-backdrop');
+      if (writeBd && writeBd.classList.contains('is-open')) {
+        writeBd.classList.remove('is-open');
+        writeBd.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        return;
+      }
+      if (readBd && readBd.classList.contains('is-open')) {
+        readBd.classList.remove('is-open');
+        readBd.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        return;
+      }
       const modal = document.getElementById('ring-sizing-modal');
       if (modal && modal.style.display === 'block') {
         closeRingSizingGuide();
@@ -2791,6 +2942,36 @@
     }
   });
 
+  (function marbarasProductReviewModals() {
+    var readBd = document.getElementById('marbaras-reviews-read-backdrop');
+    var writeBd = document.getElementById('marbaras-reviews-write-backdrop');
+    var openRead = document.getElementById('marbaras-open-reviews-modal');
+    var openWrite = document.getElementById('marbaras-open-write-review-modal');
+    function openBackdrop(bd) {
+      if (!bd) return;
+      bd.classList.add('is-open');
+      bd.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeBackdrop(bd) {
+      if (!bd) return;
+      bd.classList.remove('is-open');
+      bd.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+    openRead && openRead.addEventListener('click', function () { openBackdrop(readBd); });
+    openWrite && openWrite.addEventListener('click', function () { openBackdrop(writeBd); });
+    var closeReadBtn = document.getElementById('marbaras-close-reviews-modal');
+    var closeWriteBtn = document.getElementById('marbaras-close-write-review-modal');
+    closeReadBtn && closeReadBtn.addEventListener('click', function (e) { e.stopPropagation(); closeBackdrop(readBd); });
+    closeWriteBtn && closeWriteBtn.addEventListener('click', function (e) { e.stopPropagation(); closeBackdrop(writeBd); });
+    readBd && readBd.addEventListener('click', function () { closeBackdrop(readBd); });
+    writeBd && writeBd.addEventListener('click', function () { closeBackdrop(writeBd); });
+    var root = document.getElementById('product-review-section-root');
+    if (root && root.getAttribute('data-open-write-review') === '1' && writeBd) {
+      openBackdrop(writeBd);
+    }
+  })();
 
 </script>
 {% endblock %}
