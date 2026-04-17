@@ -131,6 +131,10 @@ def breadcrumbs(request):
         trail.append({"name": "Privacy", "url": request.path})
         return {"breadcrumbs": trail}
 
+    if url_name == "refund_returns":
+        trail.append({"name": "Returns", "url": request.path})
+        return {"breadcrumbs": trail}
+
     if url_name == "contact":
         trail.append({"name": "Contact", "url": request.path})
         return {"breadcrumbs": trail}

@@ -32,6 +32,7 @@ urlpatterns = [
     path('order-success/', views.order_success, name='order_success'),
 path("terms/", views.terms, name="terms"),
     path("privacy/", views.privacy, name="privacy"),
+    path("refund-returns/", views.refund_returns, name="refund_returns"),
     path("contact/", views.contact, name="contact"),
 path("account/", views.profile_dashboard, name="profile_dashboard"),
     path("account/favorites/", views.profile_favorites, name="profile_favorites"),

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Refund &amp; Returns Policy - Marbaras{% endblock %}
+
+{% block mobile_menu_content %}
+{% include "includes/shop_mobile_menu_block.html" %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .legal-wrap{max-width:900px;margin:0 auto;}
+  .legal-hero{margin-bottom:24px}
+  .legal-hero h1{font-size:2rem;margin-bottom:6px}
+  .legal-meta{font-size:.95rem;color:#777}
+  .badge{display:inline-block;background:#eef2ff;border-radius:999px;padding:4px 10px;font-size:.8rem;margin-left:8px}
+  .legal-section{margin:28px 0}
+  .legal-section h2{font-size:1.35rem;margin-bottom:8px}
+  .legal-section p,.legal-section li{margin:8px 0;line-height:1.7}
+  .legal-section ul{padding-left:1.25rem}
+  .anchor{scroll-margin-top:90px}
+  @media (max-width:768px){
+    .legal-hero h1{font-size:1.7rem}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-site px-4">
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[180px,minmax(0,1fr),180px]">
+    {% include "includes/shop_sidebar_left.html" %}
+    <section class="min-w-0">
+<section class="legal-wrap">
+  <div id="top"></div>
+  <header class="legal-hero">
+    <h1>Refund &amp; Returns Policy <span class="badge">Last updated: {% now "F j, Y" %}</span></h1>
+    <p class="legal-meta">
+      This policy explains how returns and refunds work for purchases from Marbaras, operated by Marinova Trading Ltd. For general terms, see our <a href="{% url 'terms' %}">Terms &amp; Conditions</a>.
+    </p>
+  </header>
+
+  <section id="cancellation" class="legal-section anchor">
+    <h2>Right to cancel</h2>
+    <p>You have the right to cancel your order within <strong>14 days</strong> of receiving your item.</p>
+    <p>You then have <strong>14 days</strong> to return the item.</p>
+  </section>
+
+  <section id="condition" class="legal-section anchor">
+    <h2>Condition of returned items</h2>
+    <p>Items must be returned in a condition suitable for resale and in original packaging where possible.</p>
+    <p>You may inspect the item as you would in a physical store. We may make a deduction from the refund for loss in value if the item has been handled more than necessary.</p>
+  </section>
+
+  <section id="start-return" class="legal-section anchor">
+    <h2>How to start a return</h2>
+    <p>To start a return, contact: <a href="mailto:support@marbaras.com">support@marbaras.com</a></p>
+  </section>
+
+  <section id="refunds" class="legal-section anchor">
+    <h2>Refunds</h2>
+    <p>Refunds are processed within <strong>14 days</strong> of receiving the returned item. Original shipping costs are non-refundable unless the item is faulty. Refunds will be issued using the original payment method.</p>
+  </section>
+
+  <section id="return-shipping" class="legal-section anchor">
+    <h2>Return shipping</h2>
+    <p>Customers pay return shipping unless the item is faulty or incorrect.</p>
+  </section>
+
+  <section id="faulty" class="legal-section anchor">
+    <h2>Faulty items</h2>
+    <p>You are entitled to repair, replacement, or refund.</p>
+  </section>
+
+  <section id="exceptions" class="legal-section anchor">
+    <h2>Exceptions</h2>
+    <ul>
+      <li>Custom or personalised jewellery</li>
+      <li>Used or worn items</li>
+    </ul>
+  </section>
+
+  <section id="before-dispatch" class="legal-section anchor">
+    <h2>Cancellation before dispatch</h2>
+    <p>Orders may be cancelled before dispatch for a full refund.</p>
+  </section>
+
+  <p><a href="#top">Back to top ↑</a></p>
+</section>
+    </section>
+    {% include "includes/shop_sidebar_right.html" %}
+  </div>
+  {% include "includes/shop_mobile_quick_auth.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% include "includes/shop_sidebar_wiring_js.html" %}
+{% endblock %}
