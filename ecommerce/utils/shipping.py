@@ -967,13 +967,14 @@ class GlobalMailShipping(ShippingCarrierBase):
 
     _token_cache: Dict[str, Any] = {}
 
-    def __init__(self):
+    def __init__(self, force_sandbox: bool = False):
         super().__init__()
         self.consumer_key = getattr(settings, 'GLOBAL_MAIL_API_KEY', '')
         self.consumer_secret = getattr(settings, 'GLOBAL_MAIL_API_SECRET', '')
         self.user_id = getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')  # email userId (informational)
         self.customer_ekp = getattr(settings, 'GLOBAL_MAIL_CUSTOMER_EKP', '')
-        self.test_mode = bool(getattr(settings, 'GLOBAL_MAIL_TEST_MODE', True))
+        settings_test = bool(getattr(settings, 'GLOBAL_MAIL_TEST_MODE', True))
+        self.test_mode = True if force_sandbox else settings_test
         self.host = 'https://api-sandbox.dhl.com' if self.test_mode else 'https://api.dhl.com'
         self.auth_url = f'{self.host}/dpi/v1/auth/accesstoken'
         self.orders_url = f'{self.host}/dpi/shipping/v1/orders'

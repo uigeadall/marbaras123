@@ -1141,6 +1141,7 @@ class OrderAdmin(admin.ModelAdmin):
         "coupon_code",
         "items_count",
         "print_label_link",
+        "test_label_link",
     )
     
     class Media:
@@ -1200,6 +1201,21 @@ class OrderAdmin(admin.ModelAdmin):
     def coupon_code(self, obj):
         return obj.coupon.code if obj.coupon else "-"
     
+    @admin.display(description="🧪 Test")
+    def test_label_link(self, obj):
+        """Small link to create a sandbox DPI label for this order (no DB changes)."""
+        from django.urls import reverse
+        try:
+            url = reverse('admin:print_test_label_for_order', args=[obj.pk])
+        except Exception:
+            return ""
+        return format_html(
+            '<a href="{}" target="_blank" style="background:#3b82f6;color:#fff;'
+            'padding:3px 8px;border-radius:4px;text-decoration:none;font-size:11px;'
+            'white-space:nowrap;">🧪 Test label</a>',
+            url,
+        )
+
     @admin.display(description="Status", ordering="is_shipped")
     def order_status(self, obj):
         """Display order status with green background if shipped."""
@@ -1777,6 +1793,11 @@ class OrderAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.print_test_label_view),
                 name='print_test_label',
             ),
+            path(
+                '<int:order_id>/print-test-label/',
+                self.admin_site.admin_view(self.print_test_label_for_order_view),
+                name='print_test_label_for_order',
+            ),
         ]
         return custom_urls + urls
     
@@ -2143,6 +2164,95 @@ class OrderAdmin(admin.ModelAdmin):
         response["Content-Disposition"] = f'inline; filename="dpi-test-label-{item_id}.pdf"'
         response["X-DPI-Item-Id"] = str(item_id)
         response["X-DPI-AWB"] = str(shipments[0].get("awb") or "")
+        return response
+
+    def print_test_label_for_order_view(self, request, order_id):
+        """
+        Create a DPI sandbox shipment using the real data of an existing
+        Order (recipient, items, weight, etc.) and stream the PDF label
+        back inline. Nothing is saved to the database — this is pure
+        test printing against api-sandbox.dhl.com regardless of
+        GLOBAL_MAIL_TEST_MODE.
+        """
+        import requests
+        from django.shortcuts import get_object_or_404
+        from django.http import HttpResponse, HttpResponseForbidden
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        if not request.user.is_superuser:
+            return HttpResponseForbidden("Superuser only.")
+
+        order = get_object_or_404(Order, pk=order_id)
+        dpi = GlobalMailShipping(force_sandbox=True)
+
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            return HttpResponse(
+                "Missing GLOBAL_MAIL_API_KEY / GLOBAL_MAIL_API_SECRET / GLOBAL_MAIL_CUSTOMER_EKP.",
+                status=400, content_type="text/plain",
+            )
+
+        token = dpi._get_access_token()
+        if not token:
+            return HttpResponse("DPI auth failed — check Railway logs.", status=502, content_type="text/plain")
+
+        try:
+            payload = dpi._prepare_shipment_data(order)
+        except Exception as exc:
+            return HttpResponse(
+                f"Failed to build payload for Order #{order.id}: {exc}",
+                status=500, content_type="text/plain; charset=utf-8",
+            )
+
+        try:
+            r = requests.post(
+                dpi.orders_url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                timeout=30,
+            )
+            if r.status_code not in (200, 201):
+                return HttpResponse(
+                    f"DPI create-order failed for Order #{order.id}: HTTP {r.status_code}\n\n"
+                    f"{r.text[:2000]}\n\nRequest payload:\n{payload}",
+                    status=502, content_type="text/plain; charset=utf-8",
+                )
+            body = r.json() or {}
+            shipments = body.get("shipments") or []
+            if not shipments or not shipments[0].get("items"):
+                return HttpResponse(
+                    f"DPI returned no shipments/items:\n{body}",
+                    status=502, content_type="text/plain; charset=utf-8",
+                )
+            item_id = shipments[0]["items"][0].get("id")
+            awb = shipments[0].get("awb") or ""
+        except Exception as exc:
+            return HttpResponse(f"DPI create-order exception: {exc}", status=502, content_type="text/plain")
+
+        try:
+            lr = requests.get(
+                f"{dpi.item_label_url}/{item_id}/label",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
+                timeout=30,
+            )
+            if lr.status_code != 200 or not lr.content:
+                return HttpResponse(
+                    f"Label fetch failed for Order #{order.id} (item {item_id}): HTTP {lr.status_code}\n\n{lr.text[:500]}",
+                    status=502, content_type="text/plain; charset=utf-8",
+                )
+        except Exception as exc:
+            return HttpResponse(f"Label fetch exception: {exc}", status=502, content_type="text/plain")
+
+        response = HttpResponse(lr.content, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="dpi-test-order-{order.id}-item-{item_id}.pdf"'
+        )
+        response["X-DPI-Item-Id"] = str(item_id)
+        response["X-DPI-AWB"] = str(awb)
+        response["X-DPI-Order-Id"] = str(order.id)
         return response
 
     def _run_dhl_probes(self, key: str, secret: str, account: str):
