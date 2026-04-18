@@ -1130,6 +1130,7 @@ class OrderAdmin(admin.ModelAdmin):
 
     list_display = (
         "id",
+        "test_label_link",
         "order_status",
         "created_at",
         "full_name",
@@ -1141,7 +1142,6 @@ class OrderAdmin(admin.ModelAdmin):
         "coupon_code",
         "items_count",
         "print_label_link",
-        "test_label_link",
     )
     
     class Media:
