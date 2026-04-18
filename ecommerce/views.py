@@ -276,6 +276,88 @@ def _cap_quantity(requested_total: int, available: int) -> int:
     return min(requested_total, available)
 
 
+class InsufficientStockError(Exception):
+    """Raised inside a transaction.atomic() block when a cart item's stock
+    cannot be satisfied at the moment of checkout. The caller is expected
+    to let the transaction roll back and surface a user-friendly message.
+    """
+
+    def __init__(self, product_name: str, requested: int, available: int):
+        self.product_name = product_name
+        self.requested = int(requested)
+        self.available = int(available)
+        super().__init__(
+            f"Insufficient stock for '{product_name}': requested {self.requested}, available {self.available}."
+        )
+
+
+def _consume_cart_stock(cart_items: Iterable[CartItem]) -> None:
+    """Atomically lock + decrement stock for every item in the cart.
+
+    Must be called **inside** a ``transaction.atomic()`` block. Uses
+    ``SELECT ... FOR UPDATE`` on each Product/ProductVariant row so that
+    two concurrent checkouts competing for the last unit are serialised
+    by the database — preventing oversells.
+
+    Rules:
+      * If ``CartItem.variant_id`` is set → decrement
+        :class:`ProductVariant.stock`.
+      * Otherwise → decrement :class:`Product.stock` directly.
+
+    Raises :class:`InsufficientStockError` if any requested quantity
+    exceeds what is on hand. The outer atomic block will then roll back
+    all changes (including the Order creation) when this exception
+    propagates.
+    """
+    from collections import defaultdict
+
+    demand: dict[tuple[int, Optional[int]], int] = defaultdict(int)
+    labels: dict[tuple[int, Optional[int]], str] = {}
+
+    for item in cart_items:
+        if item is None or not getattr(item, 'product_id', None):
+            continue
+        qty = int(getattr(item, 'quantity', 0) or 0)
+        if qty <= 0:
+            continue
+        variant_id = getattr(item, 'variant_id', None)
+        key = (int(item.product_id), int(variant_id) if variant_id else None)
+        demand[key] += qty
+        if key not in labels:
+            if variant_id and getattr(item, 'variant', None):
+                labels[key] = f"{item.product.name} ({item.variant.size or item.variant.variant_type})"
+            else:
+                labels[key] = getattr(item.product, 'name', f"Product #{item.product_id}")
+
+    for (product_id, variant_id), qty in demand.items():
+        label = labels.get((product_id, variant_id), f"Product #{product_id}")
+        if variant_id:
+            variant = (
+                ProductVariant.objects.select_for_update()
+                .get(pk=variant_id)
+            )
+            available = int(variant.stock or 0)
+            if available < qty:
+                raise InsufficientStockError(label, qty, available)
+            variant.stock = available - qty
+            variant.save(update_fields=['stock'])
+            logger.info(
+                f"Stock: variant#{variant_id} ({label}) -{qty} → {variant.stock}"
+            )
+        else:
+            product = (
+                Product.objects.select_for_update()
+                .get(pk=product_id)
+            )
+            available = int(product.stock or 0)
+            if available < qty:
+                raise InsufficientStockError(label, qty, available)
+            product.stock = available - qty
+            product.save(update_fields=['stock'])
+            logger.info(
+                f"Stock: product#{product_id} ({label}) -{qty} → {product.stock}"
+            )
+
 
 def _process_coupon(coupon_code: str, subtotal: Decimal, apply_usage: bool = True, cart_items: Optional[Iterable[CartItem]] = None) -> tuple[Decimal, Decimal, Optional[str], Optional[str]]:
     """Process coupon code and return (new_subtotal, discount, coupon_applied, coupon_error).
@@ -2511,42 +2593,59 @@ def checkout_view(request: HttpRequest) -> HttpResponse:
             )
             return redirect("checkout")
 
-        with transaction.atomic():
-            order = Order.objects.create(
-                user=request.user if request.user.is_authenticated else None,
-                email=email,
-                full_name=full_name,
-                address=address,
-                city=city,
-                postal_code=postal_code,
-                phone=phone,
-                country=country,
-                shipping_option=shipping_option,
-                total_price=charged_amount,
-                currency=charge_cur.upper(),
-            )
+        try:
+            with transaction.atomic():
+                _consume_cart_stock(cart_items)
 
-            order_items = []
-            for item in cart_items:
-                if item.quantity <= 0:
-                    logger.warning(f"Skipping cart item with invalid quantity: {item.id}")
-                    continue
-                order_items.append(
-                    OrderItem(
-                        order=order,
-                        product=item.product,
-                        variant=item.variant,
-                        quantity=item.quantity
-                    )
+                order = Order.objects.create(
+                    user=request.user if request.user.is_authenticated else None,
+                    email=email,
+                    full_name=full_name,
+                    address=address,
+                    city=city,
+                    postal_code=postal_code,
+                    phone=phone,
+                    country=country,
+                    shipping_option=shipping_option,
+                    total_price=charged_amount,
+                    currency=charge_cur.upper(),
                 )
 
-            if order_items:
-                OrderItem.objects.bulk_create(order_items)
-            else:
-                messages.error(request, "No valid items in cart.")
-                return redirect("cart_view")
+                order_items = []
+                for item in cart_items:
+                    if item.quantity <= 0:
+                        logger.warning(f"Skipping cart item with invalid quantity: {item.id}")
+                        continue
+                    order_items.append(
+                        OrderItem(
+                            order=order,
+                            product=item.product,
+                            variant=item.variant,
+                            quantity=item.quantity
+                        )
+                    )
 
-            cart_items.delete()
+                if order_items:
+                    OrderItem.objects.bulk_create(order_items)
+                else:
+                    messages.error(request, "No valid items in cart.")
+                    return redirect("cart_view")
+
+                cart_items.delete()
+        except InsufficientStockError as exc:
+            logger.error(
+                "OUT-OF-STOCK during checkout after Stripe PI %s was confirmed. "
+                "Customer %s charged but order NOT created. MANUAL REFUND REQUIRED. Details: %s",
+                pi_id, email, exc,
+            )
+            messages.error(
+                request,
+                f"Sorry — «{exc.product_name}» sold out a moment ago "
+                f"(only {exc.available} left in stock, you requested {exc.requested}). "
+                "Please adjust your cart and try again. If you were already charged, "
+                "we will refund you within 5–7 business days."
+            )
+            return redirect("cart_view")
 
         _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
@@ -2739,42 +2838,57 @@ def guest_checkout_view(request: HttpRequest) -> HttpResponse:
 
         currency = _get_currency_from_request(request)
 
-        with transaction.atomic():
-            order = Order.objects.create(
-                user=None,
-                email=email,
-                full_name=full_name,
-                address=address,
-                city=city,
-                postal_code=postal_code,
-                phone=phone,
-                country=country,
-                shipping_option=shipping_option,
-                total_price=total,
-                currency=currency,
-            )
+        try:
+            with transaction.atomic():
+                _consume_cart_stock(cart_qs)
 
-            order_items = []
-            for item in cart_qs:
-                if item.quantity <= 0:
-                    logger.warning(f"Skipping cart item with invalid quantity: {item.id}")
-                    continue
-                order_items.append(
-                    OrderItem(
-                        order=order,
-                        product=item.product,
-                        variant=item.variant,
-                        quantity=item.quantity
-                    )
+                order = Order.objects.create(
+                    user=None,
+                    email=email,
+                    full_name=full_name,
+                    address=address,
+                    city=city,
+                    postal_code=postal_code,
+                    phone=phone,
+                    country=country,
+                    shipping_option=shipping_option,
+                    total_price=total,
+                    currency=currency,
                 )
 
-            if order_items:
-                OrderItem.objects.bulk_create(order_items)
-            else:
-                messages.error(request, "No valid items in cart.")
-                return redirect("cart_view")
+                order_items = []
+                for item in cart_qs:
+                    if item.quantity <= 0:
+                        logger.warning(f"Skipping cart item with invalid quantity: {item.id}")
+                        continue
+                    order_items.append(
+                        OrderItem(
+                            order=order,
+                            product=item.product,
+                            variant=item.variant,
+                            quantity=item.quantity
+                        )
+                    )
 
-            cart_qs.delete()
+                if order_items:
+                    OrderItem.objects.bulk_create(order_items)
+                else:
+                    messages.error(request, "No valid items in cart.")
+                    return redirect("cart_view")
+
+                cart_qs.delete()
+        except InsufficientStockError as exc:
+            logger.error(
+                "OUT-OF-STOCK during guest checkout for %s. Order NOT created. Details: %s",
+                email, exc,
+            )
+            messages.error(
+                request,
+                f"Sorry — «{exc.product_name}» sold out a moment ago "
+                f"(only {exc.available} left in stock, you requested {exc.requested}). "
+                "Please adjust your cart and try again."
+            )
+            return redirect("cart_view")
 
         _notify_order_confirmed(request, order)
         _finalize_checkout_purchase_tracking(request, order)
@@ -2896,6 +3010,15 @@ def _product_quick_checkout_build_order(
     currency: str,
 ) -> Order:
     with transaction.atomic():
+        fake_line = SimpleNamespace(
+            product_id=product.pk,
+            product=product,
+            variant_id=variant.pk if variant else None,
+            variant=variant,
+            quantity=quantity,
+        )
+        _consume_cart_stock([fake_line])
+
         order = Order.objects.create(
             user=request.user if request.user.is_authenticated else None,
             email=payer_email,
@@ -2993,6 +3116,8 @@ def _cart_checkout_build_order_from_wallet(
 ) -> Order:
     address, city, postal = _wallet_shipping_address_to_order_fields(shipping_address)
     with transaction.atomic():
+        _consume_cart_stock(cart_items)
+
         order = Order.objects.create(
             user=request.user if request.user.is_authenticated else None,
             email=payer_email,
