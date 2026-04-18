@@ -1175,7 +1175,16 @@ class OrderAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.annotate(_items_count=Count("items"))
-    
+
+    def changelist_view(self, request, extra_context=None):
+        from django.conf import settings as dj_settings
+        extra_context = extra_context or {}
+        extra_context['dpi_status'] = {
+            'test_mode': bool(getattr(dj_settings, 'GLOBAL_MAIL_TEST_MODE', True)),
+            'auto_create': bool(getattr(dj_settings, 'SHIPPING_AUTO_CREATE_LABEL', True)),
+        }
+        return super().changelist_view(request, extra_context=extra_context)
+
     def get_row_css_class(self, obj, request):
         """Add CSS class to row based on order status."""
         css_class = super().get_row_css_class(obj, request) or ""
@@ -1659,52 +1668,68 @@ class OrderAdmin(admin.ModelAdmin):
     print_shipping_labels.short_description = "🖨️ Print shipping labels"
     
     def create_shipping_labels(self, request, queryset):
-        """Admin action to create shipping labels via carrier APIs."""
-        from ecommerce.utils.shipping import create_shipping_label
+        """
+        Admin action to create shipping labels via carrier APIs.
+
+        Uses ``auto_create_shipping_label`` so:
+          - the carrier is auto-detected from ``shipping_option.name`` if not set,
+          - orders that already have a label are skipped (idempotent),
+          - results are persisted back to the Order.
+        """
+        from ecommerce.utils.shipping import auto_create_shipping_label
         import logging
-        
+
         logger = logging.getLogger(__name__)
         created_count = 0
+        skipped_count = 0
         failed_count = 0
         error_details = []
-        
+
         for order in queryset:
-            if not order.shipping_carrier:
-                failed_count += 1
-                error_details.append(f"Order #{order.id}: No carrier selected")
+            if order.shipping_label_url or order.tracking_number:
+                skipped_count += 1
                 continue
-            
-            logger.info(f"Creating shipping label for Order #{order.id} with carrier {order.shipping_carrier}")
-            label_data = create_shipping_label(order, order.shipping_carrier)
-            
-            if label_data:
-                order.tracking_number = label_data.get('tracking_number')
-                order.shipping_label_url = label_data.get('label_url')
-                order.shipment_id = label_data.get('shipment_id')
-                order.save(update_fields=['tracking_number', 'shipping_label_url', 'shipment_id'])
+
+            logger.info(f"Admin action: creating label for Order #{order.id}")
+            try:
+                result = auto_create_shipping_label(order.pk)
+            except Exception as exc:
+                failed_count += 1
+                error_details.append(f"Order #{order.id}: {exc}")
+                logger.exception(f"create_shipping_labels raised for #{order.id}")
+                continue
+
+            if result and (result.get('label_url') or result.get('tracking_number')):
                 created_count += 1
-                logger.info(f"✅ Successfully created label for Order #{order.id}: tracking={order.tracking_number}")
+                logger.info(f"✅ Created label for Order #{order.id}")
             else:
                 failed_count += 1
-                error_details.append(f"Order #{order.id}: Label creation failed (check logs)")
-                logger.error(f"❌ Failed to create label for Order #{order.id} with carrier {order.shipping_carrier}")
+                error_details.append(
+                    f"Order #{order.id}: no carrier detected or API returned empty"
+                )
         
         if created_count > 0:
             self.message_user(
                 request,
                 f"✅ Created {created_count} shipping labels.",
-                messages.SUCCESS
+                messages.SUCCESS,
+            )
+        if skipped_count > 0:
+            self.message_user(
+                request,
+                f"↷ Skipped {skipped_count} orders that already had a label/tracking.",
+                messages.INFO,
             )
         if failed_count > 0:
             error_msg = f"⚠️ {failed_count} labels could not be created."
             if error_details:
-                error_msg += f" Details: {', '.join(error_details[:3])}"  # Show first 3 errors
+                error_msg += f" Details: {', '.join(error_details[:3])}"
             self.message_user(
                 request,
                 error_msg + " Check Railway logs for more details.",
-                messages.WARNING
+                messages.WARNING,
             )
-    
+
     create_shipping_labels.short_description = "📦 Create shipping labels via carrier API"
     
     def get_urls(self):

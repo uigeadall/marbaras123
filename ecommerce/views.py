@@ -2090,8 +2090,17 @@ def _schedule_auto_shipping_label(order_id: int) -> None:
     order. Runs in a daemon thread so the customer response is not delayed
     by the carrier API. The label ends up on the Print Queue page once the
     carrier returns it (usually a few seconds later).
+
+    Controlled by ``settings.SHIPPING_AUTO_CREATE_LABEL`` (default True).
+    Set to False to require manual "Create label" from the admin instead.
     """
     if not order_id:
+        return
+    if not bool(getattr(settings, "SHIPPING_AUTO_CREATE_LABEL", True)):
+        logger.info(
+            "_schedule_auto_shipping_label: auto-create disabled, skipping order #%s",
+            order_id,
+        )
         return
     try:
         import threading

@@ -841,6 +841,22 @@ GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet
 GLOBAL_MAIL_SERVICE_LEVEL = env("GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
 GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "711311")  # HS code for silver jewellery (6 digits)
 
+# Automatic shipping label creation on checkout. Set to "False" in Railway
+# to require manual label creation from the admin (recommended during
+# production soft-launch).
+SHIPPING_AUTO_CREATE_LABEL = env("SHIPPING_AUTO_CREATE_LABEL", "False").lower() in ("1", "true", "yes", "y", "on")
+
+# Shop (sender) details — PRINTED on every DPI label + used by all carriers.
+# Configure these in Railway → Variables.
+SHOP_CONTACT_NAME = env("SHOP_CONTACT_NAME", "Marbaras")
+SHOP_COMPANY_NAME = env("SHOP_COMPANY_NAME", "Marbaras")
+SHOP_ADDRESS = env("SHOP_ADDRESS", "")          # e.g. "ул. Примерна 10"
+SHOP_CITY = env("SHOP_CITY", "Sofia")
+SHOP_POSTAL_CODE = env("SHOP_POSTAL_CODE", "")  # e.g. "1000"
+SHOP_COUNTRY = env("SHOP_COUNTRY", "BG")        # ISO 3166-1 alpha-2
+SHOP_PHONE = env("SHOP_PHONE", "")              # E.164 preferred: "+35988..."
+SHOP_EMAIL = env("SHOP_EMAIL", "")
+
 # Deutsche Post API Configuration
 DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")
 DEUTSCHE_POST_API_SECRET = env("DEUTSCHE_POST_API_SECRET", "")
