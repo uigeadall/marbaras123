@@ -2001,6 +2001,61 @@ class OrderAdmin(admin.ModelAdmin):
 
         results = []
 
+        # ==================================================================
+        # 0. Deutsche Post International (DPI) / "Global Mail" — OAuth 2.0
+        #    The AUTHORITATIVE endpoint for DHL Global Mail Business Customers.
+        #    Spec: GET /dpi/v1/auth/accesstoken with HTTP Basic Auth
+        #    (username = consumerKey, password = consumerSecret).
+        #    Source: developer.dhl.com → GMPP Postman collection (v5.7.10).
+        # ==================================================================
+        def probe_dpi(host, user, pw, label_suffix):
+            api = f"DPI Global Mail · {host.split('//')[1]} · {label_suffix}"
+            r = requests.get(
+                f"{host}/dpi/v1/auth/accesstoken",
+                auth=(user, pw),
+                headers={"Accept": "application/json"},
+                timeout=15,
+            )
+            body = r.text or ""
+            if r.status_code == 200 and ("access_token" in body or "accessToken" in body):
+                return {
+                    "api": api,
+                    "ok": True,
+                    "status": "200",
+                    "note": "✅ access_token received — THIS IS THE RIGHT API",
+                }
+            if _rejected(r):
+                return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
+            return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(body)}
+
+        # Try several auth-variant combinations, because user provided:
+        #   userId     = l2006@abv.bg
+        #   consumerKey    = T2Lnu62rspJ1wdaI3JOA1JpM7oECmfz2
+        #   consumerSecret = 4AIqPAggU2aIPvPE
+        # In DPI spec `username = consumerKey, password = consumerSecret`, but
+        # older/regional variants use the email as username.
+        for host_url, host_label in (
+            ("https://api-sandbox.dhl.com", "sandbox"),
+            ("https://api.dhl.com", "production"),
+        ):
+            # Standard: Basic(consumerKey:consumerSecret) — this is the spec.
+            results.append(_probe(
+                f"DPI {host_label} key:secret",
+                lambda h=host_url, lbl=host_label: probe_dpi(h, key, secret, f"Basic({lbl}: consumerKey:consumerSecret)"),
+            ))
+            # Fallback: Basic(userId:consumerSecret) — some tenants use email.
+            if account:
+                results.append(_probe(
+                    f"DPI {host_label} userId:secret",
+                    lambda h=host_url, lbl=host_label: probe_dpi(h, account, secret, f"Basic({lbl}: userId:consumerSecret)"),
+                ))
+            # Fallback: Basic(userId:consumerKey) — last resort.
+            if account:
+                results.append(_probe(
+                    f"DPI {host_label} userId:key",
+                    lambda h=host_url, lbl=host_label: probe_dpi(h, account, key, f"Basic({lbl}: userId:consumerKey)"),
+                ))
+
         # ------------------------------------------------------------------
         # 1. MyDHL API (DHL Express) — Basic Auth
         # ------------------------------------------------------------------
