@@ -837,8 +837,29 @@ GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")  # consumerSecret
 GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")  # userId (email) — informational
 GLOBAL_MAIL_CUSTOMER_EKP = env("GLOBAL_MAIL_CUSTOMER_EKP", "")      # 10-digit EKP customer number (REQUIRED)
 GLOBAL_MAIL_TEST_MODE = env("GLOBAL_MAIL_TEST_MODE", "True").lower() in ("1", "true", "yes", "y", "on")
-GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet Tracked (default)
+GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet Tracked (default, EU)
 GLOBAL_MAIL_SERVICE_LEVEL = env("GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
+
+# Per-destination product/service overrides for DPI. Format (env var):
+#   "US=PPT,CA=PPT,AU=PPT,GB=GPT"
+# Use when the default product (GPT) isn't available for certain destinations.
+# Common DPI products for non-EU: PPT (Packet Plus Tracked), PPS (Packet Plus
+# Standard), WP (Warenpost International). Confirm codes with your DPI contract.
+def _parse_country_map(raw: str) -> dict:
+    result = {}
+    for pair in (raw or "").split(","):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        cc, val = pair.split("=", 1)
+        cc = cc.strip().upper()
+        val = val.strip()
+        if cc and val:
+            result[cc] = val
+    return result
+
+GLOBAL_MAIL_PRODUCT_MAP = _parse_country_map(env("GLOBAL_MAIL_PRODUCT_MAP", ""))
+GLOBAL_MAIL_SERVICE_MAP = _parse_country_map(env("GLOBAL_MAIL_SERVICE_MAP", ""))
 GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "711311")  # HS code for silver jewellery (6 digits)
 
 # Label page size appended as ?pageSize=... to /items/{id}/label. "4x6" matches

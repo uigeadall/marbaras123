@@ -1206,8 +1206,15 @@ class GlobalMailShipping(ShippingCarrierBase):
         total_weight_kg = max(sum(item.quantity for item in order.items.all()) * 0.5, 0.1)
         total_weight_g = int(total_weight_kg * 1000)
         dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
-        product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
-        service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
+        default_product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
+        # Per-destination product override:
+        #   GLOBAL_MAIL_PRODUCT_MAP = {"US": "PPT", "CA": "PPT", ...}
+        # If the default product isn't valid for a destination, look up an override.
+        product_map = getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {}
+        product = product_map.get(dest) or product_map.get(dest.upper()) or default_product
+        service_map = getattr(settings, 'GLOBAL_MAIL_SERVICE_MAP', {}) or {}
+        default_service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
+        service = service_map.get(dest) or service_map.get(dest.upper()) or default_service
         currency = getattr(order, 'currency', None) or 'EUR'
 
         def _sanitize_phone(raw: str) -> str:
