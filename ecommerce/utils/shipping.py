@@ -952,338 +952,252 @@ class DeutschePostShipping(ShippingCarrierBase):
 
 
 class GlobalMailShipping(ShippingCarrierBase):
-    """Global Mail shipping integration - uses DHL MyDHL API (same as DHL Express)."""
-    
+    """
+    Deutsche Post International (DPI) / "Global Mail" shipping integration.
+
+    Official spec (developer.dhl.com, GMPP API v5.7.10):
+      - Sandbox: https://api-sandbox.dhl.com
+      - Production: https://api.dhl.com
+      - Auth: GET /dpi/v1/auth/accesstoken  with HTTP Basic(consumerKey:consumerSecret)
+      - Shipping: /dpi/shipping/v1/orders, /items/{itemId}/label
+
+    In test mode we only hit the sandbox environment, so no real/billable
+    shipments are created. Switch GLOBAL_MAIL_TEST_MODE=False when ready for prod.
+    """
+
+    _token_cache: Dict[str, Any] = {}
+
     def __init__(self):
         super().__init__()
-        self.api_key = getattr(settings, 'GLOBAL_MAIL_API_KEY', '')
-        self.api_secret = getattr(settings, 'GLOBAL_MAIL_API_SECRET', '')
-        self.account_number = getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')
-        # Global Mail uses DHL MyDHL API (same as DHL Express)
-        # Test: https://express.api.dhl.com/mydhlapi/test/shipments
-        # Production: https://express.api.dhl.com/mydhlapi/shipments
-        api_url = getattr(settings, 'GLOBAL_MAIL_API_URL', '')
-        # Try both test and production endpoints if credentials fail
-        # Default to PRODUCTION if not specified (Global Mail credentials might be for production)
-        if not api_url:
-            # Default to production MyDHL API endpoint
-            api_url = 'https://express.api.dhl.com/mydhlapi/shipments'
-            logger.info("GLOBAL_MAIL_API_URL not set, defaulting to PRODUCTION endpoint")
-        elif 'test' in api_url.lower() or 'sandbox' in api_url.lower():
-            # MyDHL API test environment endpoint for shipments
-            api_url = 'https://express.api.dhl.com/mydhlapi/test/shipments'
-        elif 'express.api.dhl.com' not in api_url.lower():
-            # Production MyDHL API endpoint
-            api_url = 'https://express.api.dhl.com/mydhlapi/shipments'
-        self.api_url = api_url
-        # Store both endpoints to try if one fails
-        self.test_url = 'https://express.api.dhl.com/mydhlapi/test/shipments'
-        self.prod_url = 'https://express.api.dhl.com/mydhlapi/shipments'
-        logger.info(f"Global Mail API URL: {self.api_url} ({'PRODUCTION' if 'test' not in self.api_url.lower() else 'TEST'})")
-    
-    def create_shipment(self, order) -> Optional[Dict[str, Any]]:
-        """Create Global Mail shipment and return tracking info."""
-        logger.info(f"Global Mail create_shipment called for Order #{order.id}")
-        
-        if not all([self.api_key, self.api_secret]):
-            logger.error("Global Mail credentials not configured - missing API key or secret")
+        self.consumer_key = getattr(settings, 'GLOBAL_MAIL_API_KEY', '')
+        self.consumer_secret = getattr(settings, 'GLOBAL_MAIL_API_SECRET', '')
+        self.user_id = getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')  # email userId (informational)
+        self.customer_ekp = getattr(settings, 'GLOBAL_MAIL_CUSTOMER_EKP', '')
+        self.test_mode = bool(getattr(settings, 'GLOBAL_MAIL_TEST_MODE', True))
+        self.host = 'https://api-sandbox.dhl.com' if self.test_mode else 'https://api.dhl.com'
+        self.auth_url = f'{self.host}/dpi/v1/auth/accesstoken'
+        self.orders_url = f'{self.host}/dpi/shipping/v1/orders'
+        self.item_label_url = f'{self.host}/dpi/shipping/v1/items'  # append /{itemId}/label
+        logger.info(
+            f"DPI Global Mail initialized · mode={'TEST (sandbox)' if self.test_mode else 'PRODUCTION'} · host={self.host}"
+        )
+
+    # ------------------------------------------------------------------
+    # OAuth 2.0 access token (cached 4h to stay under the 5h expiry)
+    # ------------------------------------------------------------------
+    def _get_access_token(self) -> Optional[str]:
+        import time
+        cache_key = f"{self.host}|{self.consumer_key}"
+        cached = GlobalMailShipping._token_cache.get(cache_key)
+        now = time.time()
+        if cached and cached.get('expires_at', 0) > now + 60:
+            return cached['token']
+
+        if not (self.consumer_key and self.consumer_secret):
+            logger.error("DPI Global Mail: consumerKey/consumerSecret not configured")
             return None
-        
-        # Account number is optional - can be derived from API or set later
-        if not self.account_number:
-            logger.warning("Global Mail account number not provided - will attempt to use userId or skip")
-        
+
         try:
-            # MyDHL API uses Basic Authentication (not OAuth)
-            # For Global Mail: Username = userId (email), Password = consumerSecret
-            # Or: Username = consumerKey, Password = consumerSecret
-            logger.info("Using Basic Auth for MyDHL API (Global Mail)")
-            logger.info(f"API Key (consumerKey, first 10 chars): {self.api_key[:10] if self.api_key else 'None'}...")
-            logger.info(f"Account Number (userId): {self.account_number[:10] if self.account_number else 'None'}...")
-            
-            # Prepare shipment data
-            logger.info("Preparing Global Mail shipment data...")
-            shipment_data = self._prepare_shipment_data(order)
-            
-            # Try different Basic Auth combinations for Global Mail
-            # Option 1: Username = userId (email), Password = consumerSecret
-            # Option 2: Username = consumerKey, Password = consumerSecret (standard MyDHL)
-            auth_combinations = []
-            if self.account_number and '@' in str(self.account_number):
-                # If account_number is email (userId), try it as username
-                auth_combinations.append((self.account_number, self.api_secret, "userId + consumerSecret"))
-            # Always try standard MyDHL format
-            auth_combinations.append((self.api_key, self.api_secret, "consumerKey + consumerSecret"))
-            
+            logger.info(f"DPI Global Mail: requesting access token from {self.auth_url}")
+            r = requests.get(
+                self.auth_url,
+                auth=(self.consumer_key, self.consumer_secret),
+                headers={'Accept': 'application/json'},
+                timeout=15,
+            )
+            if r.status_code != 200:
+                logger.error(f"DPI token error {r.status_code}: {r.text[:300]}")
+                return None
+            data = r.json()
+            token = data.get('access_token') or data.get('accessToken')
+            if not token:
+                logger.error(f"DPI token missing in response: {data}")
+                return None
+            ttl = int(data.get('expires_in') or 14400)
+            GlobalMailShipping._token_cache[cache_key] = {
+                'token': token,
+                'expires_at': now + min(ttl, 14400),
+            }
+            logger.info(f"✅ DPI access_token cached (ttl={ttl}s)")
+            return token
+        except Exception as exc:
+            logger.error(f"DPI token exception: {exc}", exc_info=True)
+            return None
+
+    # ------------------------------------------------------------------
+    # Public entrypoint: create shipment + fetch PDF label
+    # ------------------------------------------------------------------
+    def create_shipment(self, order) -> Optional[Dict[str, Any]]:
+        logger.info(f"DPI Global Mail: create_shipment for Order #{order.id}")
+
+        if not self.customer_ekp:
+            logger.error(
+                "DPI Global Mail: GLOBAL_MAIL_CUSTOMER_EKP not set. "
+                "Ask your DHL representative for your 10-digit EKP customer number."
+            )
+            return None
+
+        token = self._get_access_token()
+        if not token:
+            return None
+
+        try:
+            payload = self._prepare_shipment_data(order)
             headers = {
+                'Authorization': f'Bearer {token}',
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             }
-            
-            logger.info(f"Account number in shipment: {shipment_data.get('accounts', [{}])[0].get('number', 'N/A')}")
-            
-            # Try each endpoint (test and production) with each auth combination
-            endpoints_to_try = [self.api_url]
-            # If current endpoint is test, also try production (and vice versa)
-            if 'test' in self.api_url.lower():
-                endpoints_to_try.append(self.prod_url)
-                logger.info(f"Will also try production endpoint if test fails")
-            elif 'test' not in self.api_url.lower():
-                endpoints_to_try.append(self.test_url)
-                logger.info(f"Will also try test endpoint if production fails")
-            
-            last_error = None
-            success = False
-            
-            for endpoint_url in endpoints_to_try:
-                logger.info(f"Posting to MyDHL API: {endpoint_url} ({'TEST' if 'test' in endpoint_url.lower() else 'PRODUCTION'})")
-                
-                for username, password, description in auth_combinations:
-                    logger.info(f"Trying Basic Auth: {description}")
-                    logger.info(f"Username (first 10 chars): {username[:10] if username else 'None'}...")
-                    
-                    auth = (username, password)
-                    response = requests.post(
-                        endpoint_url,
-                        json=shipment_data,
-                        headers=headers,
-                        auth=auth,
-                        timeout=30
-                    )
-                    
-                    logger.info(f"Global Mail API response status: {response.status_code}")
-                    
-                    if response.status_code in [200, 201]:
-                        logger.info(f"✅ Success with endpoint {endpoint_url} and auth method: {description}")
-                        success = True
-                        break
-                    elif response.status_code == 401:
-                        logger.warning(f"401 Unauthorized with {endpoint_url} and {description}, trying next...")
-                        last_error = response
-                        continue
-                    elif response.status_code == 400:
-                        # Check if it's "Invalid Credentials" - if so, try next method
-                        try:
-                            error_data = response.json()
-                            if 'Invalid Credentials' in str(error_data):
-                                logger.warning(f"400 Invalid Credentials with {endpoint_url} and {description}, trying next...")
-                                last_error = response
-                                continue
-                        except:
-                            pass
-                        # If not "Invalid Credentials", this might be a different error
-                        last_error = response
-                        break
-                    else:
-                        last_error = response
-                        break
-                
-                if success:
-                    break
-            
-            if not success:
-                # If we tried all combinations and none worked, use the last error
-                response = last_error if last_error else response
-                logger.error("=" * 80)
-                logger.error("⚠️ All authentication methods and endpoints failed for Global Mail")
-                logger.error("=" * 80)
-                logger.error("Tried the following combinations:")
-                logger.error(f"  - Test endpoint: {self.test_url}")
-                logger.error(f"  - Production endpoint: {self.prod_url}")
-                logger.error(f"  - Auth methods: userId+consumerSecret, consumerKey+consumerSecret")
-                logger.error("")
-                logger.error("All attempts returned: 400 Bad Request - Invalid Credentials")
-                logger.error("")
-                logger.error("This suggests that:")
-                logger.error("  1. Global Mail credentials may not be valid for MyDHL API")
-                logger.error("  2. Global Mail might use a different DHL API endpoint")
-                logger.error("  3. Global Mail might use a different authentication method")
-                logger.error("")
-                logger.error("Next steps:")
-                logger.error("  - Contact Global Mail support and ask for:")
-                logger.error("    * The correct API endpoint URL (sandbox and production)")
-                logger.error("    * The correct authentication method (Basic Auth, OAuth, etc.)")
-                logger.error("    * How to use userId, consumerKey, and consumerSecret")
-                logger.error("    * Any API documentation or integration guide")
-                logger.error("=" * 80)
-            
-            logger.info(f"Final Global Mail API response status: {response.status_code}")
-            logger.info(f"Response headers: {dict(response.headers)}")
-            
-            if response.status_code in [200, 201]:
-                data = response.json()
-                logger.info(f"Global Mail API response keys: {list(data.keys())}")
-                
-                # Extract tracking number and label
-                tracking_number = data.get('shipmentTrackingNumber', '') or data.get('trackingNumber', '')
-                label_data = data.get('label', {})
-                
-                # Label can be in different formats: b64Content, url, or documents array
-                label_url = ''
-                if isinstance(label_data, dict):
-                    label_url = label_data.get('url', '') or label_data.get('b64Content', '')
-                elif isinstance(label_data, list) and len(label_data) > 0:
-                    label_url = label_data[0].get('url', '') or label_data[0].get('b64Content', '')
-                
-                # Check documents array if label not found
-                documents = data.get('documents', [])
-                if not label_url and documents:
-                    for doc in documents:
-                        if doc.get('typeCode') == 'label':
-                            label_url = doc.get('url', '') or doc.get('content', '')
-                            break
-                
-                logger.info(f"✅ Global Mail shipment created: tracking={tracking_number}, label_url={'present' if label_url else 'N/A'}")
-                
-                return {
-                    'tracking_number': tracking_number or None,
-                    'label_url': label_url or None,
-                    'shipment_id': tracking_number or None,
-                }
-            else:
-                logger.error(f"Global Mail API error: {response.status_code}")
-                logger.error(f"Global Mail API response text (first 2000 chars): {response.text[:2000]}")
-                try:
-                    error_data = response.json()
-                    logger.error(f"Global Mail API error response (JSON): {error_data}")
-                except:
-                    pass
+            logger.info(f"DPI: POST {self.orders_url} (order #{order.id})")
+            r = requests.post(self.orders_url, json=payload, headers=headers, timeout=30)
+            if r.status_code not in (200, 201):
+                logger.error(f"DPI create order {r.status_code}: {r.text[:1200]}")
                 return None
-                
-        except Exception as e:
-            logger.error(f"Global Mail shipment creation exception: {e}", exc_info=True)
+
+            data = r.json() or {}
+            # Extract first item id and AWB from shipments[0].items[0]
+            shipments = data.get('shipments') or []
+            item_id = None
+            awb = None
+            tracking = None
+            if shipments:
+                awb = shipments[0].get('awb') or shipments[0].get('awbNumber')
+                items = shipments[0].get('items') or []
+                if items:
+                    first_item = items[0]
+                    item_id = first_item.get('id') or first_item.get('itemId')
+                    tracking = first_item.get('barcode') or awb
+
+            if not item_id:
+                # Some responses put items at top level
+                items = data.get('items') or []
+                if items:
+                    item_id = items[0].get('id') or items[0].get('itemId')
+                    tracking = items[0].get('barcode') or tracking
+
+            # Fetch PDF label for the item (Accept: application/pdf → binary)
+            label_b64 = None
+            if item_id:
+                label_url = f'{self.item_label_url}/{item_id}/label'
+                logger.info(f"DPI: GET {label_url} for label PDF")
+                lr = requests.get(
+                    label_url,
+                    headers={'Authorization': f'Bearer {token}', 'Accept': 'application/pdf'},
+                    timeout=30,
+                )
+                if lr.status_code == 200 and lr.content:
+                    import base64
+                    label_b64 = 'data:application/pdf;base64,' + base64.b64encode(lr.content).decode('ascii')
+                    logger.info(f"✅ DPI label PDF fetched ({len(lr.content)} bytes)")
+                else:
+                    logger.warning(f"DPI label fetch {lr.status_code}: {lr.text[:300]}")
+
+            result = {
+                'tracking_number': tracking or awb or (f"DPI-TEST-{order.id}" if self.test_mode else None),
+                'label_url': label_b64,
+                'shipment_id': str(item_id) if item_id else (awb or None),
+                'order_id_dpi': data.get('orderId'),
+                'test_mode': self.test_mode,
+            }
+            logger.info(f"✅ DPI shipment created: tracking={result['tracking_number']}")
+            return result
+        except Exception as exc:
+            logger.error(f"DPI create_shipment exception: {exc}", exc_info=True)
             return None
-    
-    # Note: MyDHL API uses Basic Auth directly, not OAuth token
-    # Authentication is done via Basic Auth header: Authorization: Basic base64(username:password)
-    # Username = Site ID (consumerKey), Password = Password (consumerSecret)
-    
-    def _normalize_country_code(self, country: Optional[str]) -> str:
-        """Normalize country code to ISO 2-letter format for Global Mail."""
+
+    # ------------------------------------------------------------------
+    # Country-code & payload helpers (DPI / Global Mail)
+    # ------------------------------------------------------------------
+    def _normalize_country_code(self, country):
         if not country:
             return 'BG'
-        
-        country = country.strip().upper()
-        
-        if len(country) == 2:
-            return country
-        
-        country_mapping = {
-            'BULGARIA': 'BG',
-            'БЪЛГАРИЯ': 'BG',
-            'UNITED STATES': 'US',
-            'USA': 'US',
-            'UNITED KINGDOM': 'GB',
-            'UK': 'GB',
-            'GERMANY': 'DE',
-            'FRANCE': 'FR',
-            'ITALY': 'IT',
-            'SPAIN': 'ES',
-            'GREECE': 'GR',
-            'ROMANIA': 'RO',
-            'TURKEY': 'TR',
+        c = str(country).strip().upper()
+        if len(c) == 2:
+            return c
+        mapping = {
+            'BULGARIA': 'BG', 'БЪЛГАРИЯ': 'BG',
+            'UNITED STATES': 'US', 'USA': 'US',
+            'UNITED KINGDOM': 'GB', 'UK': 'GB',
+            'GERMANY': 'DE', 'FRANCE': 'FR', 'ITALY': 'IT',
+            'SPAIN': 'ES', 'GREECE': 'GR', 'ROMANIA': 'RO', 'TURKEY': 'TR',
         }
-        
-        if country in country_mapping:
-            return country_mapping[country]
-        
-        logger.warning(f"Unknown country format: {country}, defaulting to BG")
-        return 'BG'
-    
-    def _prepare_shipment_data(self, order) -> Dict[str, Any]:
-        """Prepare shipment data for MyDHL API (same format as DHL Express)."""
-        total_weight = sum(item.quantity for item in order.items.all()) * 0.5
-        recipient_country = self._normalize_country_code(order.country)
-        
-        # MyDHL API requires account number in the shipment data
-        # If not provided, use userId or try without it
-        account_number = self.account_number or getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')
-        
-        # Check if account_number is email format (not a valid DHL account number)
-        # DHL account numbers are typically numeric
-        if account_number and '@' in str(account_number):
-            logger.warning(f"Account number appears to be an email ({account_number}), skipping account number")
-            account_number = None
-        
-        # Determine product code based on destination
-        # MyDHL API product codes: 'N' = Express Domestic, 'P' = Express Worldwide, 'U' = Express 12:00
-        product_code = 'P'  # Express Worldwide for international
-        
-        # MyDHL API shipment data structure (same as DHL Express)
-        shipment_data = {
-            'plannedShippingDateAndTime': order.created_at.strftime('%Y-%m-%dT%H:%M:%S'),
-            'pickup': {
-                'isRequested': False
+        return mapping.get(c, c[:2] if len(c) >= 2 else 'BG')
+
+    def _prepare_shipment_data(self, order):
+        """
+        Build a DPI "Create Order" payload (Workflow 1 - FINALIZE).
+        Uses product GPT (Packet Tracked, lightweight goods) by default.
+        Product can be overridden via settings.GLOBAL_MAIL_PRODUCT_CODE.
+        """
+        total_weight_kg = max(sum(item.quantity for item in order.items.all()) * 0.5, 0.1)
+        total_weight_g = int(total_weight_kg * 1000)
+        dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
+        product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
+        service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
+        currency = getattr(order, 'currency', None) or 'EUR'
+
+        contents = []
+        running_index = 1
+        total_amount = 0.0
+        for it in order.items.all():
+            name = getattr(it.product, 'name', '') or 'Silver jewellery'
+            qty = int(it.quantity or 1)
+            unit_price = float(getattr(it, 'price', 0) or 0)
+            total_amount += unit_price * qty
+            contents.append({
+                'contentPieceIndexNumber': running_index,
+                'contentPieceAmount': qty,
+                'contentPieceDescription': name[:140],
+                'contentPieceHsCode': getattr(settings, 'GLOBAL_MAIL_DEFAULT_HS_CODE', '7113'),
+                'contentPieceOrigin': getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                'contentPieceValue': f"{unit_price:.2f}",
+                'contentPieceNetweight': max(int((total_weight_g / max(len(order.items.all()), 1))), 10),
+            })
+            running_index += 1
+        if not contents:
+            contents = [{
+                'contentPieceIndexNumber': 1,
+                'contentPieceAmount': 1,
+                'contentPieceDescription': 'Silver jewellery',
+                'contentPieceHsCode': getattr(settings, 'GLOBAL_MAIL_DEFAULT_HS_CODE', '7113'),
+                'contentPieceOrigin': getattr(settings, 'SHOP_COUNTRY', 'BG'),
+                'contentPieceValue': f"{float(getattr(order, 'total', 0) or 0):.2f}",
+                'contentPieceNetweight': total_weight_g,
+            }]
+            total_amount = float(getattr(order, 'total', 0) or 0)
+
+        full_name = (getattr(order, 'full_name', '') or '')[:35]
+        item = {
+            'product': product,
+            'serviceLevel': service,
+            'recipient': full_name or 'Recipient',
+            'recipientPhone': getattr(order, 'phone', '') or '',
+            'recipientEmail': getattr(order, 'email', '') or '',
+            'addressLine1': (getattr(order, 'address', '') or '')[:40] or 'Address',
+            'city': getattr(order, 'city', '') or 'City',
+            'postalCode': getattr(order, 'postal_code', '') or '0000',
+            'destinationCountry': dest,
+            'shipmentAmount': round(total_amount or 1.0, 2),
+            'shipmentCurrency': currency,
+            'shipmentGrossWeight': total_weight_g,
+            'returnItemWanted': False,
+            'custRef': str(order.id),
+            'contents': contents,
+        }
+
+        payload = {
+            'customerEkp': str(self.customer_ekp),
+            'orderStatus': 'FINALIZE',
+            'paperwork': {
+                'contactName': (getattr(settings, 'SHOP_CONTACT_NAME', 'Marbaras'))[:35],
+                'jobReference': f'Order-{order.id}',
+                'telephoneNumber': getattr(settings, 'SHOP_PHONE', '+359000000000'),
+                'awbCopyCount': 1,
             },
-            'productCode': product_code,
+            'items': [item],
         }
-        
-        # Add accounts only if we have a valid account number
-        if account_number and account_number.strip():
-            shipment_data['accounts'] = [{
-                'typeCode': 'shipper',
-                'number': account_number.strip()
-            }]
-        else:
-            logger.warning("No valid account number provided - MyDHL API may require it")
-            # Try with a test account number (may not work, but worth trying)
-            shipment_data['accounts'] = [{
-                'typeCode': 'shipper',
-                'number': '123456789'  # Default test account
-            }]
-        
-        # Add remaining shipment data fields
-        shipment_data['outputImageProperties'] = {
-            'printerDPI': 300,
-            'encodingFormat': 'PDF',
-            'imageOptions': [{
-                'typeCode': 'label',
-                'templateName': 'ECOM26_84_001'
-            }]
-        }
-        shipment_data['customerDetails'] = {
-            'shipperDetails': {
-                'postalAddress': {
-                    'postalCode': getattr(settings, 'SHOP_POSTAL_CODE', ''),
-                    'cityName': getattr(settings, 'SHOP_CITY', 'Sofia'),
-                    'countryCode': getattr(settings, 'SHOP_COUNTRY', 'BG'),
-                    'addressLine1': getattr(settings, 'SHOP_ADDRESS', ''),
-                },
-                'contactInformation': {
-                    'phone': getattr(settings, 'SHOP_PHONE', ''),
-                    'email': getattr(settings, 'SHOP_EMAIL', ''),
-                    'companyName': 'Marbaras'
-                }
-            },
-            'receiverDetails': {
-                'postalAddress': {
-                    'postalCode': order.postal_code,
-                    'cityName': order.city,
-                    'countryCode': recipient_country,
-                    'addressLine1': order.address,
-                },
-                'contactInformation': {
-                    'phone': order.phone,
-                    'email': order.email or '',
-                    'fullName': order.full_name
-                }
-            }
-        }
-        shipment_data['content'] = {
-            'packages': [{
-                'weight': max(total_weight, 0.5),
-                'dimensions': {
-                    'length': 20,
-                    'width': 15,
-                    'height': 10
-                }
-            }]
-        }
-        
-        logger.info(f"Prepared Global Mail shipment data with account number: {account_number or 'default'}")
-        logger.debug(f"Shipment data structure: {shipment_data}")
-        
-        return shipment_data
+        logger.debug(f"DPI payload: {payload}")
+        return payload
 
 
 class EasyPostShipping(ShippingCarrierBase):

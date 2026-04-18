@@ -827,13 +827,19 @@ DHL_API_URL = env("DHL_API_URL", "https://api-sandbox.dhl.com/shipment/shipments
 # Global Mail API Configuration (uses DHL MyDHL API)
 # For sandbox: use T2Lnu62rspJ1wdaI3JOA1JpM7oECmfz2 / 4AIqPAggU2aIPvPE
 # For production: use HJtEFGAo07xkB6syf2p3CxoyIecW0gtd / NklmHiW3our5tHAF
-# Global Mail uses DHL MyDHL API with Basic Auth (same as DHL)
-# Test: https://express.api.dhl.com/mydhlapi/test/shipments
-# Production: https://express.api.dhl.com/mydhlapi/shipments
-GLOBAL_MAIL_API_KEY = env("GLOBAL_MAIL_API_KEY", "")  # consumerKey (Site ID)
-GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")  # consumerSecret (Password)
-GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")  # userId: l2006@abv.bg
-GLOBAL_MAIL_API_URL = env("GLOBAL_MAIL_API_URL", "")  # Will default to test or production MyDHL API
+# Deutsche Post International (DPI) / "Global Mail" — GMPP API v5.7.10
+# Sandbox:    https://api-sandbox.dhl.com
+# Production: https://api.dhl.com
+# Token:      GET /dpi/v1/auth/accesstoken   (HTTP Basic: consumerKey:consumerSecret)
+# Shipping:   POST /dpi/shipping/v1/orders   (Bearer token, JSON body)
+GLOBAL_MAIL_API_KEY = env("GLOBAL_MAIL_API_KEY", "")      # consumerKey
+GLOBAL_MAIL_API_SECRET = env("GLOBAL_MAIL_API_SECRET", "")  # consumerSecret
+GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")  # userId (email) — informational
+GLOBAL_MAIL_CUSTOMER_EKP = env("GLOBAL_MAIL_CUSTOMER_EKP", "")      # 10-digit EKP customer number (REQUIRED)
+GLOBAL_MAIL_TEST_MODE = env("GLOBAL_MAIL_TEST_MODE", "True").lower() in ("1", "true", "yes", "y", "on")
+GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet Tracked (default)
+GLOBAL_MAIL_SERVICE_LEVEL = env("GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
+GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "7113")  # HS code for silver jewellery
 
 # Deutsche Post API Configuration
 DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")
