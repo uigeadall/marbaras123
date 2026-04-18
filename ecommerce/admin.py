@@ -3375,7 +3375,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
         original_product = payload["items"][0].get("product")
         candidates = [original_product]
-        for c in ("GPP", "GPT", "GMT", "GMP", "PKM", "PLT"):
+        for c in ("GPP", "GPT", "GMT", "GMP", "PKM", "PLT", "WPI", "WP", "PKG", "PKI"):
             if c and c not in candidates:
                 candidates.append(c)
 
@@ -3417,11 +3417,23 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 f"{len(candidates)} product attempts: {last_error_text[:500]}"
             )
             mo.save(update_fields=["status", "notes"])
+            mode_hint = ""
+            if getattr(dpi, "test_mode", False):
+                mode_hint = (
+                    "\n\n⚠️  DPI client is running in SANDBOX / TEST mode "
+                    "(GLOBAL_MAIL_TEST_MODE=True or unset).\n"
+                    "The sandbox product catalog is very limited and typically "
+                    "does NOT include worldwide products for destinations like US.\n"
+                    "To fix: set GLOBAL_MAIL_TEST_MODE=False in Railway AND ensure "
+                    "your GLOBAL_MAIL_API_KEY / _API_SECRET are the PRODUCTION "
+                    "credentials from DPI (different from sandbox ones)."
+                )
             return HttpResponse(
                 f"DPI create-order failed for {mo.marketplace}#{mo.external_order_id}: "
                 f"HTTP {getattr(r, 'status_code', '?')}\n\n"
                 f"Tried products: {candidates}\n\n"
-                f"Last error:\n{last_error_text[:2000]}\n\nPayload:\n{payload}",
+                f"Last error:\n{last_error_text[:2000]}"
+                f"{mode_hint}\n\nPayload:\n{payload}",
                 status=502,
                 content_type="text/plain; charset=utf-8",
             )
