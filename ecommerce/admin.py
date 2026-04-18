@@ -2163,7 +2163,9 @@ class OrderAdmin(admin.ModelAdmin):
         except Exception as e:
             return HttpResponse(f"Label fetch exception: {e}", status=502, content_type="text/plain")
 
-        response = HttpResponse(lr.content, content_type="application/pdf")
+        from ecommerce.utils.shipping import GlobalMailShipping as _GM
+        pdf_bytes = _GM.refit_pdf_to_4x6(lr.content)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="dpi-test-label-{item_id}.pdf"'
         response["X-DPI-Item-Id"] = str(item_id)
         response["X-DPI-AWB"] = str(shipments[0].get("awb") or "")
@@ -2250,7 +2252,8 @@ class OrderAdmin(admin.ModelAdmin):
         except Exception as exc:
             return HttpResponse(f"Label fetch exception: {exc}", status=502, content_type="text/plain")
 
-        response = HttpResponse(lr.content, content_type="application/pdf")
+        pdf_bytes = GlobalMailShipping.refit_pdf_to_4x6(lr.content)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = (
             f'inline; filename="dpi-test-order-{order.id}-item-{item_id}.pdf"'
         )

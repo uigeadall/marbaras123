@@ -986,6 +986,53 @@ class GlobalMailShipping(ShippingCarrierBase):
     # ------------------------------------------------------------------
     # Label format helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def refit_pdf_to_4x6(pdf_bytes: bytes, margin_pt: float = 6.0) -> bytes:
+        """Scale-fit the first page of a PDF onto a 4x6 inch page.
+
+        Used for Zebra ZP-505 and similar thermal printers that cut off
+        content near the bottom/edge if the PDF is generated at A5 or A6.
+        Gracefully returns the original bytes if pypdf is not installed
+        or the transformation fails.
+        """
+        try:
+            from io import BytesIO
+            from pypdf import PdfReader, PdfWriter, Transformation
+            from pypdf.generic import RectangleObject
+
+            TARGET_W = 288.0  # 4 inch * 72 pt/inch
+            TARGET_H = 432.0  # 6 inch * 72 pt/inch
+
+            reader = PdfReader(BytesIO(pdf_bytes))
+            if not reader.pages:
+                return pdf_bytes
+            src = reader.pages[0]
+            mb = src.mediabox
+            src_w = float(mb.width)
+            src_h = float(mb.height)
+            if src_w <= 0 or src_h <= 0:
+                return pdf_bytes
+
+            inner_w = max(TARGET_W - 2 * margin_pt, 1.0)
+            inner_h = max(TARGET_H - 2 * margin_pt, 1.0)
+            scale = min(inner_w / src_w, inner_h / src_h)
+            tx = (TARGET_W - src_w * scale) / 2.0
+            ty = (TARGET_H - src_h * scale) / 2.0
+
+            writer = PdfWriter()
+            page = writer.add_blank_page(width=TARGET_W, height=TARGET_H)
+            op = Transformation().scale(scale, scale).translate(tx, ty)
+            page.merge_transformed_page(src, op)
+            page.mediabox = RectangleObject((0, 0, TARGET_W, TARGET_H))
+            page.cropbox = RectangleObject((0, 0, TARGET_W, TARGET_H))
+            page.trimbox = RectangleObject((0, 0, TARGET_W, TARGET_H))
+            out = BytesIO()
+            writer.write(out)
+            return out.getvalue()
+        except Exception as exc:
+            logger.warning(f"refit_pdf_to_4x6 failed, returning original PDF: {exc}")
+            return pdf_bytes
+
     def _label_params(self) -> Dict[str, str]:
         """Query params appended to the /items/{id}/label request.
 
@@ -1111,8 +1158,11 @@ class GlobalMailShipping(ShippingCarrierBase):
                 )
                 if lr.status_code == 200 and lr.content:
                     import base64
-                    label_b64 = 'data:application/pdf;base64,' + base64.b64encode(lr.content).decode('ascii')
-                    logger.info(f"✅ DPI label PDF fetched ({len(lr.content)} bytes)")
+                    pdf_bytes = lr.content
+                    if (getattr(settings, 'GLOBAL_MAIL_LABEL_FORCE_4X6', 'True') or '').lower() in ('1', 'true', 'yes', 'y', 'on'):
+                        pdf_bytes = GlobalMailShipping.refit_pdf_to_4x6(pdf_bytes)
+                    label_b64 = 'data:application/pdf;base64,' + base64.b64encode(pdf_bytes).decode('ascii')
+                    logger.info(f"✅ DPI label PDF fetched ({len(pdf_bytes)} bytes, 4x6 refit applied)")
                 else:
                     logger.warning(f"DPI label fetch {lr.status_code}: {lr.text[:300]}")
 

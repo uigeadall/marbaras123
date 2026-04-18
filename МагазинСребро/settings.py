@@ -846,6 +846,10 @@ GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "711311")  # HS
 # default (A5/A6) PDF. Other accepted values include "A4", "A5", "A6".
 GLOBAL_MAIL_LABEL_PAGE_SIZE = env("GLOBAL_MAIL_LABEL_PAGE_SIZE", "4x6")
 GLOBAL_MAIL_LABEL_FORMAT = env("GLOBAL_MAIL_LABEL_FORMAT", "")  # blank → PDF default
+# Server-side post-processing: re-wrap the DPI label PDF onto an exact 4x6 inch
+# page so Zebra ZP-505 (and similar thermal printers) never clip content.
+# Set to "False" to disable and pass the DHL PDF through unchanged.
+GLOBAL_MAIL_LABEL_FORCE_4X6 = env("GLOBAL_MAIL_LABEL_FORCE_4X6", "True")
 
 # Automatic shipping label creation on checkout. Set to "False" in Railway
 # to require manual label creation from the admin (recommended during

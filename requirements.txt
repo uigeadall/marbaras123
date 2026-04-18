@@ -39,3 +39,6 @@ django-cloudinary-storage==0.3.0
 
 # Shipping API (EasyPost)
 easypost==7.0.0
+
+# PDF post-processing (rescale DHL label PDFs to 4x6 for Zebra ZP-505)
+pypdf==5.1.0
