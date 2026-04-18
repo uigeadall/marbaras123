@@ -1210,6 +1210,24 @@ class GlobalMailShipping(ShippingCarrierBase):
         service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
         currency = getattr(order, 'currency', None) or 'EUR'
 
+        def _sanitize_phone(raw: str) -> str:
+            """DPI allows: digits, leading +, spaces, dot, hyphen, parenthesis.
+            No letters (so no 'ext.'), no slashes. Max 25 chars."""
+            import re as _re
+            s = (raw or '').strip()
+            if not s:
+                return ''
+            s = _re.split(
+                r'(?i)(?:\s*(?:ext\.?|extension)\b|(?<=\d)\s*x\s*(?=\d)|\bx\b)',
+                s,
+                maxsplit=1,
+            )[0]
+            has_plus = s.lstrip().startswith('+')
+            s = _re.sub(r'[^\d\s\.\-\(\)]', '', s)
+            if has_plus:
+                s = '+' + s.lstrip()
+            return s.strip()[:25]
+
         def _short_desc(raw: str) -> str:
             s = (raw or '').strip().replace('"', '').replace("'", '')
             if len(s) <= 33:
@@ -1291,7 +1309,7 @@ class GlobalMailShipping(ShippingCarrierBase):
             'product': product,
             'serviceLevel': service,
             'recipient': full_name or 'Recipient',
-            'recipientPhone': getattr(order, 'phone', '') or '',
+            'recipientPhone': _sanitize_phone(getattr(order, 'phone', '') or ''),
             'recipientEmail': getattr(order, 'email', '') or '',
             'addressLine1': (getattr(order, 'address', '') or '')[:40] or 'Address',
             'city': getattr(order, 'city', '') or 'City',
@@ -1311,7 +1329,7 @@ class GlobalMailShipping(ShippingCarrierBase):
             'orderStatus': 'FINALIZE',
             'paperwork': {
                 'contactName': (getattr(settings, 'SHOP_CONTACT_NAME', 'Marbaras'))[:35],
-                'jobReference': f'Order-{order.id}',
+                'jobReference': f'Order-{order.id}'[:17],
                 'telephoneNumber': (getattr(settings, 'SHOP_PHONE', '') or '+359888000000'),
                 'awbCopyCount': 1,
             },

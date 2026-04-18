@@ -3347,7 +3347,9 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         try:
             adapter = _MarketplaceOrderAdapter(mo)
             payload = dpi._prepare_shipment_data(adapter)
-            payload["paperwork"]["jobReference"] = f"{mo.marketplace.upper()}-{mo.external_order_id}"[:35]
+            _mp_prefix = {"amazon": "A", "etsy": "E"}.get(mo.marketplace, "M")
+            _ext_id = (mo.external_order_id or str(mo.pk)).strip()
+            payload["paperwork"]["jobReference"] = f"{_mp_prefix}-{_ext_id}"[:17]
         except Exception as exc:
             mo.status = "failed"
             mo.notes = f"Payload build failed: {exc}"
