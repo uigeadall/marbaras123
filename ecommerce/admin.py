@@ -3360,48 +3360,96 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 content_type="text/plain; charset=utf-8",
             )
 
-        try:
-            r = requests.post(
-                dpi.orders_url,
-                json=payload,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                timeout=30,
+        def _is_product_error(status_code: int, body_text: str) -> bool:
+            """Detect DPI errors that indicate the product code isn't valid for
+            this customer/destination, so we can retry with an alternative."""
+            if status_code not in (400, 422):
+                return False
+            t = (body_text or "").lower()
+            return (
+                "does not exist" in t
+                or "destination country is invalid for this product" in t
+                or "product is not available" in t
+                or "invalid product" in t
             )
-            if r.status_code not in (200, 201):
+
+        original_product = payload["items"][0].get("product")
+        candidates = [original_product]
+        for c in ("GPP", "GPT", "GMT", "GMP", "PKM", "PLT"):
+            if c and c not in candidates:
+                candidates.append(c)
+
+        r = None
+        last_error_text = ""
+        for attempt_idx, candidate in enumerate(candidates):
+            payload["items"][0]["product"] = candidate
+            try:
+                r = requests.post(
+                    dpi.orders_url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    timeout=30,
+                )
+            except Exception as exc:
                 mo.status = "failed"
-                mo.notes = f"DPI create-order HTTP {r.status_code}: {r.text[:500]}"
+                mo.notes = f"DPI create-order exception (product={candidate}): {exc}"
                 mo.save(update_fields=["status", "notes"])
                 return HttpResponse(
-                    f"DPI create-order failed for {mo.marketplace}#{mo.external_order_id}: "
-                    f"HTTP {r.status_code}\n\n{r.text[:2000]}\n\nPayload:\n{payload}",
+                    f"DPI create-order exception: {exc}",
                     status=502,
-                    content_type="text/plain; charset=utf-8",
+                    content_type="text/plain",
                 )
-            body = r.json() or {}
-            shipments = body.get("shipments") or []
-            if not shipments or not shipments[0].get("items"):
-                mo.status = "failed"
-                mo.notes = f"DPI returned no shipments/items: {body}"
-                mo.save(update_fields=["status", "notes"])
-                return HttpResponse(
-                    f"DPI returned no shipments/items:\n{body}",
-                    status=502,
-                    content_type="text/plain; charset=utf-8",
-                )
-            item_id = shipments[0]["items"][0].get("id")
-            awb = shipments[0].get("awb") or shipments[0]["items"][0].get("barcode") or ""
-        except Exception as exc:
+            if r.status_code in (200, 201):
+                break
+            last_error_text = r.text or ""
+            if not _is_product_error(r.status_code, last_error_text):
+                break
+            # else: try next candidate
+
+        if r is None or r.status_code not in (200, 201):
             mo.status = "failed"
-            mo.notes = f"DPI create-order exception: {exc}"
+            mo.notes = (
+                f"DPI create-order HTTP {getattr(r, 'status_code', '?')} after "
+                f"{len(candidates)} product attempts: {last_error_text[:500]}"
+            )
             mo.save(update_fields=["status", "notes"])
             return HttpResponse(
-                f"DPI create-order exception: {exc}",
+                f"DPI create-order failed for {mo.marketplace}#{mo.external_order_id}: "
+                f"HTTP {getattr(r, 'status_code', '?')}\n\n"
+                f"Tried products: {candidates}\n\n"
+                f"Last error:\n{last_error_text[:2000]}\n\nPayload:\n{payload}",
                 status=502,
-                content_type="text/plain",
+                content_type="text/plain; charset=utf-8",
+            )
+
+        body = r.json() or {}
+        shipments = body.get("shipments") or []
+        if not shipments or not shipments[0].get("items"):
+            mo.status = "failed"
+            mo.notes = f"DPI returned no shipments/items: {body}"
+            mo.save(update_fields=["status", "notes"])
+            return HttpResponse(
+                f"DPI returned no shipments/items:\n{body}",
+                status=502,
+                content_type="text/plain; charset=utf-8",
+            )
+        item_id = shipments[0]["items"][0].get("id")
+        awb = shipments[0].get("awb") or shipments[0]["items"][0].get("barcode") or ""
+        successful_product = payload["items"][0].get("product")
+        if successful_product != original_product:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "DPI: product %s unavailable, succeeded with fallback %s",
+                original_product, successful_product,
+            )
+            mo.notes = (
+                (mo.notes or "") +
+                f"\n[info] Used fallback product '{successful_product}' "
+                f"(requested '{original_product}' unavailable)."
             )
 
         try:

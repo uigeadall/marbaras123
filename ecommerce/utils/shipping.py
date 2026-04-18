@@ -1208,15 +1208,15 @@ class GlobalMailShipping(ShippingCarrierBase):
         dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
         default_product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
         # Built-in fallback for common non-EU destinations where GPT isn't valid.
-        # PPT (Packet Plus Tracked) is the usual DPI product for worldwide coverage.
-        # Override any of these via settings.GLOBAL_MAIL_PRODUCT_MAP env var.
+        # GPP (Packet Plus / Priority worldwide) is the usual DPI product for
+        # worldwide coverage. Override any of these via settings.GLOBAL_MAIL_PRODUCT_MAP.
         _BUILTIN_NON_EU_PRODUCT_MAP = {
-            "US": "PPT", "CA": "PPT", "AU": "PPT", "NZ": "PPT",
-            "JP": "PPT", "KR": "PPT", "SG": "PPT", "HK": "PPT",
-            "CN": "PPT", "IN": "PPT", "BR": "PPT", "MX": "PPT",
-            "AE": "PPT", "IL": "PPT", "ZA": "PPT", "TR": "PPT",
-            "CH": "PPT", "NO": "PPT", "IS": "PPT",
-            "GB": "PPT",  # Great Britain is post-Brexit non-EU
+            "US": "GPP", "CA": "GPP", "AU": "GPP", "NZ": "GPP",
+            "JP": "GPP", "KR": "GPP", "SG": "GPP", "HK": "GPP",
+            "CN": "GPP", "IN": "GPP", "BR": "GPP", "MX": "GPP",
+            "AE": "GPP", "IL": "GPP", "ZA": "GPP", "TR": "GPP",
+            "CH": "GPP", "NO": "GPP", "IS": "GPP",
+            "GB": "GPP",  # Great Britain is post-Brexit non-EU
         }
         product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **(getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {})}
         product = product_map.get(dest) or product_map.get(dest.upper()) or default_product
