@@ -1207,10 +1207,18 @@ class GlobalMailShipping(ShippingCarrierBase):
         total_weight_g = int(total_weight_kg * 1000)
         dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
         default_product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
-        # Per-destination product override:
-        #   GLOBAL_MAIL_PRODUCT_MAP = {"US": "PPT", "CA": "PPT", ...}
-        # If the default product isn't valid for a destination, look up an override.
-        product_map = getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {}
+        # Built-in fallback for common non-EU destinations where GPT isn't valid.
+        # PPT (Packet Plus Tracked) is the usual DPI product for worldwide coverage.
+        # Override any of these via settings.GLOBAL_MAIL_PRODUCT_MAP env var.
+        _BUILTIN_NON_EU_PRODUCT_MAP = {
+            "US": "PPT", "CA": "PPT", "AU": "PPT", "NZ": "PPT",
+            "JP": "PPT", "KR": "PPT", "SG": "PPT", "HK": "PPT",
+            "CN": "PPT", "IN": "PPT", "BR": "PPT", "MX": "PPT",
+            "AE": "PPT", "IL": "PPT", "ZA": "PPT", "TR": "PPT",
+            "CH": "PPT", "NO": "PPT", "IS": "PPT",
+            "GB": "PPT",  # Great Britain is post-Brexit non-EU
+        }
+        product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **(getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {})}
         product = product_map.get(dest) or product_map.get(dest.upper()) or default_product
         service_map = getattr(settings, 'GLOBAL_MAIL_SERVICE_MAP', {}) or {}
         default_service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
