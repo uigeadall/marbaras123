@@ -2326,6 +2326,40 @@ class OrderAdmin(admin.ModelAdmin):
                     "body": pretty,
                 })
                 if ok:
+                    # Try to fetch the PDF label for the first item.
+                    try:
+                        body = r.json() or {}
+                        shipments = body.get("shipments") or []
+                        item_id = None
+                        if shipments:
+                            items = shipments[0].get("items") or []
+                            if items:
+                                item_id = items[0].get("id")
+                        if item_id:
+                            label_url = f"{host}/dpi/shipping/v1/items/{item_id}/label"
+                            lr = requests.get(
+                                label_url,
+                                headers={
+                                    "Authorization": f"Bearer {token}",
+                                    "Accept": "application/pdf",
+                                },
+                                timeout=30,
+                            )
+                            results["steps"].append({
+                                "step": f"fetch item label (id={item_id})",
+                                "ok": lr.status_code == 200 and bool(lr.content),
+                                "note": (
+                                    f"HTTP {lr.status_code} · "
+                                    f"{len(lr.content)} bytes · "
+                                    f"Content-Type: {lr.headers.get('Content-Type', '?')}"
+                                ),
+                            })
+                    except Exception as e:
+                        results["steps"].append({
+                            "step": "fetch item label",
+                            "ok": False,
+                            "note": f"error: {e}",
+                        })
                     break
             except Exception as e:
                 results["steps"].append({
