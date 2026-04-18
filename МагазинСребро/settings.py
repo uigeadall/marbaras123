@@ -839,7 +839,7 @@ GLOBAL_MAIL_CUSTOMER_EKP = env("GLOBAL_MAIL_CUSTOMER_EKP", "")      # 10-digit E
 GLOBAL_MAIL_TEST_MODE = env("GLOBAL_MAIL_TEST_MODE", "True").lower() in ("1", "true", "yes", "y", "on")
 GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet Tracked (default)
 GLOBAL_MAIL_SERVICE_LEVEL = env("GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
-GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "7113")  # HS code for silver jewellery
+GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "711311")  # HS code for silver jewellery (6 digits)
 
 # Deutsche Post API Configuration
 DEUTSCHE_POST_API_KEY = env("DEUTSCHE_POST_API_KEY", "")

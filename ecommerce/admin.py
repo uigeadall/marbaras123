@@ -2280,7 +2280,7 @@ class OrderAdmin(admin.ModelAdmin):
                         "contentPieceIndexNumber": 1,
                         "contentPieceAmount": 1,
                         "contentPieceDescription": "Silver ring sample",
-                        "contentPieceHsCode": "7113",
+                        "contentPieceHsCode": "711311",
                         "contentPieceOrigin": "BG",
                         "contentPieceValue": "10.00",
                         "contentPieceNetweight": 250,
