@@ -1088,3 +1088,87 @@ class BannerImage(models.Model):
     def __str__(self) -> str:
         return self.title or f"Banner {self.id}"
 
+
+class MarketplaceOrder(models.Model):
+    """Flattened order imported from an external marketplace CSV (Amazon,
+    Etsy, eBay, …). Kept intentionally separate from the website ``Order``
+    model so that marketplace data (which lacks product FKs, stock links,
+    coupons, etc.) does not pollute the primary order flow.
+
+    Labels are generated for these rows via the same DHL DPI integration
+    used for website orders — see :mod:`ecommerce.utils.shipping`.
+    """
+
+    MARKETPLACE_CHOICES = [
+        ("amazon", "Amazon"),
+        ("etsy", "Etsy"),
+        ("ebay", "eBay"),
+        ("other", "Other"),
+    ]
+
+    STATUS_CHOICES = [
+        ("imported", "Imported"),
+        ("label_created", "Label created"),
+        ("shipped", "Shipped"),
+        ("failed", "Failed"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    marketplace = models.CharField(
+        max_length=20, choices=MARKETPLACE_CHOICES, default="amazon", db_index=True
+    )
+    external_order_id = models.CharField(max_length=120, db_index=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default="imported", db_index=True
+    )
+
+    buyer_name = models.CharField(max_length=120)
+    buyer_email = models.EmailField(blank=True, null=True)
+    buyer_phone = models.CharField(max_length=40, blank=True, null=True)
+
+    address_line1 = models.CharField(max_length=200)
+    address_line2 = models.CharField(max_length=200, blank=True, null=True)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=80, blank=True, null=True)
+    postal_code = models.CharField(max_length=20)
+    country = models.CharField(
+        max_length=2, help_text="ISO 3166-1 alpha-2 country code"
+    )
+
+    items_summary = models.TextField(
+        help_text="Human-readable description of items, e.g. '2x Silver Ring / 1x Bracelet'"
+    )
+    item_count = models.PositiveIntegerField(default=1)
+    total_weight_g = models.PositiveIntegerField(
+        default=100, help_text="Total package weight in grams"
+    )
+
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=3, default="EUR")
+
+    tracking_number = models.CharField(
+        max_length=80, blank=True, null=True, db_index=True
+    )
+    dpi_item_id = models.CharField(max_length=120, blank=True, null=True)
+    awb = models.CharField(max_length=80, blank=True, null=True)
+    label_created_at = models.DateTimeField(blank=True, null=True)
+    shipped_at = models.DateTimeField(blank=True, null=True)
+
+    imported_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    notes = models.TextField(blank=True, null=True)
+    raw_csv_data = models.JSONField(
+        blank=True, null=True, help_text="Original CSV row for debugging"
+    )
+
+    class Meta:
+        verbose_name = "Marketplace Order"
+        verbose_name_plural = "Marketplace Orders"
+        unique_together = (("marketplace", "external_order_id"),)
+        ordering = ["-imported_at"]
+        indexes = [
+            models.Index(fields=["marketplace", "status"]),
+            models.Index(fields=["-imported_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_marketplace_display()} #{self.external_order_id} — {self.buyer_name}"

@@ -32,6 +32,7 @@ from .models import (
     Coupon,
     ProductBundleItem,
     ProductReview,
+    MarketplaceOrder,
 )
 from .utils.emailing import send_order_shipped_email
 
@@ -2986,4 +2987,533 @@ class BannerImageAdmin(admin.ModelAdmin):
             else:
                 messages.error(request, f"Error saving banner: {error_msg}")
             raise
+
+
+# =============================================================================
+# Marketplace Orders (Amazon / Etsy CSV import → DPI labels)
+# =============================================================================
+class _MarketplaceCSVUploadForm(forms.Form):
+    csv_file = forms.FileField(
+        label="Order export (CSV / TSV)",
+        help_text="Download from Amazon Seller Central → Reports → Orders, or from Etsy Shop Manager → Orders → Download CSV.",
+    )
+    marketplace = forms.ChoiceField(
+        label="Marketplace",
+        choices=[
+            ("auto", "Auto-detect"),
+            ("amazon", "Amazon"),
+            ("etsy", "Etsy"),
+        ],
+        initial="auto",
+        required=True,
+    )
+
+
+class _MarketplaceOrderAdapter:
+    """Adapter that lets a :class:`MarketplaceOrder` quack like a website
+    :class:`Order` so that the shared DPI payload builder
+    (``GlobalMailShipping._prepare_shipment_data``) can consume it.
+    """
+
+    def __init__(self, mo: "MarketplaceOrder"):
+        from types import SimpleNamespace
+
+        self.id = f"MP{mo.id}"
+        self.full_name = mo.buyer_name or "Recipient"
+        self.email = mo.buyer_email or ""
+        self.phone = mo.buyer_phone or ""
+        joined = mo.address_line1 or ""
+        if mo.address_line2:
+            joined = f"{joined}, {mo.address_line2}"
+        self.address = joined[:120]
+        self.city = mo.city or "City"
+        self.postal_code = mo.postal_code or "0000"
+        self.country = mo.country or "BG"
+        self.total_price = mo.total_amount or Decimal("0")
+        self.currency = mo.currency or "EUR"
+
+        fake_product = SimpleNamespace(
+            name=(mo.items_summary or "Silver jewellery")[:60] or "Silver jewellery",
+            discount_price=None,
+            price=mo.total_amount or Decimal("1"),
+        )
+        fake_item = SimpleNamespace(
+            product=fake_product,
+            variant=None,
+            quantity=max(int(mo.item_count or 1), 1),
+        )
+
+        class _ItemsManager:
+            def __init__(self, items):
+                self._items = list(items)
+
+            def all(self):
+                return list(self._items)
+
+            def __iter__(self):
+                return iter(self._items)
+
+            def __len__(self):
+                return len(self._items)
+
+        self.items = _ItemsManager([fake_item])
+
+
+@admin.register(MarketplaceOrder)
+class MarketplaceOrderAdmin(admin.ModelAdmin):
+    change_list_template = "admin/marketplace_order_changelist.html"
+
+    list_display = (
+        "id",
+        "marketplace_badge",
+        "external_order_id",
+        "status_badge",
+        "print_label_link",
+        "buyer_name",
+        "city",
+        "country",
+        "tracking_number",
+        "total_amount",
+        "currency",
+        "imported_at",
+    )
+    list_filter = ("marketplace", "status", "country", "imported_at")
+    search_fields = (
+        "external_order_id",
+        "buyer_name",
+        "buyer_email",
+        "tracking_number",
+        "postal_code",
+        "city",
+    )
+    readonly_fields = (
+        "imported_at",
+        "label_created_at",
+        "shipped_at",
+        "dpi_item_id",
+        "awb",
+        "tracking_number",
+        "raw_csv_data",
+    )
+
+    fieldsets = (
+        ("Source", {"fields": ("marketplace", "external_order_id", "status")}),
+        (
+            "Buyer",
+            {"fields": ("buyer_name", "buyer_email", "buyer_phone")},
+        ),
+        (
+            "Shipping address",
+            {
+                "fields": (
+                    "address_line1",
+                    "address_line2",
+                    "city",
+                    "state",
+                    "postal_code",
+                    "country",
+                )
+            },
+        ),
+        (
+            "Package",
+            {
+                "fields": (
+                    "items_summary",
+                    "item_count",
+                    "total_weight_g",
+                    "total_amount",
+                    "currency",
+                )
+            },
+        ),
+        (
+            "Shipping result",
+            {
+                "fields": (
+                    "tracking_number",
+                    "dpi_item_id",
+                    "awb",
+                    "label_created_at",
+                    "shipped_at",
+                )
+            },
+        ),
+        ("Debug", {"classes": ("collapse",), "fields": ("notes", "raw_csv_data")}),
+    )
+
+    actions = ["bulk_create_labels_action"]
+
+    # ------------------------------------------------------------------
+    # Custom URLs
+    # ------------------------------------------------------------------
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "import-csv/",
+                self.admin_site.admin_view(self.import_csv_view),
+                name="marketplace_order_import_csv",
+            ),
+            path(
+                "<int:pk>/print-label/",
+                self.admin_site.admin_view(self.print_label_view),
+                name="marketplace_order_print_label",
+            ),
+            path(
+                "bulk-print/",
+                self.admin_site.admin_view(self.bulk_print_view),
+                name="marketplace_order_bulk_print",
+            ),
+        ]
+        return custom + urls
+
+    # ------------------------------------------------------------------
+    # Display helpers
+    # ------------------------------------------------------------------
+    @admin.display(description="Marketplace")
+    def marketplace_badge(self, obj):
+        colors = {
+            "amazon": ("#ff9900", "#fff"),
+            "etsy": ("#f16521", "#fff"),
+            "ebay": ("#0064d2", "#fff"),
+            "other": ("#6b7280", "#fff"),
+        }
+        bg, fg = colors.get(obj.marketplace, ("#6b7280", "#fff"))
+        return format_html(
+            '<span style="background:{};color:{};padding:2px 8px;border-radius:4px;'
+            'font-size:11px;font-weight:600;text-transform:uppercase;">{}</span>',
+            bg,
+            fg,
+            obj.get_marketplace_display(),
+        )
+
+    @admin.display(description="Status")
+    def status_badge(self, obj):
+        colors = {
+            "imported": ("#64748b", "#fff"),
+            "label_created": ("#0ea5e9", "#fff"),
+            "shipped": ("#16a34a", "#fff"),
+            "failed": ("#dc2626", "#fff"),
+            "cancelled": ("#78716c", "#fff"),
+        }
+        bg, fg = colors.get(obj.status, ("#64748b", "#fff"))
+        return format_html(
+            '<span style="background:{};color:{};padding:2px 8px;border-radius:4px;'
+            'font-size:11px;font-weight:600;">{}</span>',
+            bg,
+            fg,
+            obj.get_status_display(),
+        )
+
+    @admin.display(description="🖨️ Label")
+    def print_label_link(self, obj):
+        from django.urls import reverse
+
+        try:
+            url = reverse("admin:marketplace_order_print_label", args=[obj.pk])
+        except Exception:
+            return ""
+        label = "🖨️ Re-print" if obj.tracking_number else "🖨️ Create"
+        bg = "#16a34a" if obj.tracking_number else "#0ea5e9"
+        return format_html(
+            '<a href="{}" target="_blank" '
+            'style="background:{};color:#fff;padding:3px 8px;border-radius:4px;'
+            'text-decoration:none;font-size:11px;white-space:nowrap;">{}</a>',
+            url,
+            bg,
+            label,
+        )
+
+    # ------------------------------------------------------------------
+    # CSV Import view
+    # ------------------------------------------------------------------
+    def import_csv_view(self, request):
+        from ecommerce.utils.marketplace_csv import parse_csv_auto
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title="Import marketplace orders",
+            opts=self.model._meta,
+            has_view_permission=True,
+        )
+
+        if request.method == "POST":
+            form = _MarketplaceCSVUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                uploaded = form.cleaned_data["csv_file"]
+                forced = form.cleaned_data["marketplace"]
+                if forced == "auto":
+                    forced = None
+
+                try:
+                    content = uploaded.read()
+                    if not content:
+                        raise ValueError("Uploaded file is empty.")
+                    marketplace, parsed = parse_csv_auto(content, forced)
+                except Exception as exc:
+                    messages.error(request, f"Failed to parse CSV: {exc}")
+                    context["form"] = form
+                    return render(request, "admin/marketplace_csv_import.html", context)
+
+                created = 0
+                skipped = 0
+                errors = []
+                for entry in parsed:
+                    try:
+                        obj, is_created = MarketplaceOrder.objects.update_or_create(
+                            marketplace=entry["marketplace"],
+                            external_order_id=entry["external_order_id"],
+                            defaults={
+                                "buyer_name": entry["buyer_name"] or "Recipient",
+                                "buyer_email": entry.get("buyer_email") or None,
+                                "buyer_phone": entry.get("buyer_phone") or None,
+                                "address_line1": entry.get("address_line1") or "",
+                                "address_line2": entry.get("address_line2") or None,
+                                "city": entry.get("city") or "",
+                                "state": entry.get("state") or None,
+                                "postal_code": entry.get("postal_code") or "",
+                                "country": (entry.get("country") or "")[:2].upper(),
+                                "items_summary": entry.get("items_summary") or "",
+                                "item_count": entry.get("item_count") or 1,
+                                "total_weight_g": entry.get("total_weight_g") or 100,
+                                "total_amount": entry.get("total_amount") or Decimal("0"),
+                                "currency": (entry.get("currency") or "EUR")[:3],
+                                "raw_csv_data": entry.get("raw_csv_data"),
+                            },
+                        )
+                        if is_created:
+                            created += 1
+                        else:
+                            skipped += 1
+                    except Exception as exc:
+                        errors.append(f"Order {entry.get('external_order_id')}: {exc}")
+
+                if created:
+                    messages.success(
+                        request,
+                        f"✅ Imported {created} new {marketplace} order(s).",
+                    )
+                if skipped:
+                    messages.info(
+                        request,
+                        f"ℹ️ {skipped} existing order(s) updated (already imported).",
+                    )
+                for err in errors[:10]:
+                    messages.error(request, err)
+
+                from django.urls import reverse
+
+                return HttpResponseRedirect(
+                    reverse("admin:ecommerce_marketplaceorder_changelist")
+                )
+        else:
+            form = _MarketplaceCSVUploadForm()
+
+        context["form"] = form
+        return render(request, "admin/marketplace_csv_import.html", context)
+
+    # ------------------------------------------------------------------
+    # Create label & stream PDF
+    # ------------------------------------------------------------------
+    def print_label_view(self, request, pk):
+        import requests
+        from django.shortcuts import get_object_or_404
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        if not request.user.is_staff:
+            return HttpResponse("Staff only.", status=403, content_type="text/plain")
+
+        mo = get_object_or_404(MarketplaceOrder, pk=pk)
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            return HttpResponse(
+                "Missing GLOBAL_MAIL_API_KEY / GLOBAL_MAIL_API_SECRET / GLOBAL_MAIL_CUSTOMER_EKP.",
+                status=400,
+                content_type="text/plain",
+            )
+
+        token = dpi._get_access_token()
+        if not token:
+            return HttpResponse(
+                "DPI auth failed — check Railway logs.",
+                status=502,
+                content_type="text/plain",
+            )
+
+        try:
+            adapter = _MarketplaceOrderAdapter(mo)
+            payload = dpi._prepare_shipment_data(adapter)
+            payload["paperwork"]["jobReference"] = f"{mo.marketplace.upper()}-{mo.external_order_id}"[:35]
+        except Exception as exc:
+            mo.status = "failed"
+            mo.notes = f"Payload build failed: {exc}"
+            mo.save(update_fields=["status", "notes"])
+            return HttpResponse(
+                f"Failed to build payload: {exc}",
+                status=500,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        try:
+            r = requests.post(
+                dpi.orders_url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                timeout=30,
+            )
+            if r.status_code not in (200, 201):
+                mo.status = "failed"
+                mo.notes = f"DPI create-order HTTP {r.status_code}: {r.text[:500]}"
+                mo.save(update_fields=["status", "notes"])
+                return HttpResponse(
+                    f"DPI create-order failed for {mo.marketplace}#{mo.external_order_id}: "
+                    f"HTTP {r.status_code}\n\n{r.text[:2000]}\n\nPayload:\n{payload}",
+                    status=502,
+                    content_type="text/plain; charset=utf-8",
+                )
+            body = r.json() or {}
+            shipments = body.get("shipments") or []
+            if not shipments or not shipments[0].get("items"):
+                mo.status = "failed"
+                mo.notes = f"DPI returned no shipments/items: {body}"
+                mo.save(update_fields=["status", "notes"])
+                return HttpResponse(
+                    f"DPI returned no shipments/items:\n{body}",
+                    status=502,
+                    content_type="text/plain; charset=utf-8",
+                )
+            item_id = shipments[0]["items"][0].get("id")
+            awb = shipments[0].get("awb") or shipments[0]["items"][0].get("barcode") or ""
+        except Exception as exc:
+            mo.status = "failed"
+            mo.notes = f"DPI create-order exception: {exc}"
+            mo.save(update_fields=["status", "notes"])
+            return HttpResponse(
+                f"DPI create-order exception: {exc}",
+                status=502,
+                content_type="text/plain",
+            )
+
+        try:
+            lr = requests.get(
+                f"{dpi.item_label_url}/{item_id}/label",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
+                params=dpi._label_params() or None,
+                timeout=30,
+            )
+            if lr.status_code != 200 or not lr.content:
+                mo.status = "failed"
+                mo.notes = f"Label fetch HTTP {lr.status_code}: {lr.text[:500]}"
+                mo.save(update_fields=["status", "notes"])
+                return HttpResponse(
+                    f"Label fetch failed (item {item_id}): HTTP {lr.status_code}\n\n{lr.text[:500]}",
+                    status=502,
+                    content_type="text/plain; charset=utf-8",
+                )
+        except Exception as exc:
+            mo.status = "failed"
+            mo.notes = f"Label fetch exception: {exc}"
+            mo.save(update_fields=["status", "notes"])
+            return HttpResponse(
+                f"Label fetch exception: {exc}",
+                status=502,
+                content_type="text/plain",
+            )
+
+        mo.status = "label_created"
+        mo.dpi_item_id = str(item_id)
+        mo.awb = str(awb)
+        mo.tracking_number = str(awb or item_id)
+        mo.label_created_at = timezone.now()
+        mo.notes = None
+        mo.save(
+            update_fields=[
+                "status",
+                "dpi_item_id",
+                "awb",
+                "tracking_number",
+                "label_created_at",
+                "notes",
+            ]
+        )
+
+        pdf_bytes = GlobalMailShipping.refit_pdf_to_4x6(lr.content)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="{mo.marketplace}-{mo.external_order_id}.pdf"'
+        )
+        response["X-DPI-Item-Id"] = str(item_id)
+        response["X-DPI-AWB"] = str(awb)
+        return response
+
+    # ------------------------------------------------------------------
+    # Bulk action (multi-tab opener via intermediate page)
+    # ------------------------------------------------------------------
+    @admin.action(description="🖨️ Print labels for selected (opens each in a new tab)")
+    def bulk_create_labels_action(self, request, queryset):
+        from django.urls import reverse
+
+        ids = list(queryset.values_list("pk", flat=True))
+        if not ids:
+            self.message_user(
+                request, "No orders selected.", level=messages.WARNING
+            )
+            return
+        return HttpResponseRedirect(
+            reverse("admin:marketplace_order_bulk_print")
+            + "?ids=" + ",".join(str(i) for i in ids)
+        )
+
+    def bulk_print_view(self, request):
+        """Intermediate page that sequentially opens each selected order's
+        label in its own browser tab. Required because modern browsers
+        block mass ``window.open()`` calls fired outside a direct user
+        gesture; the user clicks one button here and tabs are opened
+        with a small delay between them to sidestep the popup blocker.
+        """
+        from django.urls import reverse
+
+        raw_ids = (request.GET.get("ids") or "").strip()
+        try:
+            ids = [int(x) for x in raw_ids.split(",") if x.strip().isdigit()]
+        except Exception:
+            ids = []
+        orders = list(MarketplaceOrder.objects.filter(pk__in=ids))
+        url_pairs = [
+            (
+                mo,
+                reverse("admin:marketplace_order_print_label", args=[mo.pk]),
+            )
+            for mo in orders
+        ]
+        context = dict(
+            self.admin_site.each_context(request),
+            title=f"Print {len(url_pairs)} label(s)",
+            opts=self.model._meta,
+            url_pairs=url_pairs,
+        )
+        return render(request, "admin/marketplace_bulk_print.html", context)
+
+    # ------------------------------------------------------------------
+    # Changelist context — link to import page
+    # ------------------------------------------------------------------
+    def changelist_view(self, request, extra_context=None):
+        from django.urls import reverse
+
+        extra_context = extra_context or {}
+        try:
+            extra_context["import_csv_url"] = reverse(
+                "admin:marketplace_order_import_csv"
+            )
+        except Exception:
+            extra_context["import_csv_url"] = ""
+        return super().changelist_view(request, extra_context=extra_context)
 

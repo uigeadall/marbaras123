@@ -1,0 +1,77 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='ecommerce' %}">Ecommerce</a>
+    &rsaquo; <a href="{% url 'admin:ecommerce_marketplaceorder_changelist' %}">Marketplace Orders</a>
+    &rsaquo; Import CSV
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 820px; margin: 20px auto;">
+  <h1 style="margin-bottom: 6px;">📦 Import orders from Amazon / Etsy CSV</h1>
+  <p style="color: #6b7280; margin-top: 0;">Upload the CSV/TSV export from Amazon Seller Central or Etsy Shop Manager. We'll parse it, de-duplicate against previously-imported orders, and you can then print DPI labels individually or in bulk.</p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0;">
+    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fffbf0;">
+      <h3 style="margin-top: 0;">🟠 Amazon</h3>
+      <ol style="padding-left: 18px; font-size: 13px; color: #374151;">
+        <li>Log in to <a href="https://sellercentral.amazon.com" target="_blank" rel="noopener">Seller Central</a></li>
+        <li>Open <b>Reports → Fulfillment by Merchant → Orders</b></li>
+        <li>Request report → Download <b>Unshipped Orders</b></li>
+        <li>Upload the .txt / .csv file below ↓</li>
+      </ol>
+    </div>
+    <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; background: #fff5f0;">
+      <h3 style="margin-top: 0;">🟡 Etsy</h3>
+      <ol style="padding-left: 18px; font-size: 13px; color: #374151;">
+        <li>Log in to <a href="https://www.etsy.com/your/shops/me/orders" target="_blank" rel="noopener">Etsy Shop Manager</a></li>
+        <li>Go to <b>Orders & Shipping</b></li>
+        <li>Click <b>Download CSV</b> (top-right)</li>
+        <li>Upload the .csv file below ↓</li>
+      </ol>
+    </div>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" style="background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 24px;">
+    {% csrf_token %}
+
+    <div style="margin-bottom: 18px;">
+      <label style="display:block; font-weight: 600; margin-bottom: 6px;">Marketplace</label>
+      {{ form.marketplace }}
+      <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+        Leave on "Auto-detect" unless your CSV has unusual column headers.
+      </div>
+    </div>
+
+    <div style="margin-bottom: 24px;">
+      <label style="display:block; font-weight: 600; margin-bottom: 6px;">CSV / TSV file</label>
+      {{ form.csv_file }}
+      <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+        Accepts comma-, tab-, or semicolon-separated values. UTF-8 encoding recommended.
+      </div>
+    </div>
+
+    {% if form.errors %}
+      <div style="background:#fee2e2;color:#991b1b;padding:10px;border-radius:6px;margin-bottom:14px;">
+        {{ form.errors }}
+      </div>
+    {% endif %}
+
+    <button type="submit" style="background: #2563eb; color: #fff; border: 0; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer;">
+      ⬆️ Upload & parse
+    </button>
+    <a href="{% url 'admin:ecommerce_marketplaceorder_changelist' %}" style="margin-left: 12px; color: #6b7280; font-size: 13px;">Cancel</a>
+  </form>
+
+  <div style="background:#f3f4f6; border-radius: 8px; padding: 14px; margin-top: 24px; font-size: 13px; color: #374151;">
+    <b>After uploading:</b> each order appears in the Marketplace Orders list.
+    Click <span style="background:#0ea5e9;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">🖨️ Create</span>
+    on any row to generate the DHL / DPI label as a 4×6 PDF (ready for your Zebra ZP-505).
+    Or select multiple orders and run <b>Actions → Open label pages for selected</b> to mass-print.
+  </div>
+</div>
+{% endblock %}

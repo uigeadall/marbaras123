@@ -1,0 +1,75 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='ecommerce' %}">Ecommerce</a>
+    &rsaquo; <a href="{% url 'admin:ecommerce_marketplaceorder_changelist' %}">Marketplace Orders</a>
+    &rsaquo; Bulk print
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 780px; margin: 24px auto;">
+    <h1 style="margin-bottom: 4px;">🖨️ Bulk print labels</h1>
+    <p style="color:#6b7280; margin-top: 0;">
+        {{ url_pairs|length }} marketplace order{{ url_pairs|length|pluralize }} selected.
+        Click the button below and your browser will open one tab per label
+        (each tab shows the 4×6 PDF; use ⌘+P / Ctrl+P to send to your Zebra ZP‑505).
+    </p>
+
+    {% if url_pairs %}
+        <button id="open-all" style="background:#2563eb; color:#fff; border:0; padding:12px 28px; border-radius:8px; font-weight:600; font-size:15px; cursor:pointer;">
+            🖨️ Open {{ url_pairs|length }} label tab{{ url_pairs|length|pluralize }}
+        </button>
+        <span id="status" style="margin-left: 14px; color:#6b7280; font-size: 13px;"></span>
+
+        <div style="margin-top: 28px;">
+            <h3 style="margin-bottom: 8px;">Or open manually (if your popup blocker interferes):</h3>
+            <ul style="list-style: none; padding: 0;">
+                {% for mo, url in url_pairs %}
+                    <li style="padding: 8px 12px; background:#f9fafb; border:1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px; display:flex; justify-content:space-between; align-items:center;">
+                        <span><b>{{ mo.get_marketplace_display }}</b> #{{ mo.external_order_id }} — {{ mo.buyer_name }} ({{ mo.city }}, {{ mo.country }})</span>
+                        <a href="{{ url }}" target="_blank" rel="noopener" style="background:#0ea5e9; color:#fff; padding:4px 10px; border-radius:4px; text-decoration:none; font-size:12px;">Open label →</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <script>
+        (function () {
+            const urls = [
+                {% for mo, url in url_pairs %}"{{ url }}"{% if not forloop.last %},{% endif %}{% endfor %}
+            ];
+            const btn = document.getElementById('open-all');
+            const status = document.getElementById('status');
+            btn.addEventListener('click', function () {
+                btn.disabled = true;
+                let opened = 0;
+                urls.forEach((u, idx) => {
+                    setTimeout(function () {
+                        const w = window.open(u, '_blank');
+                        if (w) {
+                            opened++;
+                            status.textContent = `Opened ${opened}/${urls.length}…`;
+                        }
+                        if (idx === urls.length - 1) {
+                            setTimeout(() => {
+                                status.textContent = `✅ Done — opened ${opened}/${urls.length} label tab(s).`;
+                            }, 600);
+                        }
+                    }, idx * 350);
+                });
+            });
+        })();
+        </script>
+    {% else %}
+        <p style="color:#991b1b;">No valid orders in selection.</p>
+    {% endif %}
+
+    <p style="margin-top: 32px;">
+        <a href="{% url 'admin:ecommerce_marketplaceorder_changelist' %}" style="color:#6b7280; font-size: 13px;">← Back to Marketplace Orders</a>
+    </p>
+</div>
+{% endblock %}
