@@ -1147,13 +1147,49 @@ class GlobalMailShipping(ShippingCarrierBase):
                 cut = cut.rsplit(' ', 1)[0]
             return cut[:33].strip() or 'Silver jewellery'
 
+        def _unit_price(item) -> float:
+            """Best-effort unit price for customs (variant → product discount → product → 0)."""
+            variant = getattr(item, 'variant', None)
+            if variant is not None:
+                v = getattr(variant, 'price', None)
+                if v:
+                    try:
+                        return float(v)
+                    except Exception:
+                        pass
+            prod = getattr(item, 'product', None)
+            if prod is not None:
+                dp = getattr(prod, 'discount_price', None)
+                if dp:
+                    try:
+                        return float(dp)
+                    except Exception:
+                        pass
+                p = getattr(prod, 'price', None)
+                if p:
+                    try:
+                        return float(p)
+                    except Exception:
+                        pass
+            return 0.0
+
+        order_total = 0.0
+        try:
+            order_total = float(getattr(order, 'total_price', 0) or 0)
+        except Exception:
+            order_total = 0.0
+        total_qty = max(sum(int(it.quantity or 1) for it in order.items.all()), 1)
+        fallback_unit = (order_total / total_qty) if order_total > 0 else 1.0
+
         contents = []
         running_index = 1
         total_amount = 0.0
         for it in order.items.all():
             name = getattr(it.product, 'name', '') or 'Silver jewellery'
             qty = int(it.quantity or 1)
-            unit_price = float(getattr(it, 'price', 0) or 0)
+            unit_price = _unit_price(it) or fallback_unit
+            # DPI requires contentPieceValue >= 1
+            unit_price = max(round(unit_price, 2), 1.0)
             total_amount += unit_price * qty
             contents.append({
                 'contentPieceIndexNumber': running_index,
