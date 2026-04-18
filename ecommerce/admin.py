@@ -3017,8 +3017,10 @@ class _MarketplaceOrderAdapter:
 
     def __init__(self, mo: "MarketplaceOrder"):
         from types import SimpleNamespace
+        from django.utils import timezone
 
         self.id = f"MP{mo.id}"
+        self.pk = mo.pk
         self.full_name = mo.buyer_name or "Recipient"
         self.email = mo.buyer_email or ""
         self.phone = mo.buyer_phone or ""
@@ -3030,7 +3032,10 @@ class _MarketplaceOrderAdapter:
         self.postal_code = mo.postal_code or "0000"
         self.country = mo.country or "BG"
         self.total_price = mo.total_amount or Decimal("0")
+        self.total = mo.total_amount or Decimal("0")
         self.currency = mo.currency or "EUR"
+        # DHL Express _prepare_shipment_data expects a created_at datetime
+        self.created_at = mo.imported_at or timezone.now()
 
         fake_product = SimpleNamespace(
             name=(mo.items_summary or "Silver jewellery")[:60] or "Silver jewellery",
@@ -3317,189 +3322,131 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     # Create label & stream PDF
     # ------------------------------------------------------------------
     def print_label_view(self, request, pk):
+        """Create a DHL Express shipment for the marketplace order and stream
+        the label PDF back to the browser.
+
+        Uses MyDHL API (DHL Express) via :class:`DHLShipping`. Falls back to
+        GLOBAL_MAIL_* env vars when DHL_* aren't set (DHL sometimes issues
+        Express credentials under the "global mail" brand).
+        """
+        import base64
         import requests
         from django.shortcuts import get_object_or_404
-        from ecommerce.utils.shipping import GlobalMailShipping
+        from ecommerce.utils.shipping import DHLShipping, GlobalMailShipping
 
         if not request.user.is_staff:
             return HttpResponse("Staff only.", status=403, content_type="text/plain")
 
         mo = get_object_or_404(MarketplaceOrder, pk=pk)
 
-        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
-        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
-
-        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+        dhl = DHLShipping()
+        if not (dhl.api_key and dhl.api_secret):
             return HttpResponse(
-                "Missing GLOBAL_MAIL_API_KEY / GLOBAL_MAIL_API_SECRET / GLOBAL_MAIL_CUSTOMER_EKP.",
+                "Missing DHL credentials. Set DHL_API_KEY + DHL_API_SECRET "
+                "(or GLOBAL_MAIL_API_KEY + GLOBAL_MAIL_API_SECRET) in Railway.",
                 status=400,
-                content_type="text/plain",
-            )
-
-        token = dpi._get_access_token()
-        if not token:
-            return HttpResponse(
-                "DPI auth failed — check Railway logs.",
-                status=502,
                 content_type="text/plain",
             )
 
         try:
             adapter = _MarketplaceOrderAdapter(mo)
-            payload = dpi._prepare_shipment_data(adapter)
-            _mp_prefix = {"amazon": "A", "etsy": "E"}.get(mo.marketplace, "M")
-            _ext_id = (mo.external_order_id or str(mo.pk)).strip()
-            payload["paperwork"]["jobReference"] = f"{_mp_prefix}-{_ext_id}"[:17]
         except Exception as exc:
             mo.status = "failed"
-            mo.notes = f"Payload build failed: {exc}"
+            mo.notes = f"Adapter build failed: {exc}"
             mo.save(update_fields=["status", "notes"])
             return HttpResponse(
-                f"Failed to build payload: {exc}",
+                f"Failed to build adapter: {exc}",
                 status=500,
                 content_type="text/plain; charset=utf-8",
             )
 
-        def _is_product_error(status_code: int, body_text: str) -> bool:
-            """Detect DPI errors that indicate the product code isn't valid for
-            this customer/destination, so we can retry with an alternative."""
-            if status_code not in (400, 422):
-                return False
-            t = (body_text or "").lower()
-            return (
-                "does not exist" in t
-                or "destination country is invalid for this product" in t
-                or "product is not available" in t
-                or "invalid product" in t
-            )
-
-        original_product = payload["items"][0].get("product")
-        candidates = [original_product]
-        for c in ("GPP", "GPT", "GMT", "GMP", "PKM", "PLT", "WPI", "WP", "PKG", "PKI"):
-            if c and c not in candidates:
-                candidates.append(c)
-
-        r = None
-        last_error_text = ""
-        for attempt_idx, candidate in enumerate(candidates):
-            payload["items"][0]["product"] = candidate
-            try:
-                r = requests.post(
-                    dpi.orders_url,
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                    timeout=30,
-                )
-            except Exception as exc:
-                mo.status = "failed"
-                mo.notes = f"DPI create-order exception (product={candidate}): {exc}"
-                mo.save(update_fields=["status", "notes"])
-                return HttpResponse(
-                    f"DPI create-order exception: {exc}",
-                    status=502,
-                    content_type="text/plain",
-                )
-            if r.status_code in (200, 201):
-                break
-            last_error_text = r.text or ""
-            if not _is_product_error(r.status_code, last_error_text):
-                break
-            # else: try next candidate
-
-        if r is None or r.status_code not in (200, 201):
-            mo.status = "failed"
-            mo.notes = (
-                f"DPI create-order HTTP {getattr(r, 'status_code', '?')} after "
-                f"{len(candidates)} product attempts: {last_error_text[:500]}"
-            )
-            mo.save(update_fields=["status", "notes"])
-            mode_hint = ""
-            if getattr(dpi, "test_mode", False):
-                mode_hint = (
-                    "\n\n⚠️  DPI client is running in SANDBOX / TEST mode "
-                    "(GLOBAL_MAIL_TEST_MODE=True or unset).\n"
-                    "The sandbox product catalog is very limited and typically "
-                    "does NOT include worldwide products for destinations like US.\n"
-                    "To fix: set GLOBAL_MAIL_TEST_MODE=False in Railway AND ensure "
-                    "your GLOBAL_MAIL_API_KEY / _API_SECRET are the PRODUCTION "
-                    "credentials from DPI (different from sandbox ones)."
-                )
-            return HttpResponse(
-                f"DPI create-order failed for {mo.marketplace}#{mo.external_order_id}: "
-                f"HTTP {getattr(r, 'status_code', '?')}\n\n"
-                f"Tried products: {candidates}\n\n"
-                f"Last error:\n{last_error_text[:2000]}"
-                f"{mode_hint}\n\nPayload:\n{payload}",
-                status=502,
-                content_type="text/plain; charset=utf-8",
-            )
-
-        body = r.json() or {}
-        shipments = body.get("shipments") or []
-        if not shipments or not shipments[0].get("items"):
-            mo.status = "failed"
-            mo.notes = f"DPI returned no shipments/items: {body}"
-            mo.save(update_fields=["status", "notes"])
-            return HttpResponse(
-                f"DPI returned no shipments/items:\n{body}",
-                status=502,
-                content_type="text/plain; charset=utf-8",
-            )
-        item_id = shipments[0]["items"][0].get("id")
-        awb = shipments[0].get("awb") or shipments[0]["items"][0].get("barcode") or ""
-        successful_product = payload["items"][0].get("product")
-        if successful_product != original_product:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "DPI: product %s unavailable, succeeded with fallback %s",
-                original_product, successful_product,
-            )
-            mo.notes = (
-                (mo.notes or "") +
-                f"\n[info] Used fallback product '{successful_product}' "
-                f"(requested '{original_product}' unavailable)."
-            )
-
         try:
-            lr = requests.get(
-                f"{dpi.item_label_url}/{item_id}/label",
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
-                params=dpi._label_params() or None,
-                timeout=30,
-            )
-            if lr.status_code != 200 or not lr.content:
-                mo.status = "failed"
-                mo.notes = f"Label fetch HTTP {lr.status_code}: {lr.text[:500]}"
-                mo.save(update_fields=["status", "notes"])
-                return HttpResponse(
-                    f"Label fetch failed (item {item_id}): HTTP {lr.status_code}\n\n{lr.text[:500]}",
-                    status=502,
-                    content_type="text/plain; charset=utf-8",
-                )
+            result = dhl.create_shipment(adapter)
         except Exception as exc:
             mo.status = "failed"
-            mo.notes = f"Label fetch exception: {exc}"
+            mo.notes = f"DHL create_shipment exception: {exc}"
             mo.save(update_fields=["status", "notes"])
             return HttpResponse(
-                f"Label fetch exception: {exc}",
+                f"DHL Express create_shipment exception: {exc}",
                 status=502,
                 content_type="text/plain",
             )
 
+        if not result:
+            mo.status = "failed"
+            mo.notes = (
+                "DHL Express returned no shipment. Check Railway logs "
+                "for the exact API error (search for 'DHL API error')."
+            )
+            mo.save(update_fields=["status", "notes"])
+            env_hint = ""
+            if "test" in (dhl.api_url or "").lower():
+                env_hint = (
+                    "\n\nℹ️  DHL client is hitting the TEST endpoint "
+                    f"({dhl.api_url}).\n"
+                    "For real labels, set GLOBAL_MAIL_API_URL (or DHL_API_URL) "
+                    "to the production URL from DHL (usually without '/test/')."
+                )
+            return HttpResponse(
+                "DHL Express did not return a shipment. "
+                "Check Railway logs for the full error response.\n"
+                f"Endpoint: {dhl.api_url}{env_hint}",
+                status=502,
+                content_type="text/plain",
+            )
+
+        tracking_number = result.get("tracking_number") or ""
+        label_raw = result.get("label_url") or ""
+
+        pdf_bytes = b""
+        if label_raw:
+            looks_like_url = label_raw.startswith("http://") or label_raw.startswith("https://")
+            if looks_like_url:
+                try:
+                    lr = requests.get(
+                        label_raw,
+                        auth=(dhl.api_key, dhl.api_secret),
+                        timeout=30,
+                    )
+                    if lr.status_code == 200 and lr.content:
+                        pdf_bytes = lr.content
+                except Exception:
+                    pdf_bytes = b""
+            else:
+                try:
+                    pdf_bytes = base64.b64decode(label_raw)
+                except Exception:
+                    pdf_bytes = b""
+
+        if not pdf_bytes:
+            mo.status = "failed"
+            mo.notes = (
+                f"DHL Express created shipment {tracking_number or '?'} "
+                f"but label could not be decoded."
+            )
+            mo.save(update_fields=["status", "notes", "tracking_number"])
+            mo.tracking_number = tracking_number or mo.tracking_number
+            mo.save(update_fields=["tracking_number"])
+            return HttpResponse(
+                "DHL Express returned a shipment but no usable label PDF. "
+                f"Tracking: {tracking_number}",
+                status=502,
+                content_type="text/plain",
+            )
+
+        try:
+            pdf_bytes = GlobalMailShipping.refit_pdf_to_4x6(pdf_bytes)
+        except Exception:
+            pass
+
         mo.status = "label_created"
-        mo.dpi_item_id = str(item_id)
-        mo.awb = str(awb)
-        mo.tracking_number = str(awb or item_id)
+        mo.awb = tracking_number
+        mo.tracking_number = tracking_number
         mo.label_created_at = timezone.now()
         mo.notes = None
         mo.save(
             update_fields=[
                 "status",
-                "dpi_item_id",
                 "awb",
                 "tracking_number",
                 "label_created_at",
@@ -3507,13 +3454,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             ]
         )
 
-        pdf_bytes = GlobalMailShipping.refit_pdf_to_4x6(lr.content)
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = (
             f'inline; filename="{mo.marketplace}-{mo.external_order_id}.pdf"'
         )
-        response["X-DPI-Item-Id"] = str(item_id)
-        response["X-DPI-AWB"] = str(awb)
+        response["X-DHL-Tracking"] = tracking_number
         return response
 
     # ------------------------------------------------------------------

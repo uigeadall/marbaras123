@@ -624,14 +624,28 @@ class DHLShipping(ShippingCarrierBase):
     
     def __init__(self):
         super().__init__()
-        self.api_key = getattr(settings, 'DHL_API_KEY', '')
-        self.api_secret = getattr(settings, 'DHL_API_SECRET', '')
-        self.account_number = getattr(settings, 'DHL_ACCOUNT_NUMBER', '')
+        # Prefer DHL_* env vars; fall back to GLOBAL_MAIL_* which DHL sales team
+        # sometimes issues under the "global mail" brand even though the real
+        # product is MyDHL API (DHL Express).
+        self.api_key = (
+            getattr(settings, 'DHL_API_KEY', '') or
+            getattr(settings, 'GLOBAL_MAIL_API_KEY', '')
+        )
+        self.api_secret = (
+            getattr(settings, 'DHL_API_SECRET', '') or
+            getattr(settings, 'GLOBAL_MAIL_API_SECRET', '')
+        )
+        self.account_number = (
+            getattr(settings, 'DHL_ACCOUNT_NUMBER', '') or
+            getattr(settings, 'GLOBAL_MAIL_ACCOUNT_NUMBER', '')
+        )
         # MyDHL API (DHL Express) endpoint
-        # According to DHL documentation:
         # Test: https://express.api.dhl.com/mydhlapi/test
         # Production: https://express.api.dhl.com/mydhlapi
-        api_url = getattr(settings, 'DHL_API_URL', '')
+        api_url = (
+            getattr(settings, 'DHL_API_URL', '') or
+            getattr(settings, 'GLOBAL_MAIL_API_URL', '')
+        )
         if not api_url or 'test' in api_url.lower() or 'sandbox' in api_url.lower():
             # MyDHL API test environment endpoint for shipments
             api_url = 'https://express.api.dhl.com/mydhlapi/test/shipments'
