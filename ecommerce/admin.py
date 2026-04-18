@@ -1957,9 +1957,16 @@ class OrderAdmin(admin.ModelAdmin):
         secret = (getattr(dj_settings, "GLOBAL_MAIL_API_SECRET", "") or "").strip()
         account = (getattr(dj_settings, "GLOBAL_MAIL_ACCOUNT_NUMBER", "") or "").strip()
 
+        ekp = (getattr(dj_settings, "GLOBAL_MAIL_CUSTOMER_EKP", "") or "").strip()
+        test_mode = bool(getattr(dj_settings, "GLOBAL_MAIL_TEST_MODE", True))
+
         report = None
-        if request.method == "POST":
+        test_order_result = None
+        action = request.POST.get("action") if request.method == "POST" else None
+        if action == "run_probe" or (request.method == "POST" and not action):
             report = self._run_dhl_probes(key, secret, account)
+        elif action == "test_order":
+            test_order_result = self._run_dpi_test_order(key, secret, ekp, test_mode)
 
         ctx = {
             'title': 'Probe DHL API credentials',
@@ -1967,7 +1974,10 @@ class OrderAdmin(admin.ModelAdmin):
             'masked_key': (key[:10] + "…") if key else '(not set)',
             'masked_secret_len': len(secret) if secret else 0,
             'account': account or '(not set)',
+            'ekp': ekp or '(not set)',
+            'test_mode': test_mode,
             'report': report,
+            'test_order_result': test_order_result,
             'opts': Order._meta,
             'app_label': Order._meta.app_label,
             'has_permission': True,
@@ -2200,6 +2210,129 @@ class OrderAdmin(admin.ModelAdmin):
                 return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
             return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(r.text)}
         results.append(_probe("Deutsche Post International", probe_dp_intl))
+
+        return results
+
+    def _run_dpi_test_order(self, key: str, secret: str, ekp: str, test_mode: bool):
+        """
+        Create a tiny test order in DPI sandbox to verify the EKP number
+        and payload structure. Tries several EKP format variants automatically
+        (9 vs 10 digits, with/without leading zero).
+        """
+        import requests
+        import json as _json
+
+        host = "https://api-sandbox.dhl.com" if test_mode else "https://api.dhl.com"
+        results = {"host": host, "test_mode": test_mode, "steps": []}
+
+        if not (key and secret):
+            results["steps"].append({"step": "preflight", "ok": False, "note": "Missing consumerKey/consumerSecret"})
+            return results
+        if not ekp:
+            results["steps"].append({"step": "preflight", "ok": False, "note": "Missing GLOBAL_MAIL_CUSTOMER_EKP"})
+            return results
+
+        try:
+            tr = requests.get(
+                f"{host}/dpi/v1/auth/accesstoken",
+                auth=(key, secret),
+                headers={"Accept": "application/json"},
+                timeout=15,
+            )
+            if tr.status_code != 200:
+                results["steps"].append({
+                    "step": "auth", "ok": False,
+                    "note": f"HTTP {tr.status_code}: {(tr.text or '')[:300]}",
+                })
+                return results
+            token = (tr.json() or {}).get("access_token") or ""
+            results["steps"].append({"step": "auth", "ok": True, "note": f"token ok (len {len(token)})"})
+        except Exception as e:
+            results["steps"].append({"step": "auth", "ok": False, "note": f"network: {e}"})
+            return results
+
+        def build_order(customer_ekp: str):
+            return {
+                "customerEkp": customer_ekp,
+                "orderStatus": "FINALIZE",
+                "paperwork": {
+                    "contactName": "Marbaras Test",
+                    "jobReference": "probe-test",
+                    "telephoneNumber": "+359888000000",
+                    "awbCopyCount": 1,
+                },
+                "items": [{
+                    "product": "GPT",
+                    "serviceLevel": "PRIORITY",
+                    "recipient": "John Doe",
+                    "recipientPhone": "+4930000000",
+                    "recipientEmail": "john@example.com",
+                    "addressLine1": "Teststr. 1",
+                    "city": "Berlin",
+                    "postalCode": "10115",
+                    "destinationCountry": "DE",
+                    "shipmentAmount": 10.00,
+                    "shipmentCurrency": "EUR",
+                    "shipmentGrossWeight": 250,
+                    "returnItemWanted": False,
+                    "custRef": "probe-test",
+                    "contents": [{
+                        "contentPieceIndexNumber": 1,
+                        "contentPieceAmount": 1,
+                        "contentPieceDescription": "Silver ring sample",
+                        "contentPieceHsCode": "7113",
+                        "contentPieceOrigin": "BG",
+                        "contentPieceValue": "10.00",
+                        "contentPieceNetweight": 250,
+                    }],
+                }],
+            }
+
+        ekp_variants = []
+        raw = ekp.strip()
+        ekp_variants.append(raw)
+        if len(raw) < 10 and raw.isdigit():
+            ekp_variants.append(raw.zfill(10))
+        if len(raw) == 10 and raw.startswith("0"):
+            ekp_variants.append(raw.lstrip("0"))
+
+        seen = set()
+        url = f"{host}/dpi/shipping/v1/orders"
+        for ekp_try in ekp_variants:
+            if ekp_try in seen:
+                continue
+            seen.add(ekp_try)
+            try:
+                r = requests.post(
+                    url,
+                    json=build_order(ekp_try),
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    timeout=30,
+                )
+                try:
+                    body = r.json()
+                    pretty = _json.dumps(body, ensure_ascii=False, indent=2)[:2000]
+                except Exception:
+                    pretty = (r.text or "")[:2000]
+                ok = r.status_code in (200, 201)
+                results["steps"].append({
+                    "step": f"create order (ekp={ekp_try})",
+                    "ok": ok,
+                    "note": f"HTTP {r.status_code}",
+                    "body": pretty,
+                })
+                if ok:
+                    break
+            except Exception as e:
+                results["steps"].append({
+                    "step": f"create order (ekp={ekp_try})",
+                    "ok": False,
+                    "note": f"network: {e}",
+                })
 
         return results
 

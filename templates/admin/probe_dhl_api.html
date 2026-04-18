@@ -58,9 +58,11 @@
   <div class="probe-box">
     <h3>Configured credentials (env vars)</h3>
     <div class="probe-creds">
-      GLOBAL_MAIL_API_KEY &nbsp;&nbsp;&nbsp;&nbsp;= {{ masked_key }}<br>
-      GLOBAL_MAIL_API_SECRET &nbsp;= {% if masked_secret_len %}(set, length {{ masked_secret_len }}){% else %}(not set){% endif %}<br>
-      GLOBAL_MAIL_ACCOUNT &nbsp;&nbsp;&nbsp;= {{ account }}
+      GLOBAL_MAIL_API_KEY &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= {{ masked_key }}<br>
+      GLOBAL_MAIL_API_SECRET &nbsp;&nbsp;&nbsp;&nbsp;= {% if masked_secret_len %}(set, length {{ masked_secret_len }}){% else %}(not set){% endif %}<br>
+      GLOBAL_MAIL_ACCOUNT &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= {{ account }}<br>
+      GLOBAL_MAIL_CUSTOMER_EKP = {{ ekp }}<br>
+      GLOBAL_MAIL_TEST_MODE &nbsp;&nbsp;&nbsp;= {{ test_mode|yesno:"True (sandbox),False (production)" }}
     </div>
   </div>
 
@@ -70,11 +72,36 @@
       <p class="note" style="margin: 6px 0 0 0;">Set <code>GLOBAL_MAIL_API_KEY</code> and <code>GLOBAL_MAIL_API_SECRET</code> in Railway → Variables, then redeploy.</p>
     </div>
   {% else %}
-    <form method="post" class="probe-box" style="text-align: center;">
-      {% csrf_token %}
-      <button type="submit" class="probe-btn">🚀 Run probe</button>
-      <p class="note" style="margin: 10px 0 0 0;">This performs a handful of read / auth requests against DHL sandbox endpoints.</p>
-    </form>
+    <div class="probe-box" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+      <form method="post" style="margin: 0;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="run_probe">
+        <button type="submit" class="probe-btn">🚀 Run API probe</button>
+      </form>
+      <form method="post" style="margin: 0;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="test_order">
+        <button type="submit" class="probe-btn" style="background: #f59e0b;">🧪 Create test order (DPI sandbox)</button>
+      </form>
+      <p class="note" style="margin: 0; flex-basis: 100%;">
+        "Run API probe" tests which DHL API accepts your credentials.<br>
+        "Create test order" actually creates a test shipment in the DPI sandbox to verify EKP + payload (no real cost).
+      </p>
+    </div>
+  {% endif %}
+
+  {% if test_order_result %}
+    <div class="probe-box">
+      <h3>🧪 DPI test order — {{ test_order_result.host }} ({% if test_order_result.test_mode %}sandbox{% else %}PRODUCTION{% endif %})</h3>
+      {% for step in test_order_result.steps %}
+        <div style="margin-bottom: 10px; padding: 8px; border-left: 3px solid {% if step.ok %}#10b981{% else %}#ef4444{% endif %}; background: {% if step.ok %}#ecfdf5{% else %}#fef2f2{% endif %};">
+          <strong>{% if step.ok %}✅{% else %}❌{% endif %} {{ step.step }}</strong> &mdash; <span class="note">{{ step.note }}</span>
+          {% if step.body %}
+            <pre style="margin: 6px 0 0 0; padding: 8px; background: #111827; color: #d1fae5; font-size: 11px; overflow-x: auto; max-height: 300px; border-radius: 4px;">{{ step.body }}</pre>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
   {% endif %}
 
   {% if report %}
