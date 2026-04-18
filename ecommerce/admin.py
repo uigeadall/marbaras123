@@ -1772,6 +1772,11 @@ class OrderAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.probe_dhl_view),
                 name='probe_dhl_api',
             ),
+            path(
+                'print-test-label/',
+                self.admin_site.admin_view(self.print_test_label_view),
+                name='print_test_label',
+            ),
         ]
         return custom_urls + urls
     
@@ -2010,6 +2015,135 @@ class OrderAdmin(admin.ModelAdmin):
             'site_title': getattr(self.admin_site, 'site_title', 'Admin'),
         }
         return render(request, 'admin/probe_dhl_api.html', ctx)
+
+    def print_test_label_view(self, request):
+        """
+        Create a one-off DPI sandbox shipment and stream the PDF label
+        back to the browser (inline).  This lets admins verify their
+        4x6 thermal printer (e.g. Zebra ZP-505) before going live.
+
+        Always hits the sandbox — never production — regardless of
+        GLOBAL_MAIL_TEST_MODE.
+        """
+        import requests
+        from django.conf import settings as dj_settings
+        from django.http import HttpResponse, HttpResponseForbidden, HttpResponseBadRequest
+
+        if not request.user.is_superuser:
+            return HttpResponseForbidden("Superuser only.")
+
+        key = (getattr(dj_settings, "GLOBAL_MAIL_API_KEY", "") or "").strip()
+        secret = (getattr(dj_settings, "GLOBAL_MAIL_API_SECRET", "") or "").strip()
+        ekp = (getattr(dj_settings, "GLOBAL_MAIL_CUSTOMER_EKP", "") or "").strip()
+        host = "https://api-sandbox.dhl.com"
+
+        if not (key and secret and ekp):
+            return HttpResponseBadRequest(
+                "GLOBAL_MAIL_API_KEY, GLOBAL_MAIL_API_SECRET and GLOBAL_MAIL_CUSTOMER_EKP must be set."
+            )
+
+        try:
+            tr = requests.get(
+                f"{host}/dpi/v1/auth/accesstoken",
+                auth=(key, secret),
+                headers={"Accept": "application/json"},
+                timeout=15,
+            )
+            if tr.status_code != 200:
+                return HttpResponse(
+                    f"Auth failed: HTTP {tr.status_code}\n\n{tr.text[:500]}",
+                    status=502,
+                    content_type="text/plain; charset=utf-8",
+                )
+            token = (tr.json() or {}).get("access_token")
+            if not token:
+                return HttpResponse("No access_token in response.", status=502, content_type="text/plain")
+        except Exception as e:
+            return HttpResponse(f"Auth exception: {e}", status=502, content_type="text/plain")
+
+        payload = {
+            "customerEkp": ekp,
+            "orderStatus": "FINALIZE",
+            "paperwork": {
+                "contactName": (getattr(dj_settings, "SHOP_CONTACT_NAME", "Marbaras"))[:35],
+                "jobReference": "test-print",
+                "telephoneNumber": getattr(dj_settings, "SHOP_PHONE", "+359888000000") or "+359888000000",
+                "awbCopyCount": 1,
+            },
+            "items": [{
+                "product": "GPT",
+                "serviceLevel": "PRIORITY",
+                "recipient": "Test Recipient",
+                "recipientPhone": "+4930000000",
+                "recipientEmail": "test@example.com",
+                "addressLine1": "Teststrasse 1",
+                "city": "Berlin",
+                "postalCode": "10115",
+                "destinationCountry": "DE",
+                "shipmentAmount": 10.00,
+                "shipmentCurrency": "EUR",
+                "shipmentGrossWeight": 250,
+                "returnItemWanted": False,
+                "custRef": "print-test",
+                "contents": [{
+                    "contentPieceIndexNumber": 1,
+                    "contentPieceAmount": 1,
+                    "contentPieceDescription": "Silver ring sample",
+                    "contentPieceHsCode": "711311",
+                    "contentPieceOrigin": "BG",
+                    "contentPieceValue": "10.00",
+                    "contentPieceNetweight": 250,
+                }],
+            }],
+        }
+
+        try:
+            r = requests.post(
+                f"{host}/dpi/shipping/v1/orders",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                timeout=30,
+            )
+            if r.status_code not in (200, 201):
+                return HttpResponse(
+                    f"Create order failed: HTTP {r.status_code}\n\n{r.text[:1500]}",
+                    status=502,
+                    content_type="text/plain; charset=utf-8",
+                )
+            body = r.json() or {}
+            shipments = body.get("shipments") or []
+            if not shipments or not shipments[0].get("items"):
+                return HttpResponse(f"No shipments/items in response:\n{body}", status=502, content_type="text/plain")
+            item_id = shipments[0]["items"][0].get("id")
+            if not item_id:
+                return HttpResponse("Item has no id.", status=502, content_type="text/plain")
+        except Exception as e:
+            return HttpResponse(f"Create order exception: {e}", status=502, content_type="text/plain")
+
+        try:
+            lr = requests.get(
+                f"{host}/dpi/shipping/v1/items/{item_id}/label",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
+                timeout=30,
+            )
+            if lr.status_code != 200 or not lr.content:
+                return HttpResponse(
+                    f"Label fetch failed: HTTP {lr.status_code}\n\n{lr.text[:500]}",
+                    status=502,
+                    content_type="text/plain; charset=utf-8",
+                )
+        except Exception as e:
+            return HttpResponse(f"Label fetch exception: {e}", status=502, content_type="text/plain")
+
+        response = HttpResponse(lr.content, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="dpi-test-label-{item_id}.pdf"'
+        response["X-DPI-Item-Id"] = str(item_id)
+        response["X-DPI-AWB"] = str(shipments[0].get("awb") or "")
+        return response
 
     def _run_dhl_probes(self, key: str, secret: str, account: str):
         """Run probes against a broad set of DHL API products / endpoints."""

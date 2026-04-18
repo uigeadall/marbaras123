@@ -83,9 +83,14 @@
         <input type="hidden" name="action" value="test_order">
         <button type="submit" class="probe-btn" style="background: #f59e0b;">🧪 Create test order (DPI sandbox)</button>
       </form>
+      <a href="{% url 'admin:print_test_label' %}" target="_blank"
+         class="probe-btn" style="background: #3b82f6; display: inline-block; text-decoration: none;">
+        🖨️ Print test label (opens PDF)
+      </a>
       <p class="note" style="margin: 0; flex-basis: 100%;">
         "Run API probe" tests which DHL API accepts your credentials.<br>
-        "Create test order" actually creates a test shipment in the DPI sandbox to verify EKP + payload (no real cost).
+        "Create test order" creates a test shipment in the DPI sandbox to verify EKP + payload.<br>
+        "Print test label" creates a sandbox shipment + opens the real DHL PDF label in a new tab — hit Print in the browser and select your Zebra ZP-505.
       </p>
     </div>
   {% endif %}
