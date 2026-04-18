@@ -1191,6 +1191,7 @@ class GlobalMailShipping(ShippingCarrierBase):
             'shipmentAmount': round(total_amount or 1.0, 2),
             'shipmentCurrency': currency,
             'shipmentGrossWeight': total_weight_g,
+            'shipmentNaturetype': getattr(settings, 'GLOBAL_MAIL_NATURE_TYPE', 'SALE_GOODS'),
             'returnItemWanted': False,
             'custRef': str(order.id),
             'contents': contents,
