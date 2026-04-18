@@ -1797,15 +1797,37 @@ class OrderAdmin(admin.ModelAdmin):
     def _print_queue_orders_qs(self):
         """
         Orders that should appear in the automatic print queue:
-        not shipped yet, and either already have a label OR still have a
-        carrier to try with.
+
+          * not shipped yet, AND
+          * either already have a label / tracking number, OR
+          * have a shipping carrier assigned (so the admin can trigger
+            auto-create for them), OR
+          * have a shipping option whose name implies a known carrier
+            (FedEx / Global Mail / Global Post / DHL), so freshly placed
+            orders show up even before shipping_carrier is filled in.
         """
+        from django.db.models import Q
+
+        carrier_keywords = ['fedex', 'global', 'dhl', 'easypost', 'deutsche']
+        option_name_filter = Q()
+        for kw in carrier_keywords:
+            option_name_filter |= Q(shipping_option__name__icontains=kw)
+
+        has_label_or_tracking = (
+            (Q(shipping_label_url__isnull=False) & ~Q(shipping_label_url=''))
+            | (Q(tracking_number__isnull=False) & ~Q(tracking_number=''))
+        )
+        has_carrier = (
+            Q(shipping_carrier__isnull=False) & ~Q(shipping_carrier='')
+        )
+
         return (
             Order.objects
             .filter(is_shipped=False)
-            .exclude(shipping_label_url__isnull=True, tracking_number__isnull=True)
+            .filter(has_label_or_tracking | has_carrier | option_name_filter)
             .select_related('shipping_option')
             .order_by('created_at')
+            .distinct()
         )
 
     def print_queue_view(self, request):
