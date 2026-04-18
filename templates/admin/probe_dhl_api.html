@@ -1,0 +1,111 @@
+{% extends "admin/base_site.html" %}
+
+{% block title %}{{ title }} | {{ site_title|default:"Admin" }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=app_label %}">{{ opts.app_config.verbose_name|default:app_label }}</a>
+  &rsaquo; <a href="{% url 'admin:ecommerce_order_changelist' %}">Orders</a>
+  &rsaquo; <a href="{% url 'admin:print_queue' %}">Print queue</a>
+  &rsaquo; Probe DHL API
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .probe-wrap { max-width: 1000px; }
+  .probe-hero {
+    background: linear-gradient(135deg, #667eea, #5568d3);
+    color: #fff; padding: 16px 20px; border-radius: 8px;
+    margin-bottom: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  }
+  .probe-hero h1 { margin: 0 0 4px 0; font-size: 20px; }
+  .probe-hero p { margin: 0; opacity: 0.92; font-size: 13px; }
+  .probe-box {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 14px;
+  }
+  .probe-box h3 { margin: 0 0 8px 0; font-size: 14px; color: #374151; }
+  .probe-creds { font-family: monospace; font-size: 12px; color: #1f2937; line-height: 1.6; }
+  .probe-btn {
+    background: #10b981; color: #fff; border: none; padding: 10px 20px;
+    border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;
+  }
+  .probe-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .probe-table {
+    width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;
+  }
+  .probe-table th, .probe-table td {
+    padding: 10px 12px; text-align: left; font-size: 13px;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .probe-table th { background: #f9fafb; font-weight: 600; color: #374151; }
+  .probe-table tr.ok  td.status { color: #065f46; font-weight: 600; }
+  .probe-table tr.bad td.status { color: #991b1b; }
+  .note { color: #6b7280; font-size: 12px; }
+  .ok-icon  { color: #10b981; font-weight: bold; }
+  .bad-icon { color: #ef4444; font-weight: bold; }
+</style>
+
+<div class="probe-wrap">
+  <div class="probe-hero">
+    <h1>🔍 Probe DHL API credentials</h1>
+    <p>Tests the configured GLOBAL_MAIL_* credentials against several DHL API products. No shipments are created.</p>
+  </div>
+
+  <div class="probe-box">
+    <h3>Configured credentials (env vars)</h3>
+    <div class="probe-creds">
+      GLOBAL_MAIL_API_KEY &nbsp;&nbsp;&nbsp;&nbsp;= {{ masked_key }}<br>
+      GLOBAL_MAIL_API_SECRET &nbsp;= {% if masked_secret_len %}(set, length {{ masked_secret_len }}){% else %}(not set){% endif %}<br>
+      GLOBAL_MAIL_ACCOUNT &nbsp;&nbsp;&nbsp;= {{ account }}
+    </div>
+  </div>
+
+  {% if not has_credentials %}
+    <div class="probe-box" style="border-left: 4px solid #ef4444;">
+      <strong style="color: #991b1b;">Credentials not configured.</strong>
+      <p class="note" style="margin: 6px 0 0 0;">Set <code>GLOBAL_MAIL_API_KEY</code> and <code>GLOBAL_MAIL_API_SECRET</code> in Railway → Variables, then redeploy.</p>
+    </div>
+  {% else %}
+    <form method="post" class="probe-box" style="text-align: center;">
+      {% csrf_token %}
+      <button type="submit" class="probe-btn">🚀 Run probe</button>
+      <p class="note" style="margin: 10px 0 0 0;">This performs a handful of read / auth requests against DHL sandbox endpoints.</p>
+    </form>
+  {% endif %}
+
+  {% if report %}
+    <div class="probe-box">
+      <h3>Probe results</h3>
+      <table class="probe-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;"></th>
+            <th>API product</th>
+            <th style="width: 120px;">Status</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report %}
+            <tr class="{% if row.ok %}ok{% else %}bad{% endif %}">
+              <td>
+                {% if row.ok %}<span class="ok-icon">✅</span>{% else %}<span class="bad-icon">❌</span>{% endif %}
+              </td>
+              <td>{{ row.api }}</td>
+              <td class="status">{{ row.status }}</td>
+              <td><span class="note">{{ row.note }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note" style="margin-top: 12px;">
+        Copy the row marked <span class="ok-icon">✅</span> and tell the assistant — a proper carrier class will be implemented for that DHL API, sandbox-only.
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1742,6 +1742,11 @@ class OrderAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.auto_create_label_view),
                 name='auto_create_shipping_label',
             ),
+            path(
+                'probe-dhl/',
+                self.admin_site.admin_view(self.probe_dhl_view),
+                name='probe_dhl_api',
+            ),
         ]
         return custom_urls + urls
     
@@ -1932,6 +1937,146 @@ class OrderAdmin(admin.ModelAdmin):
             )
 
         return redirect(reverse('admin:print_queue'))
+
+    def probe_dhl_view(self, request):
+        """
+        Admin page that probes several DHL API products with the configured
+        Global Mail credentials and reports which API accepts them.
+
+        It does NOT create any shipments — only read/auth requests against
+        sandbox endpoints. Available at /admin/ecommerce/order/probe-dhl/.
+        """
+        from django.shortcuts import render
+        from django.conf import settings as dj_settings
+
+        if not request.user.is_superuser:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Superuser only.")
+
+        key = (getattr(dj_settings, "GLOBAL_MAIL_API_KEY", "") or "").strip()
+        secret = (getattr(dj_settings, "GLOBAL_MAIL_API_SECRET", "") or "").strip()
+        account = (getattr(dj_settings, "GLOBAL_MAIL_ACCOUNT_NUMBER", "") or "").strip()
+
+        report = None
+        if request.method == "POST":
+            report = self._run_dhl_probes(key, secret, account)
+
+        ctx = {
+            'title': 'Probe DHL API credentials',
+            'has_credentials': bool(key and secret),
+            'masked_key': (key[:10] + "…") if key else '(not set)',
+            'masked_secret_len': len(secret) if secret else 0,
+            'account': account or '(not set)',
+            'report': report,
+            'opts': Order._meta,
+            'app_label': Order._meta.app_label,
+            'has_permission': True,
+            'site_header': getattr(self.admin_site, 'site_header', 'Admin'),
+            'site_title': getattr(self.admin_site, 'site_title', 'Admin'),
+        }
+        return render(request, 'admin/probe_dhl_api.html', ctx)
+
+    def _run_dhl_probes(self, key: str, secret: str, account: str):
+        """Run the same probes as the probe_dhl_api management command."""
+        import requests
+
+        def _trunc(t, n=140):
+            return (t or "").replace("\n", " ")[:n]
+
+        def _probe(api, func):
+            try:
+                return func()
+            except requests.RequestException as e:
+                return {"api": api, "ok": False, "status": "network", "note": _trunc(str(e))}
+            except Exception as e:
+                return {"api": api, "ok": False, "status": "error", "note": _trunc(str(e))}
+
+        results = []
+
+        def probe_mydhl():
+            api = "MyDHL API (DHL Express)"
+            r = requests.get(
+                "https://express.api.dhl.com/mydhlapi/test/address-validate",
+                auth=(key, secret),
+                params={"type": "delivery", "countryCode": "DE", "postalCode": "53113"},
+                timeout=15,
+            )
+            if r.status_code == 200:
+                return {"api": api, "ok": True, "status": "200 OK", "note": "credentials accepted"}
+            if r.status_code in (401, 403):
+                return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
+            if r.status_code == 400 and "Invalid Credentials" in r.text:
+                return {"api": api, "ok": False, "status": "400", "note": "Invalid Credentials"}
+            return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(r.text)}
+        results.append(_probe("MyDHL API (DHL Express)", probe_mydhl))
+
+        def probe_ecom_solutions():
+            api = "DHL eCommerce Solutions (sandbox)"
+            r = requests.get(
+                "https://api-sandbox.dhlecs.com/auth/v4/accesstoken",
+                auth=(key, secret),
+                params={"grant_type": "client_credentials"},
+                timeout=15,
+            )
+            if r.status_code == 200 and "access_token" in (r.text or ""):
+                return {"api": api, "ok": True, "status": "200 OK", "note": "access_token received"}
+            if r.status_code in (401, 403):
+                return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
+            return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(r.text)}
+        results.append(_probe("DHL eCommerce Solutions (sandbox)", probe_ecom_solutions))
+
+        def probe_parcel_de():
+            api = "DHL Parcel DE Shipping (Post & Parcel DE) [sandbox]"
+            r = requests.get(
+                "https://api-sandbox.dhl.com/parcel/de/shipping/v2/orders",
+                headers={"dpdhl-api-key": key, "Accept": "application/json"},
+                auth=(account, secret) if account else None,
+                params={"profile": "STANDARD_GRUPPENPROFIL"},
+                timeout=15,
+            )
+            if r.status_code == 200:
+                return {"api": api, "ok": True, "status": "200 OK", "note": "API key accepted"}
+            if r.status_code == 400:
+                body = (r.text or "")
+                if "api key" in body.lower() or "dpdhl-api-key" in body.lower():
+                    return {"api": api, "ok": False, "status": "400", "note": "DPDHL-API-Key missing / invalid"}
+                return {"api": api, "ok": True, "status": "400", "note": "API key OK; user/password/payload issue"}
+            if r.status_code in (401, 403):
+                return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
+            return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(r.text)}
+        results.append(_probe("DHL Parcel DE Shipping", probe_parcel_de))
+
+        def probe_parcel_de_account():
+            api = "DHL Parcel DE Customer Account"
+            r = requests.post(
+                "https://api-sandbox.dhl.com/parcel/de/account/auth/v1/accesstoken",
+                auth=(key, secret),
+                timeout=15,
+            )
+            if r.status_code == 200 and "accessToken" in (r.text or ""):
+                return {"api": api, "ok": True, "status": "200 OK", "note": "accessToken received"}
+            if r.status_code in (401, 403):
+                return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
+            return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(r.text)}
+        results.append(_probe("DHL Parcel DE Customer Account", probe_parcel_de_account))
+
+        def probe_dp_intl():
+            api = "DHL Deutsche Post International (mail)"
+            r = requests.get(
+                "https://api-eu.dhl.com/mail/intl/tracking/v1/packages",
+                headers={"DHL-API-Key": key},
+                auth=(key, secret),
+                timeout=15,
+            )
+            body_l = (r.text or "").lower()
+            if r.status_code in (200, 400) and "invalid credentials" not in body_l and "unauthorized" not in body_l:
+                return {"api": api, "ok": True, "status": str(r.status_code), "note": "credentials accepted"}
+            if r.status_code in (401, 403):
+                return {"api": api, "ok": False, "status": str(r.status_code), "note": "credentials rejected"}
+            return {"api": api, "ok": False, "status": str(r.status_code), "note": _trunc(r.text)}
+        results.append(_probe("DHL Deutsche Post International (mail)", probe_dp_intl))
+
+        return results
 
     def barcode_scanner_view(self, request):
         """View for barcode scanner to find orders."""
