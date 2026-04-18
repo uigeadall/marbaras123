@@ -984,6 +984,27 @@ class GlobalMailShipping(ShippingCarrierBase):
         )
 
     # ------------------------------------------------------------------
+    # Label format helpers
+    # ------------------------------------------------------------------
+    def _label_params(self) -> Dict[str, str]:
+        """Query params appended to the /items/{id}/label request.
+
+        Controls the size of the returned PDF label. Defaults to 4x6 (100 x
+        150 mm) which matches thermal printers like the Zebra ZP-505. Can be
+        overridden / disabled via env vars:
+          - GLOBAL_MAIL_LABEL_PAGE_SIZE  (default: "4x6"; set to ""/"none" to disable)
+          - GLOBAL_MAIL_LABEL_FORMAT     (default: "PDF")
+        """
+        params: Dict[str, str] = {}
+        size = (getattr(settings, 'GLOBAL_MAIL_LABEL_PAGE_SIZE', '4x6') or '').strip()
+        if size and size.lower() not in ('none', 'off', 'default'):
+            params['pageSize'] = size
+        fmt = (getattr(settings, 'GLOBAL_MAIL_LABEL_FORMAT', '') or '').strip()
+        if fmt:
+            params['format'] = fmt
+        return params
+
+    # ------------------------------------------------------------------
     # OAuth 2.0 access token (cached 4h to stay under the 5h expiry)
     # ------------------------------------------------------------------
     def _get_access_token(self) -> Optional[str]:
@@ -1080,10 +1101,12 @@ class GlobalMailShipping(ShippingCarrierBase):
             label_b64 = None
             if item_id:
                 label_url = f'{self.item_label_url}/{item_id}/label'
-                logger.info(f"DPI: GET {label_url} for label PDF")
+                label_params = self._label_params()
+                logger.info(f"DPI: GET {label_url} params={label_params} for label PDF")
                 lr = requests.get(
                     label_url,
                     headers={'Authorization': f'Bearer {token}', 'Accept': 'application/pdf'},
+                    params=label_params or None,
                     timeout=30,
                 )
                 if lr.status_code == 200 and lr.content:

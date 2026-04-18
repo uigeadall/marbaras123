@@ -841,6 +841,12 @@ GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet
 GLOBAL_MAIL_SERVICE_LEVEL = env("GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
 GLOBAL_MAIL_DEFAULT_HS_CODE = env("GLOBAL_MAIL_DEFAULT_HS_CODE", "711311")  # HS code for silver jewellery (6 digits)
 
+# Label page size appended as ?pageSize=... to /items/{id}/label. "4x6" matches
+# 100x150mm thermal printers (Zebra ZP-505). Set to "" / "none" to get the DHL
+# default (A5/A6) PDF. Other accepted values include "A4", "A5", "A6".
+GLOBAL_MAIL_LABEL_PAGE_SIZE = env("GLOBAL_MAIL_LABEL_PAGE_SIZE", "4x6")
+GLOBAL_MAIL_LABEL_FORMAT = env("GLOBAL_MAIL_LABEL_FORMAT", "")  # blank → PDF default
+
 # Automatic shipping label creation on checkout. Set to "False" in Railway
 # to require manual label creation from the admin (recommended during
 # production soft-launch).

@@ -2146,9 +2146,12 @@ class OrderAdmin(admin.ModelAdmin):
             return HttpResponse(f"Create order exception: {e}", status=502, content_type="text/plain")
 
         try:
+            label_size = (getattr(dj_settings, "GLOBAL_MAIL_LABEL_PAGE_SIZE", "4x6") or "").strip()
+            label_params = {"pageSize": label_size} if label_size and label_size.lower() not in ("none", "off", "default") else None
             lr = requests.get(
                 f"{host}/dpi/shipping/v1/items/{item_id}/label",
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
+                params=label_params,
                 timeout=30,
             )
             if lr.status_code != 200 or not lr.content:
@@ -2236,6 +2239,7 @@ class OrderAdmin(admin.ModelAdmin):
             lr = requests.get(
                 f"{dpi.item_label_url}/{item_id}/label",
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/pdf"},
+                params=dpi._label_params() or None,
                 timeout=30,
             )
             if lr.status_code != 200 or not lr.content:
