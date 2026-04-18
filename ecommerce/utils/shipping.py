@@ -1202,7 +1202,7 @@ class GlobalMailShipping(ShippingCarrierBase):
             'paperwork': {
                 'contactName': (getattr(settings, 'SHOP_CONTACT_NAME', 'Marbaras'))[:35],
                 'jobReference': f'Order-{order.id}',
-                'telephoneNumber': getattr(settings, 'SHOP_PHONE', '+359000000000'),
+                'telephoneNumber': (getattr(settings, 'SHOP_PHONE', '') or '+359888000000'),
                 'awbCopyCount': 1,
             },
             'items': [item],
