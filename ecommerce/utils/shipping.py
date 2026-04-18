@@ -1137,6 +1137,16 @@ class GlobalMailShipping(ShippingCarrierBase):
         service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
         currency = getattr(order, 'currency', None) or 'EUR'
 
+        def _short_desc(raw: str) -> str:
+            s = (raw or '').strip().replace('"', '').replace("'", '')
+            if len(s) <= 33:
+                return s if len(s) >= 3 else (s + ' item')[:33]
+            # Keep it readable: prefer cutting at a word boundary.
+            cut = s[:33]
+            if ' ' in cut[-10:]:
+                cut = cut.rsplit(' ', 1)[0]
+            return cut[:33].strip() or 'Silver jewellery'
+
         contents = []
         running_index = 1
         total_amount = 0.0
@@ -1148,7 +1158,7 @@ class GlobalMailShipping(ShippingCarrierBase):
             contents.append({
                 'contentPieceIndexNumber': running_index,
                 'contentPieceAmount': qty,
-                'contentPieceDescription': name[:140],
+                'contentPieceDescription': _short_desc(name),
                 'contentPieceHsCode': getattr(settings, 'GLOBAL_MAIL_DEFAULT_HS_CODE', '711311'),
                 'contentPieceOrigin': getattr(settings, 'SHOP_COUNTRY', 'BG'),
                 'contentPieceValue': f"{unit_price:.2f}",
