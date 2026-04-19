@@ -1174,6 +1174,7 @@ class OrderAdmin(admin.ModelAdmin):
 
     actions = [
         "export_orders_csv",
+        "export_dpi_bulk_csv",
         "send_shipped_email",
         "print_shipping_labels",
         "create_shipping_labels",
@@ -1415,7 +1416,197 @@ class OrderAdmin(admin.ModelAdmin):
         return response
 
     export_orders_csv.short_description = "Export selected orders to CSV (Accounting)"
-    
+
+    # ------------------------------------------------------------------
+    # DPI / Deutsche Post International bulk-dispatch CSV export
+    # ------------------------------------------------------------------
+    def export_dpi_bulk_csv(self, request, queryset):
+        """Export selected orders to a CSV in the DPI bulk dispatch
+        format.
+
+        Column layout matches the file DPI accepts for bulk upload
+        (PRODUCT, SERVICE_LEVEL, CUST_EKP, AWB, REGISTERED_BARCODE, …).
+        When an order has already been shipped via DPI, its AWB and
+        item barcode are included so the file is ready for re-dispatch
+        or manifesting; otherwise those columns stay empty.
+        """
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = (
+            'attachment; filename="dpi_bulk_dispatch.csv"'
+        )
+        writer = csv.writer(response, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+
+        columns = [
+            "PRODUCT",
+            "SERVICE_LEVEL",
+            "CUST_EKP",
+            "AWB",
+            "BAG_ID",
+            "FORMAT",
+            "SHIPMENT_TYPE",
+            "REGISTERED_BARCODE",
+            "CUST_REF",
+            "NAME",
+            "RECIPIENT_PHONE",
+            "RECIPIENT_PHONE_2",
+            "RECIPIENT_EMAIL",
+            "ADDRESS_LINE_1",
+            "ADDRESS_LINE_2",
+            "ADDRESS_LINE_3",
+            "CITY",
+            "STATE",
+            "POSTAL_CODE",
+            "COUNTRY",
+            "SHIPMENT_WEIGHT",
+            "SHIPMENT_AMOUNT",
+            "SHIPMENT_CURRENCY",
+            "SHIPMENT_NATURETYPE",
+            "RETURN_ITEM_WANTED",
+            "CONTENT_DESCRIPTION",
+            "CONTENT_HS_CODE",
+            "CONTENT_ORIGIN",
+            "CONTENT_AMOUNT",
+            "CONTENT_VALUE",
+            "CONTENT_NET_WEIGHT",
+        ]
+        writer.writerow(columns)
+
+        import re as _re
+
+        def _sanitize_phone(raw):
+            s = (raw or "").strip()
+            if not s:
+                return ""
+            s = _re.split(
+                r"(?i)(?:\s*(?:ext\.?|extension)\b|(?<=\d)\s*x\s*(?=\d)|\bx\b)",
+                s,
+                maxsplit=1,
+            )[0]
+            has_plus = s.lstrip().startswith("+")
+            s = _re.sub(r"[^\d\s\.\-\(\)]", "", s)
+            if has_plus:
+                s = "+" + s.lstrip()
+            return s.strip()[:25]
+
+        def _short(s, n):
+            s = (s or "").strip()
+            return s[:n]
+
+        ekp = str(getattr(settings, "GLOBAL_MAIL_CUSTOMER_EKP", "") or "")
+        default_product = getattr(settings, "GLOBAL_MAIL_PRODUCT_CODE", "GPT") or "GPT"
+        default_service = (
+            getattr(settings, "GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY") or "PRIORITY"
+        )
+        default_currency = getattr(settings, "GLOBAL_MAIL_CURRENCY", "EUR") or "EUR"
+        origin_country = getattr(settings, "SHOP_COUNTRY", "BG") or "BG"
+        default_hs = getattr(settings, "GLOBAL_MAIL_DEFAULT_HS_CODE", "711311") or "711311"
+        default_nature = (
+            getattr(settings, "GLOBAL_MAIL_NATURE_TYPE", "SALE_GOODS") or "SALE_GOODS"
+        )
+
+        _BUILTIN_NON_EU_PRODUCT_MAP = {
+            "US": "GPP", "CA": "GPP", "AU": "GPP", "NZ": "GPP", "JP": "GPP",
+            "KR": "GPP", "SG": "GPP", "HK": "GPP", "CN": "GPP", "IN": "GPP",
+            "BR": "GPP", "MX": "GPP", "AE": "GPP", "IL": "GPP", "ZA": "GPP",
+            "TR": "GPP", "CH": "GPP", "NO": "GPP", "IS": "GPP", "GB": "GPP",
+        }
+        user_map = getattr(settings, "GLOBAL_MAIL_PRODUCT_MAP", {}) or {}
+        product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **user_map}
+
+        for o in queryset.order_by("id"):
+            dest = ((getattr(o, "country", "") or "BG").strip() or "BG").upper()
+            if len(dest) > 2:
+                _iso = {
+                    "BULGARIA": "BG", "GERMANY": "DE", "UNITED KINGDOM": "GB",
+                    "GREAT BRITAIN": "GB", "UK": "GB", "USA": "US",
+                    "UNITED STATES": "US", "FRANCE": "FR", "ITALY": "IT",
+                    "SPAIN": "ES", "NETHERLANDS": "NL", "BELGIUM": "BE",
+                    "AUSTRIA": "AT", "SWITZERLAND": "CH", "POLAND": "PL",
+                }
+                dest = _iso.get(dest, dest[:2])
+
+            product = product_map.get(dest) or default_product
+            try:
+                total_weight_kg = max(
+                    sum(int(it.quantity or 1) for it in o.items.all()) * 0.5, 0.1
+                )
+            except Exception:
+                total_weight_kg = 0.5
+            total_weight_g = int(total_weight_kg * 1000)
+
+            first_item = None
+            qty_total = 0
+            value_total = 0.0
+            try:
+                for it in o.items.all():
+                    if first_item is None:
+                        first_item = it
+                    qty_total += int(it.quantity or 1)
+                    try:
+                        price = float(
+                            getattr(it, "price", None)
+                            or getattr(getattr(it, "product", None), "price", 0)
+                            or 0
+                        )
+                    except Exception:
+                        price = 0
+                    value_total += price * int(it.quantity or 1)
+            except Exception:
+                pass
+            try:
+                order_total = float(getattr(o, "total_price", 0) or 0)
+            except Exception:
+                order_total = 0.0
+            if order_total <= 0:
+                order_total = max(round(value_total, 2), 1.0)
+
+            content_desc = "Silver jewellery"
+            if first_item is not None:
+                nm = getattr(getattr(first_item, "product", None), "name", "") or ""
+                if nm:
+                    content_desc = _short(nm, 33)
+
+            row = [
+                product,
+                default_service,
+                ekp,
+                getattr(o, "awb", "") or "",
+                "",
+                "",
+                "",
+                getattr(o, "tracking_number", "") or "",
+                str(o.id),
+                _short(getattr(o, "full_name", "") or "Recipient", 35),
+                _sanitize_phone(getattr(o, "phone", "") or ""),
+                "",
+                _short(getattr(o, "email", "") or "", 80),
+                _short(getattr(o, "address", "") or "", 40),
+                "",
+                "",
+                _short(getattr(o, "city", "") or "", 30),
+                "",
+                _short(getattr(o, "postal_code", "") or "", 15),
+                dest,
+                total_weight_g,
+                f"{round(order_total, 2):.2f}",
+                default_currency,
+                default_nature,
+                "false",
+                content_desc,
+                default_hs,
+                origin_country,
+                max(qty_total, 1),
+                f"{round(order_total, 2):.2f}",
+                max(total_weight_g, 10),
+            ]
+            writer.writerow(row)
+
+        return response
+
+    export_dpi_bulk_csv.short_description = (
+        "📄 Export to DPI bulk dispatch CSV"
+    )
+
     def save_model(self, request, obj, form, change):
         """Override save to auto-create shipping label for new orders."""
         is_new = not change  # change=False means it's a new object
@@ -3640,7 +3831,138 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         ("Debug", {"classes": ("collapse",), "fields": ("notes", "raw_csv_data")}),
     )
 
-    actions = ["bulk_create_labels_action"]
+    actions = ["bulk_create_labels_action", "export_dpi_bulk_csv"]
+
+    # ------------------------------------------------------------------
+    # DPI bulk-dispatch CSV export (same format as OrderAdmin)
+    # ------------------------------------------------------------------
+    def export_dpi_bulk_csv(self, request, queryset):
+        """Export selected marketplace orders to DPI bulk dispatch CSV."""
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = (
+            'attachment; filename="dpi_bulk_dispatch.csv"'
+        )
+        writer = csv.writer(response, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+
+        columns = [
+            "PRODUCT", "SERVICE_LEVEL", "CUST_EKP", "AWB", "BAG_ID",
+            "FORMAT", "SHIPMENT_TYPE", "REGISTERED_BARCODE", "CUST_REF",
+            "NAME", "RECIPIENT_PHONE", "RECIPIENT_PHONE_2", "RECIPIENT_EMAIL",
+            "ADDRESS_LINE_1", "ADDRESS_LINE_2", "ADDRESS_LINE_3",
+            "CITY", "STATE", "POSTAL_CODE", "COUNTRY",
+            "SHIPMENT_WEIGHT", "SHIPMENT_AMOUNT", "SHIPMENT_CURRENCY",
+            "SHIPMENT_NATURETYPE", "RETURN_ITEM_WANTED",
+            "CONTENT_DESCRIPTION", "CONTENT_HS_CODE", "CONTENT_ORIGIN",
+            "CONTENT_AMOUNT", "CONTENT_VALUE", "CONTENT_NET_WEIGHT",
+        ]
+        writer.writerow(columns)
+
+        import re as _re
+
+        def _sanitize_phone(raw):
+            s = (raw or "").strip()
+            if not s:
+                return ""
+            s = _re.split(
+                r"(?i)(?:\s*(?:ext\.?|extension)\b|(?<=\d)\s*x\s*(?=\d)|\bx\b)",
+                s, maxsplit=1,
+            )[0]
+            has_plus = s.lstrip().startswith("+")
+            s = _re.sub(r"[^\d\s\.\-\(\)]", "", s)
+            if has_plus:
+                s = "+" + s.lstrip()
+            return s.strip()[:25]
+
+        def _short(s, n):
+            s = (s or "").strip()
+            return s[:n]
+
+        ekp = str(getattr(settings, "GLOBAL_MAIL_CUSTOMER_EKP", "") or "")
+        default_product = getattr(settings, "GLOBAL_MAIL_PRODUCT_CODE", "GPT") or "GPT"
+        default_service = getattr(settings, "GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY") or "PRIORITY"
+        default_currency = getattr(settings, "GLOBAL_MAIL_CURRENCY", "EUR") or "EUR"
+        origin_country = getattr(settings, "SHOP_COUNTRY", "BG") or "BG"
+        default_hs = getattr(settings, "GLOBAL_MAIL_DEFAULT_HS_CODE", "711311") or "711311"
+        default_nature = getattr(settings, "GLOBAL_MAIL_NATURE_TYPE", "SALE_GOODS") or "SALE_GOODS"
+
+        _BUILTIN_NON_EU_PRODUCT_MAP = {
+            "US": "GPP", "CA": "GPP", "AU": "GPP", "NZ": "GPP", "JP": "GPP",
+            "KR": "GPP", "SG": "GPP", "HK": "GPP", "CN": "GPP", "IN": "GPP",
+            "BR": "GPP", "MX": "GPP", "AE": "GPP", "IL": "GPP", "ZA": "GPP",
+            "TR": "GPP", "CH": "GPP", "NO": "GPP", "IS": "GPP", "GB": "GPP",
+        }
+        user_map = getattr(settings, "GLOBAL_MAIL_PRODUCT_MAP", {}) or {}
+        product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **user_map}
+
+        for mo in queryset.order_by("id"):
+            dest = ((getattr(mo, "country", "") or "BG").strip() or "BG").upper()
+            if len(dest) > 2:
+                _iso = {
+                    "BULGARIA": "BG", "GERMANY": "DE", "UNITED KINGDOM": "GB",
+                    "GREAT BRITAIN": "GB", "UK": "GB", "USA": "US",
+                    "UNITED STATES": "US", "FRANCE": "FR", "ITALY": "IT",
+                    "SPAIN": "ES", "NETHERLANDS": "NL", "BELGIUM": "BE",
+                    "AUSTRIA": "AT", "SWITZERLAND": "CH", "POLAND": "PL",
+                }
+                dest = _iso.get(dest, dest[:2])
+
+            product = product_map.get(dest) or default_product
+
+            try:
+                total_weight_g = int(getattr(mo, "total_weight_g", 0) or 0)
+            except Exception:
+                total_weight_g = 0
+            if total_weight_g <= 0:
+                try:
+                    total_weight_g = max(int((getattr(mo, "item_count", 1) or 1)) * 500, 100)
+                except Exception:
+                    total_weight_g = 500
+
+            try:
+                order_total = float(getattr(mo, "total_amount", 0) or 0)
+            except Exception:
+                order_total = 0.0
+            if order_total <= 0:
+                order_total = 1.0
+
+            row = [
+                product,
+                default_service,
+                ekp,
+                getattr(mo, "awb", "") or "",
+                "",
+                "",
+                "",
+                getattr(mo, "tracking_number", "") or "",
+                _short(getattr(mo, "external_order_id", "") or str(mo.id), 30),
+                _short(getattr(mo, "buyer_name", "") or "Recipient", 35),
+                _sanitize_phone(getattr(mo, "buyer_phone", "") or ""),
+                "",
+                _short(getattr(mo, "buyer_email", "") or "", 80),
+                _short(getattr(mo, "address_line1", "") or "", 40),
+                _short(getattr(mo, "address_line2", "") or "", 40),
+                "",
+                _short(getattr(mo, "city", "") or "", 30),
+                _short(getattr(mo, "state", "") or "", 30),
+                _short(getattr(mo, "postal_code", "") or "", 15),
+                dest,
+                total_weight_g,
+                f"{round(order_total, 2):.2f}",
+                getattr(mo, "currency", "") or default_currency,
+                default_nature,
+                "false",
+                _short(getattr(mo, "items_summary", "") or "Silver jewellery", 33),
+                default_hs,
+                origin_country,
+                max(int(getattr(mo, "item_count", 1) or 1), 1),
+                f"{round(order_total, 2):.2f}",
+                max(total_weight_g, 10),
+            ]
+            writer.writerow(row)
+
+        return response
+
+    export_dpi_bulk_csv.short_description = "📄 Export to DPI bulk dispatch CSV"
 
     # ------------------------------------------------------------------
     # Custom URLs
