@@ -1062,10 +1062,7 @@ class GlobalMailShipping(ShippingCarrierBase):
             if box_w <= 0 or box_h <= 0:
                 return pdf_bytes
 
-            # Heuristic: A4/A5 portrait labels usually put the printable
-            # label in the top half and leave the bottom half empty.
-            # If source is meaningfully larger than 4x6 AND aspect is close
-            # to standard paper, take just the top half (content region).
+            # Heuristic 1: A4/A5 portrait labels (receipt/tear-off layout).
             a4_ratio = 842.0 / 595.0  # ~1.414
             src_ratio = box_h / box_w if box_w else 0
             looks_like_paper = abs(src_ratio - a4_ratio) < 0.05 or abs(src_ratio - (1.0 / a4_ratio)) < 0.05
@@ -1076,6 +1073,34 @@ class GlobalMailShipping(ShippingCarrierBase):
                 # tear-off strip that's typically blank.
                 box_y0 = box_y0 + box_h / 2.0
                 box_h = box_h / 2.0
+            else:
+                # Heuristic 2: DPI also returns labels where the mediabox
+                # IS already 4x6 but the content only fills the top
+                # ~45-55% of the page (the lower half is reserved for
+                # additional documents that sandbox leaves empty).
+                # Detect this by aspect ratio being ≈ 4x6 AND size
+                # being near 288×432 points. Crop to the top N% of the
+                # page. Configurable via GLOBAL_MAIL_LABEL_TOP_CROP (0..1,
+                # default 0.5 = top half).
+                looks_like_4x6 = (
+                    abs(box_w - TARGET_W) <= 20
+                    and abs(box_h - TARGET_H) <= 20
+                )
+                target_ratio = TARGET_H / TARGET_W  # 1.5
+                much_taller = src_ratio > target_ratio * 1.15
+                should_top_crop = looks_like_4x6 or much_taller
+                if should_top_crop:
+                    try:
+                        top_crop = float(
+                            getattr(settings, "GLOBAL_MAIL_LABEL_TOP_CROP", 0.5) or 0.5
+                        )
+                    except Exception:
+                        top_crop = 0.5
+                    top_crop = max(0.1, min(top_crop, 1.0))
+                    if top_crop < 1.0:
+                        keep_h = box_h * top_crop
+                        box_y0 = box_y0 + (box_h - keep_h)
+                        box_h = keep_h
 
             # We'll now fit (box_x0, box_y0, box_w, box_h) into 4x6.
             inner_w = max(TARGET_W - 2 * margin_pt, 1.0)
