@@ -1172,7 +1172,15 @@ class OrderAdmin(admin.ModelAdmin):
         }),
     )
 
-    actions = ["export_orders_csv", "send_shipped_email", "print_shipping_labels", "create_shipping_labels", "mark_as_shipped", "mark_as_not_shipped"]
+    actions = [
+        "export_orders_csv",
+        "send_shipped_email",
+        "print_shipping_labels",
+        "create_shipping_labels",
+        "group_into_single_dpi_awb",
+        "mark_as_shipped",
+        "mark_as_not_shipped",
+    ]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -1791,7 +1799,319 @@ class OrderAdmin(admin.ModelAdmin):
             )
 
     create_shipping_labels.short_description = "📦 Create shipping labels via carrier API"
-    
+
+    # ------------------------------------------------------------------
+    # Group multiple orders into a single DPI AWB (certification + daily
+    # dispatch). All selected orders are shipped as items of ONE DPI
+    # create-order call, which forces them to share the same AWB as long
+    # as product + serviceLevel match.
+    # ------------------------------------------------------------------
+    def group_into_single_dpi_awb(self, request, queryset):
+        """Admin action: bundle the selected orders into a single DPI
+        create-order request so they share one AWB (transportation
+        document).
+
+        Honors GLOBAL_MAIL_TEST_MODE:
+          * True  → sandbox (safe, nothing billable)
+          * False → production (real shipments; tracking/awb persisted)
+        """
+        import requests
+        from django.urls import reverse
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        orders = list(queryset.order_by("id"))
+        if len(orders) < 2:
+            self.message_user(
+                request,
+                "Select at least 2 orders to group into one AWB.",
+                level=messages.WARNING,
+            )
+            return
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            self.message_user(
+                request,
+                "Missing GLOBAL_MAIL_API_KEY / _API_SECRET / _CUSTOMER_EKP on the server.",
+                level=messages.ERROR,
+            )
+            return
+
+        token = dpi._get_access_token()
+        if not token:
+            self.message_user(
+                request,
+                "DPI auth failed. Check Railway logs and your credentials.",
+                level=messages.ERROR,
+            )
+            return
+
+        items = []
+        products_seen = set()
+        services_seen = set()
+        for o in orders:
+            try:
+                sub_payload = dpi._prepare_shipment_data(o)
+                sub_items = sub_payload.get("items") or []
+                if not sub_items:
+                    continue
+                sub_items[0]["custRef"] = str(o.id)
+                items.append(sub_items[0])
+                products_seen.add(sub_items[0].get("product"))
+                services_seen.add(sub_items[0].get("serviceLevel"))
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f"Skipping Order #{o.id}: payload build failed ({exc}).",
+                    level=messages.WARNING,
+                )
+
+        if not items:
+            self.message_user(
+                request,
+                "No valid items to ship after building payload.",
+                level=messages.ERROR,
+            )
+            return
+
+        if len(products_seen) > 1 or len(services_seen) > 1:
+            self.message_user(
+                request,
+                (
+                    "⚠️ Selected orders use different products/service levels: "
+                    f"products={sorted(p for p in products_seen if p)}, "
+                    f"services={sorted(s for s in services_seen if s)}. DPI will split "
+                    "them into MULTIPLE AWBs (one per combination). Consider grouping "
+                    "by destination/product."
+                ),
+                level=messages.WARNING,
+            )
+
+        lead_order = orders[0]
+        _jr = f"AWB-{lead_order.id}-{len(items)}"[:17]
+        payload = {
+            "customerEkp": str(dpi.customer_ekp),
+            "orderStatus": "FINALIZE",
+            "paperwork": {
+                "contactName": (getattr(settings, "SHOP_CONTACT_NAME", "Marbaras"))[:35],
+                "jobReference": _jr,
+                "telephoneNumber": (getattr(settings, "SHOP_PHONE", "") or "+359888000000"),
+                "awbCopyCount": 1,
+            },
+            "items": items,
+        }
+
+        try:
+            r = requests.post(
+                dpi.orders_url,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                timeout=60,
+            )
+        except Exception as exc:
+            self.message_user(
+                request,
+                f"DPI request exception: {exc}",
+                level=messages.ERROR,
+            )
+            return
+
+        if r.status_code not in (200, 201):
+            self.message_user(
+                request,
+                f"DPI create-order failed: HTTP {r.status_code}. "
+                f"Body: {(r.text or '')[:600]}",
+                level=messages.ERROR,
+            )
+            return
+
+        body = r.json() or {}
+        shipments = body.get("shipments") or []
+        if not shipments:
+            self.message_user(
+                request,
+                f"DPI returned no shipments: {body}",
+                level=messages.ERROR,
+            )
+            return
+
+        cust_ref_to_order = {str(o.id): o for o in orders}
+        created_pairs = []
+        awbs_used = set()
+        for sh in shipments:
+            awb = sh.get("awb") or sh.get("awbNumber") or ""
+            if awb:
+                awbs_used.add(str(awb))
+            for it in sh.get("items") or []:
+                item_id = it.get("id") or it.get("itemId") or ""
+                barcode = it.get("barcode") or ""
+                cust_ref = str(it.get("custRef") or "").strip()
+                ord_obj = cust_ref_to_order.get(cust_ref)
+                if not ord_obj:
+                    continue
+
+                if not force_sandbox:
+                    try:
+                        _update_fields = []
+                        if item_id and str(item_id) != (ord_obj.shipment_id or ""):
+                            ord_obj.shipment_id = str(item_id)
+                            _update_fields.append("shipment_id")
+                        if awb and hasattr(ord_obj, "awb") and str(awb) != (ord_obj.awb or ""):
+                            ord_obj.awb = str(awb)
+                            _update_fields.append("awb")
+                        if barcode and barcode != (ord_obj.tracking_number or ""):
+                            ord_obj.tracking_number = barcode
+                            _update_fields.append("tracking_number")
+                        if _update_fields:
+                            ord_obj.save(update_fields=_update_fields)
+                    except Exception:
+                        import logging as _logging
+                        _logging.getLogger(__name__).exception(
+                            "group_into_single_dpi_awb: failed to persist order #%s",
+                            ord_obj.id,
+                        )
+
+                created_pairs.append(
+                    {
+                        "order_id": ord_obj.id,
+                        "full_name": ord_obj.full_name,
+                        "country": ord_obj.country,
+                        "item_id": str(item_id),
+                        "barcode": str(barcode),
+                        "awb": str(awb),
+                    }
+                )
+
+        request.session["dpi_grouped_result"] = {
+            "sandbox": force_sandbox,
+            "awbs": sorted(awbs_used),
+            "items": created_pairs,
+        }
+        self.message_user(
+            request,
+            (
+                f"✅ DPI order created with {len(created_pairs)} item(s) "
+                f"under AWB(s): {', '.join(sorted(awbs_used)) or '—'} "
+                f"(mode={'SANDBOX' if force_sandbox else 'PRODUCTION'})."
+            ),
+            level=messages.SUCCESS,
+        )
+        return HttpResponseRedirect(reverse("admin:dpi_grouped_result"))
+
+    group_into_single_dpi_awb.short_description = (
+        "🧾 Group selected orders into ONE DPI AWB (certification)"
+    )
+
+    def dpi_grouped_result_view(self, request):
+        """Display the result of the last group_into_single_dpi_awb action
+        with one-click links to print each item label + the shared AWB."""
+        from django.shortcuts import render
+        from django.urls import reverse
+
+        if not request.user.is_staff:
+            return HttpResponse("Staff only.", status=403, content_type="text/plain")
+
+        data = request.session.get("dpi_grouped_result") or {}
+        items = data.get("items") or []
+        awbs = data.get("awbs") or []
+
+        rows_html = []
+        for it in items:
+            try:
+                order_url = reverse("admin:ecommerce_order_change", args=[it["order_id"]])
+            except Exception:
+                order_url = "#"
+            try:
+                label_url = reverse(
+                    "admin:print_test_label_for_order", args=[it["order_id"]]
+                )
+            except Exception:
+                label_url = None
+            rows_html.append(
+                f'<tr>'
+                f'<td><a href="{order_url}" target="_blank">#{it["order_id"]}</a></td>'
+                f'<td>{it.get("full_name") or ""}</td>'
+                f'<td>{it.get("country") or ""}</td>'
+                f'<td><code>{it.get("barcode") or it.get("item_id") or ""}</code></td>'
+                f'<td><code>{it.get("awb") or ""}</code></td>'
+                f'</tr>'
+            )
+        rows = "".join(rows_html) or '<tr><td colspan="5">No data — run the action first.</td></tr>'
+
+        awb_buttons = ""
+        for awb in awbs:
+            if not awb:
+                continue
+            try:
+                awb_url = reverse("admin:print_awb_by_number") + f"?awb={awb}"
+            except Exception:
+                continue
+            awb_buttons += (
+                f'<a href="{awb_url}" target="_blank" '
+                f'style="display:inline-block;background:#7c3aed;color:#fff;'
+                f'padding:10px 18px;border-radius:6px;text-decoration:none;'
+                f'font-weight:600;margin:4px 6px 4px 0;">🧾 Print AWB {awb}</a>'
+            )
+        if not awb_buttons:
+            awb_buttons = '<span style="color:#94a3b8;">No AWB returned.</span>'
+
+        mode_banner = ""
+        if data.get("sandbox"):
+            mode_banner = (
+                '<div style="background:#fef3c7;border-left:4px solid #f59e0b;'
+                'padding:10px 14px;border-radius:4px;margin-bottom:16px;">'
+                '🧪 <strong>SANDBOX mode</strong> — these shipments are NOT real.'
+                '</div>'
+            )
+        else:
+            mode_banner = (
+                '<div style="background:#fee2e2;border-left:4px solid #dc2626;'
+                'padding:10px 14px;border-radius:4px;margin-bottom:16px;">'
+                '🚨 <strong>PRODUCTION mode</strong> — real billable shipments; '
+                'AWB + tracking are saved on each order.'
+                '</div>'
+            )
+
+        html = f"""
+        <!DOCTYPE html><html><head><meta charset="utf-8">
+        <title>DPI Grouped AWB result</title>
+        <style>
+          body{{font-family:-apple-system,sans-serif;max-width:1000px;margin:30px auto;padding:20px;}}
+          h1{{font-size:22px;}}
+          table{{border-collapse:collapse;width:100%;margin-top:12px;}}
+          th,td{{border:1px solid #e2e8f0;padding:8px 10px;text-align:left;font-size:13px;}}
+          th{{background:#f1f5f9;}}
+          code{{background:#f1f5f9;padding:1px 6px;border-radius:3px;font-size:12px;}}
+          a.back{{color:#475569;text-decoration:none;font-size:13px;}}
+        </style></head><body>
+        <p><a class="back" href="{reverse('admin:ecommerce_order_changelist')}">&larr; Back to orders</a></p>
+        <h1>🧾 DPI grouped AWB — result</h1>
+        {mode_banner}
+        <div style="margin:12px 0 18px 0;">{awb_buttons}</div>
+        <h3 style="font-size:15px;margin-top:24px;">Items in this order</h3>
+        <table>
+          <thead><tr>
+            <th>Order</th><th>Recipient</th><th>Country</th>
+            <th>Barcode / Item ID</th><th>AWB</th>
+          </tr></thead>
+          <tbody>{rows}</tbody>
+        </table>
+        <p style="margin-top:20px;color:#64748b;font-size:12px;">
+          To print an individual item label, open the order (click its number)
+          and use the &#x1F3F7;&#xFE0F; Label button, or run the bulk print
+          queue. The AWB buttons above download the shared transportation
+          document required by DPI.
+        </p>
+        </body></html>
+        """
+        return HttpResponse(html, content_type="text/html; charset=utf-8")
+
     def get_urls(self):
         """Add custom URLs for printing shipping labels and barcode scanner."""
         from django.urls import path
@@ -1836,6 +2156,11 @@ class OrderAdmin(admin.ModelAdmin):
                 'print-awb/',
                 self.admin_site.admin_view(self.print_awb_by_number_view),
                 name='print_awb_by_number',
+            ),
+            path(
+                'dpi-grouped-result/',
+                self.admin_site.admin_view(self.dpi_grouped_result_view),
+                name='dpi_grouped_result',
             ),
             path(
                 'print-test-label/',
