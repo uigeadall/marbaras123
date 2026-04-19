@@ -994,6 +994,7 @@ class GlobalMailShipping(ShippingCarrierBase):
         self.auth_url = f'{self.host}/dpi/v1/auth/accesstoken'
         self.orders_url = f'{self.host}/dpi/shipping/v1/orders'
         self.item_label_url = f'{self.host}/dpi/shipping/v1/items'  # append /{itemId}/label
+        self.shipments_url = f'{self.host}/dpi/shipping/v1/shipments'  # append /{awb}/awblabels or /itemlabels
         logger.info(
             f"DPI Global Mail initialized · mode={'TEST (sandbox)' if self.test_mode else 'PRODUCTION'} · host={self.host}"
         )
@@ -1065,6 +1066,47 @@ class GlobalMailShipping(ShippingCarrierBase):
         if fmt:
             params['format'] = fmt
         return params
+
+    # ------------------------------------------------------------------
+    # AWB (Airwaybill) transportation document
+    # ------------------------------------------------------------------
+    def get_awb_label(self, awb_number: str) -> Optional[bytes]:
+        """Fetch the AWB (transportation document) PDF for a given AWB number.
+
+        The AWB is a master dispatch document that bundles all items shipped
+        under the same product+serviceLevel combination into one shipment.
+        Required by DPI during certification and every pickup.
+
+        Endpoint: GET /dpi/shipping/v1/shipments/{awb}/awblabels
+        Returns raw PDF bytes on success, None on failure.
+        """
+        if not awb_number:
+            logger.error("get_awb_label called without an AWB number")
+            return None
+        token = self._get_access_token()
+        if not token:
+            logger.error("DPI: cannot fetch AWB label without access token")
+            return None
+        url = f"{self.shipments_url}/{awb_number}/awblabels"
+        try:
+            r = requests.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/pdf",
+                },
+                timeout=30,
+            )
+        except Exception as exc:
+            logger.error(f"DPI AWB label fetch exception: {exc}")
+            return None
+        if r.status_code != 200 or not r.content:
+            logger.error(
+                f"DPI AWB label HTTP {r.status_code}: {(r.text or '')[:400]}"
+            )
+            return None
+        logger.info(f"DPI: fetched AWB label for {awb_number} ({len(r.content)} bytes)")
+        return r.content
 
     # ------------------------------------------------------------------
     # OAuth 2.0 access token (cached 4h to stay under the 5h expiry)

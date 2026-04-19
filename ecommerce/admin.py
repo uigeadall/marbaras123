@@ -1790,6 +1790,11 @@ class OrderAdmin(admin.ModelAdmin):
                 name='probe_dhl_api',
             ),
             path(
+                'print-awb/',
+                self.admin_site.admin_view(self.print_awb_by_number_view),
+                name='print_awb_by_number',
+            ),
+            path(
                 'print-test-label/',
                 self.admin_site.admin_view(self.print_test_label_view),
                 name='print_test_label',
@@ -2037,6 +2042,82 @@ class OrderAdmin(admin.ModelAdmin):
             'site_title': getattr(self.admin_site, 'site_title', 'Admin'),
         }
         return render(request, 'admin/probe_dhl_api.html', ctx)
+
+    def print_awb_by_number_view(self, request):
+        """
+        Fetch & stream the AWB (Airwaybill / transportation document) PDF
+        for any DPI AWB number. Accepts the number via GET param (?awb=...)
+        or renders a small form so the admin can paste it in.
+
+        Required by DPI for pickup and during the go-live certification.
+        URL: /admin/ecommerce/order/print-awb/?awb=XXXXXXX
+        """
+        from django.shortcuts import render
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        if not request.user.is_staff:
+            return HttpResponse("Staff only.", status=403, content_type="text/plain")
+
+        awb = (request.GET.get("awb") or request.POST.get("awb") or "").strip()
+
+        if not awb:
+            html = """
+            <!DOCTYPE html><html><head><meta charset="utf-8">
+            <title>Print DPI AWB</title>
+            <style>
+              body{font-family:-apple-system,sans-serif;max-width:600px;margin:40px auto;padding:20px;}
+              h1{font-size:20px;margin-bottom:8px;}
+              p{color:#64748b;margin-bottom:20px;}
+              input[type=text]{width:100%;padding:10px;font-size:14px;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;}
+              button{margin-top:12px;padding:10px 16px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;}
+              button:hover{background:#6d28d9;}
+              .hint{background:#f1f5f9;padding:12px;border-radius:6px;margin-top:16px;font-size:13px;color:#475569;}
+            </style></head><body>
+            <h1>&#x1F9FE; Print DPI AWB Label</h1>
+            <p>Enter an AWB (Airwaybill) number. The transportation document PDF
+            will open in a new tab.</p>
+            <form method="GET" action="">
+              <label>AWB Number</label>
+              <input type="text" name="awb" placeholder="e.g. CXNLABC123456789" autofocus required />
+              <button type="submit">Fetch AWB</button>
+            </form>
+            <div class="hint">
+              <strong>Tip:</strong> You can find the AWB number in the order's
+              detail page after the first label was printed. For marketplace
+              orders there is a dedicated &#x1F9FE; AWB button in the list view.
+            </div>
+            </body></html>
+            """
+            return HttpResponse(html, content_type="text/html; charset=utf-8")
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            return HttpResponse(
+                "Missing GLOBAL_MAIL_API_KEY / GLOBAL_MAIL_API_SECRET / GLOBAL_MAIL_CUSTOMER_EKP.",
+                status=400,
+                content_type="text/plain",
+            )
+
+        pdf_bytes = dpi.get_awb_label(awb)
+        if not pdf_bytes:
+            return HttpResponse(
+                f"AWB fetch failed for '{awb}'. Check Railway logs for the "
+                f"exact HTTP status/body from DPI. Common causes:\n"
+                f"  • The AWB number is wrong or doesn't exist for this EKP.\n"
+                f"  • The shipment hasn't been FINALIZED yet on DPI's side.\n"
+                f"  • Sandbox/production mismatch "
+                f"(mode={'sandbox' if force_sandbox else 'production'}).",
+                status=502,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        refitted = GlobalMailShipping.refit_pdf_to_4x6(pdf_bytes)
+        response = HttpResponse(refitted, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="AWB-{awb}.pdf"'
+        response["X-DPI-AWB"] = awb
+        return response
 
     def print_test_label_view(self, request):
         """
@@ -3074,6 +3155,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         "external_order_id",
         "status_badge",
         "print_label_link",
+        "print_awb_link",
         "buyer_name",
         "city",
         "country",
@@ -3166,6 +3248,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 name="marketplace_order_print_label",
             ),
             path(
+                "<int:pk>/print-awb/",
+                self.admin_site.admin_view(self.print_awb_view),
+                name="marketplace_order_print_awb",
+            ),
+            path(
                 "bulk-print/",
                 self.admin_site.admin_view(self.bulk_print_view),
                 name="marketplace_order_bulk_print",
@@ -3228,6 +3315,28 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             url,
             bg,
             label,
+        )
+
+    @admin.display(description="🧾 AWB")
+    def print_awb_link(self, obj):
+        """Render a button that downloads the AWB transportation document.
+        Only shown when the order already has an AWB number."""
+        from django.urls import reverse
+
+        if not obj.awb:
+            return format_html(
+                '<span style="color:#94a3b8;font-size:11px;">—</span>'
+            )
+        try:
+            url = reverse("admin:marketplace_order_print_awb", args=[obj.pk])
+        except Exception:
+            return ""
+        return format_html(
+            '<a href="{}" target="_blank" title="AWB {}" '
+            'style="background:#7c3aed;color:#fff;padding:3px 8px;border-radius:4px;'
+            'text-decoration:none;font-size:11px;white-space:nowrap;">🧾 AWB</a>',
+            url,
+            obj.awb,
         )
 
     # ------------------------------------------------------------------
@@ -3524,6 +3633,65 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         )
         response["X-DPI-Item-Id"] = str(item_id)
         response["X-DPI-AWB"] = str(awb)
+        return response
+
+    # ------------------------------------------------------------------
+    # AWB (transportation document) — required by DPI certification
+    # ------------------------------------------------------------------
+    def print_awb_view(self, request, pk):
+        """Fetch the AWB (Airwaybill / transportation document) PDF for a
+        marketplace order whose shipment has already been created.
+
+        The AWB is the master dispatch document that groups items with the
+        same product+serviceLevel under a single shipment number. DPI requires
+        it for pickup and during certification.
+        """
+        from django.shortcuts import get_object_or_404
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        if not request.user.is_staff:
+            return HttpResponse("Staff only.", status=403, content_type="text/plain")
+
+        mo = get_object_or_404(MarketplaceOrder, pk=pk)
+
+        if not mo.awb:
+            return HttpResponse(
+                "This order has no AWB yet. Print the item label first — "
+                "that call creates the DPI shipment and returns the AWB "
+                "number. Then come back here to print the AWB document.",
+                status=400,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            return HttpResponse(
+                "Missing GLOBAL_MAIL_API_KEY / GLOBAL_MAIL_API_SECRET / GLOBAL_MAIL_CUSTOMER_EKP.",
+                status=400,
+                content_type="text/plain",
+            )
+
+        pdf_bytes = dpi.get_awb_label(mo.awb)
+        if not pdf_bytes:
+            return HttpResponse(
+                f"AWB fetch failed for {mo.awb}. Check Railway logs for the "
+                f"exact HTTP status/body from DPI. Common causes:\n"
+                f"  • The shipment hasn't been FINALIZED on DPI's side yet.\n"
+                f"  • The AWB number has expired or was already dispatched.\n"
+                f"  • You're in sandbox but the AWB was created in production "
+                f"(or vice versa).",
+                status=502,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        refitted = GlobalMailShipping.refit_pdf_to_4x6(pdf_bytes)
+        response = HttpResponse(refitted, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'inline; filename="AWB-{mo.awb}.pdf"'
+        )
+        response["X-DPI-AWB"] = str(mo.awb)
         return response
 
     # ------------------------------------------------------------------
