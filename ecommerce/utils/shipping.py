@@ -1227,10 +1227,13 @@ class GlobalMailShipping(ShippingCarrierBase):
                 'tracking_number': tracking or awb or (f"DPI-TEST-{order.id}" if self.test_mode else None),
                 'label_url': label_b64,
                 'shipment_id': str(item_id) if item_id else (awb or None),
+                'awb': str(awb) if awb else None,
                 'order_id_dpi': data.get('orderId'),
                 'test_mode': self.test_mode,
             }
-            logger.info(f"✅ DPI shipment created: tracking={result['tracking_number']}")
+            logger.info(
+                f"✅ DPI shipment created: tracking={result['tracking_number']} awb={result['awb']}"
+            )
             return result
         except Exception as exc:
             logger.error(f"DPI create_shipment exception: {exc}", exc_info=True)
@@ -1678,6 +1681,7 @@ def auto_create_shipping_label(order_id: int) -> Optional[Dict[str, Any]]:
         tracking = result.get('tracking_number')
         label_url = result.get('label_url')
         shipment_id = result.get('shipment_id')
+        awb = result.get('awb')
 
         if tracking and tracking != order.tracking_number:
             order.tracking_number = tracking
@@ -1688,6 +1692,9 @@ def auto_create_shipping_label(order_id: int) -> Optional[Dict[str, Any]]:
         if shipment_id and shipment_id != order.shipment_id:
             order.shipment_id = shipment_id
             update_fields.append('shipment_id')
+        if awb and hasattr(order, 'awb') and awb != order.awb:
+            order.awb = awb
+            update_fields.append('awb')
         if not order.shipping_carrier:
             order.shipping_carrier = carrier_name
             update_fields.append('shipping_carrier')

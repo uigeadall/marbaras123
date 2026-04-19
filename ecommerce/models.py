@@ -741,6 +741,13 @@ class Order(models.Model):
     tracking_number = models.CharField(max_length=100, blank=True, null=True, help_text="Tracking number from carrier")
     shipping_label_url = models.URLField(blank=True, null=True, help_text="URL to shipping label PDF")
     shipment_id = models.CharField(max_length=100, blank=True, null=True, help_text="Carrier shipment ID")
+    awb = models.CharField(
+        max_length=80,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="DPI / Global Mail Airwaybill number (master transportation document)",
+    )
     is_shipped = models.BooleanField(default=False, help_text="Mark order as shipped", db_index=True)
     shipped_at = models.DateTimeField(blank=True, null=True, help_text="Date and time when order was shipped", db_index=True)
 

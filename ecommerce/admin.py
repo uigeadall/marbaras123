@@ -1151,17 +1151,17 @@ class OrderAdmin(admin.ModelAdmin):
         }
         js = ('admin/js/order_admin.js',)
 
-    search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number")
+    search_fields = ("id", "full_name", "email", "phone", "address", "city", "postal_code", "tracking_number", "awb")
     list_filter = ("is_shipped", "shipping_option", "shipping_carrier", "coupon", "created_at")
     list_select_related = ("shipping_option", "coupon", "user")
-    readonly_fields = ("created_at", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste", "shipped_at")
+    readonly_fields = ("created_at", "shipment_id", "shipping_label_url", "create_label_button", "fedex_copy_paste", "shipped_at", "awb_with_print_link")
     
     fieldsets = (
         ("Order Information", {
             "fields": ("user", "email", "created_at", "total_price", "coupon")
         }),
         ("Shipping", {
-            "fields": ("shipping_option", "shipping_carrier", "create_label_button", "tracking_number", "shipment_id", "shipping_label_url", "is_shipped", "shipped_at")
+            "fields": ("shipping_option", "shipping_carrier", "create_label_button", "tracking_number", "awb_with_print_link", "shipment_id", "shipping_label_url", "is_shipped", "shipped_at")
         }),
         ("Customer Details", {
             "fields": ("full_name", "phone", "address", "city", "postal_code", "country")
@@ -1435,6 +1435,31 @@ class OrderAdmin(admin.ModelAdmin):
         url = reverse('admin:print_shipping_label', args=[obj.pk])
         return format_html('<a href="{}" target="_blank" style="color: #667eea; font-weight: bold;">🖨️ Print</a>', url)
     print_label_link.short_description = "Label"
+
+    @admin.display(description="AWB (DPI Airwaybill)")
+    def awb_with_print_link(self, obj):
+        """Show the AWB number plus a button to fetch & print the AWB PDF."""
+        from django.urls import reverse
+
+        awb = (getattr(obj, "awb", "") or "").strip()
+        if not awb:
+            return format_html(
+                '<span style="color:#94a3b8;font-size:13px;">— (none yet; '
+                'print a DPI label first so DPI returns an AWB number)</span>'
+            )
+        try:
+            url = reverse("admin:print_awb_by_number") + f"?awb={awb}"
+        except Exception:
+            return awb
+        return format_html(
+            '<code style="font-size:13px;font-weight:600;">{}</code> '
+            '&nbsp; <a href="{}" target="_blank" '
+            'style="background:#7c3aed;color:#fff;padding:3px 10px;border-radius:4px;'
+            'text-decoration:none;font-size:12px;font-weight:600;">'
+            '🧾 Print AWB</a>',
+            awb,
+            url,
+        )
     
     @admin.display(description="Create Label")
     def create_label_button(self, obj):
@@ -1846,7 +1871,12 @@ class OrderAdmin(admin.ModelAdmin):
             order.tracking_number = label_data.get('tracking_number')
             order.shipping_label_url = label_data.get('label_url')
             order.shipment_id = label_data.get('shipment_id')
-            order.save(update_fields=['tracking_number', 'shipping_label_url', 'shipment_id'])
+            _update_fields = ['tracking_number', 'shipping_label_url', 'shipment_id']
+            _awb = label_data.get('awb')
+            if _awb and hasattr(order, 'awb'):
+                order.awb = _awb
+                _update_fields.append('awb')
+            order.save(update_fields=_update_fields)
             messages.success(request, f"✅ Successfully created shipping label for Order #{order.id}. Tracking: {order.tracking_number}")
             logger.info(f"✅ Successfully created label for Order #{order.id}: tracking={order.tracking_number}")
         else:
