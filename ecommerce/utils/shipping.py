@@ -974,7 +974,23 @@ class GlobalMailShipping(ShippingCarrierBase):
         self.customer_ekp = getattr(settings, 'GLOBAL_MAIL_CUSTOMER_EKP', '')
         settings_test = bool(getattr(settings, 'GLOBAL_MAIL_TEST_MODE', True))
         self.test_mode = True if force_sandbox else settings_test
-        self.host = 'https://api-sandbox.dhl.com' if self.test_mode else 'https://api.dhl.com'
+        # Allow custom host override via GLOBAL_MAIL_API_URL. We accept either
+        # a base host like "https://api.dhl.com" or a full URL containing
+        # "/dpi/" — in either case we extract just the host portion.
+        custom_url = (getattr(settings, 'GLOBAL_MAIL_API_URL', '') or '').strip()
+        host = ''
+        if custom_url and 'dpi' in custom_url.lower():
+            # Extract scheme + host (drop /dpi/... path)
+            try:
+                from urllib.parse import urlparse
+                p = urlparse(custom_url)
+                if p.scheme and p.netloc:
+                    host = f"{p.scheme}://{p.netloc}"
+            except Exception:
+                host = ''
+        if not host:
+            host = 'https://api-sandbox.dhl.com' if self.test_mode else 'https://api.dhl.com'
+        self.host = host
         self.auth_url = f'{self.host}/dpi/v1/auth/accesstoken'
         self.orders_url = f'{self.host}/dpi/shipping/v1/orders'
         self.item_label_url = f'{self.host}/dpi/shipping/v1/items'  # append /{itemId}/label
