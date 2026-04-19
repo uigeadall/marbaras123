@@ -16,6 +16,10 @@
        style="background: #f59e0b; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600;">
       🔍 DHL probe / test order
     </a>
+    <a href="{% url 'admin:print_awb_by_number' %}" target="_blank"
+       style="background: #7c3aed; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600;">
+      🧾 Print DPI AWB
+    </a>
   </div>
 
   {% if dpi_status %}
