@@ -1222,9 +1222,9 @@ class GlobalMailShipping(ShippingCarrierBase):
         total_weight_g = int(total_weight_kg * 1000)
         dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
         default_product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
-        # Built-in fallback for common non-EU destinations where GPT isn't valid.
-        # GPP (Packet Plus / Priority worldwide) is the usual DPI product for
-        # worldwide coverage. Override any of these via settings.GLOBAL_MAIL_PRODUCT_MAP.
+        # Built-in fallback for common non-EU destinations where GPT isn't valid
+        # in PRODUCTION. In the sandbox environment only GPT is typically
+        # available for every destination, so we skip the non-EU mapping there.
         _BUILTIN_NON_EU_PRODUCT_MAP = {
             "US": "GPP", "CA": "GPP", "AU": "GPP", "NZ": "GPP",
             "JP": "GPP", "KR": "GPP", "SG": "GPP", "HK": "GPP",
@@ -1233,7 +1233,12 @@ class GlobalMailShipping(ShippingCarrierBase):
             "CH": "GPP", "NO": "GPP", "IS": "GPP",
             "GB": "GPP",  # Great Britain is post-Brexit non-EU
         }
-        product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **(getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {})}
+        user_map = getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {}
+        if self.test_mode:
+            # Sandbox: only apply the user's explicit override, never the built-in.
+            product_map = user_map
+        else:
+            product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **user_map}
         product = product_map.get(dest) or product_map.get(dest.upper()) or default_product
         service_map = getattr(settings, 'GLOBAL_MAIL_SERVICE_MAP', {}) or {}
         default_service = getattr(settings, 'GLOBAL_MAIL_SERVICE_LEVEL', 'PRIORITY')
