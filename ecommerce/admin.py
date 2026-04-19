@@ -1202,19 +1202,37 @@ class OrderAdmin(admin.ModelAdmin):
     def coupon_code(self, obj):
         return obj.coupon.code if obj.coupon else "-"
     
-    @admin.display(description="🧪 Test")
+    @admin.display(description="🏷️ Label")
     def test_label_link(self, obj):
-        """Small link to create a sandbox DPI label for this order (no DB changes)."""
+        """Create a DPI label for this order.
+
+        Behaviour depends on ``GLOBAL_MAIL_TEST_MODE``:
+          * True  → sandbox (blue "Test label", no DB changes).
+          * False → production (red "Create label — REAL", persists AWB
+                    & tracking to the order).
+        """
         from django.urls import reverse
         try:
             url = reverse('admin:print_test_label_for_order', args=[obj.pk])
         except Exception:
             return ""
+        is_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        if is_sandbox:
+            bg = "#3b82f6"
+            label = "🧪 Test label"
+            title = "Sandbox — nothing saved, no real shipment"
+        else:
+            bg = "#dc2626"
+            label = "📦 Create label"
+            title = (
+                "PRODUCTION — real billable shipment. Tracking + AWB will "
+                "be saved to this order."
+            )
         return format_html(
-            '<a href="{}" target="_blank" style="background:#3b82f6;color:#fff;'
+            '<a href="{}" target="_blank" title="{}" style="background:{};color:#fff;'
             'padding:3px 8px;border-radius:4px;text-decoration:none;font-size:11px;'
-            'white-space:nowrap;">🧪 Test label</a>',
-            url,
+            'white-space:nowrap;">{}</a>',
+            url, title, bg, label,
         )
 
     @admin.display(description="Status", ordering="is_shipped")
@@ -2285,22 +2303,29 @@ class OrderAdmin(admin.ModelAdmin):
 
     def print_test_label_for_order_view(self, request, order_id):
         """
-        Create a DPI sandbox shipment using the real data of an existing
-        Order (recipient, items, weight, etc.) and stream the PDF label
-        back inline. Nothing is saved to the database — this is pure
-        test printing against api-sandbox.dhl.com regardless of
-        GLOBAL_MAIL_TEST_MODE.
+        Create a DPI shipment using the real data of an existing Order
+        (recipient, items, weight, etc.) and stream the PDF label back
+        inline.
+
+        Mode is controlled by ``GLOBAL_MAIL_TEST_MODE``:
+          * ``True``  → hits api-sandbox.dhl.com, DOES NOT save anything
+                        to the order (pure test printing).
+          * ``False`` → hits api.dhl.com, creates a REAL billable
+                        shipment and persists tracking / AWB / shipment_id
+                        back onto the order.
         """
         import requests
         from django.shortcuts import get_object_or_404
         from django.http import HttpResponse, HttpResponseForbidden
+        from django.utils import timezone
         from ecommerce.utils.shipping import GlobalMailShipping
 
         if not request.user.is_superuser:
             return HttpResponseForbidden("Superuser only.")
 
         order = get_object_or_404(Order, pk=order_id)
-        dpi = GlobalMailShipping(force_sandbox=True)
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
 
         if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
             return HttpResponse(
@@ -2364,14 +2389,45 @@ class OrderAdmin(admin.ModelAdmin):
         except Exception as exc:
             return HttpResponse(f"Label fetch exception: {exc}", status=502, content_type="text/plain")
 
+        if not force_sandbox:
+            try:
+                _update_fields = []
+                tracking = ""
+                try:
+                    _first = shipments[0].get("items") or []
+                    if _first:
+                        tracking = _first[0].get("barcode") or ""
+                except Exception:
+                    tracking = ""
+                if item_id and str(item_id) != (order.shipment_id or ""):
+                    order.shipment_id = str(item_id)
+                    _update_fields.append("shipment_id")
+                if awb and hasattr(order, "awb") and str(awb) != (order.awb or ""):
+                    order.awb = str(awb)
+                    _update_fields.append("awb")
+                if tracking and tracking != (order.tracking_number or ""):
+                    order.tracking_number = tracking
+                    _update_fields.append("tracking_number")
+                if _update_fields:
+                    order.save(update_fields=_update_fields)
+            except Exception:
+                import logging as _logging
+                _logging.getLogger(__name__).exception(
+                    "print_test_label_for_order_view: failed to persist label data "
+                    "for Order #%s (awb=%s, item=%s)",
+                    order.id, awb, item_id,
+                )
+
         pdf_bytes = GlobalMailShipping.refit_pdf_to_4x6(lr.content)
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        _prefix = "dpi-test" if force_sandbox else "dpi"
         response["Content-Disposition"] = (
-            f'inline; filename="dpi-test-order-{order.id}-item-{item_id}.pdf"'
+            f'inline; filename="{_prefix}-order-{order.id}-item-{item_id}.pdf"'
         )
         response["X-DPI-Item-Id"] = str(item_id)
         response["X-DPI-AWB"] = str(awb)
         response["X-DPI-Order-Id"] = str(order.id)
+        response["X-DPI-Mode"] = "sandbox" if force_sandbox else "production"
         return response
 
     def _run_dhl_probes(self, key: str, secret: str, account: str):
