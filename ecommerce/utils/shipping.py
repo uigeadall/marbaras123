@@ -1006,10 +1006,26 @@ class GlobalMailShipping(ShippingCarrierBase):
     def refit_pdf_to_4x6(pdf_bytes: bytes, margin_pt: float = 6.0) -> bytes:
         """Scale-fit the first page of a PDF onto a 4x6 inch page.
 
-        Used for Zebra ZP-505 and similar thermal printers that cut off
-        content near the bottom/edge if the PDF is generated at A5 or A6.
-        Gracefully returns the original bytes if pypdf is not installed
-        or the transformation fails.
+        DPI Post & Parcel labels are often returned as A4/A5 with the
+        actual label occupying only one quadrant (the rest is receipt /
+        tear-off / blank). We therefore:
+
+          1. Prefer the trimbox → cropbox → mediabox, in that order,
+             because the trim/crop box usually exposes just the visible
+             label area.
+          2. If the source is an A4/A5 portrait page (ratio close to
+             1:1.41 and significantly larger than 4x6), assume the label
+             is printed in the TOP HALF and crop to that half. This
+             matches how Deutsche Post International renders labels in
+             both sandbox and production.
+          3. Preserve aspect ratio — scale-fit the chosen region into the
+             4x6 target, centered.
+
+        Used for Zebra ZP-505 and similar thermal printers. Gracefully
+        returns the original bytes if pypdf is not installed or the
+        transformation fails.
+
+        Disable via env var GLOBAL_MAIL_LABEL_FORCE_4X6=False.
         """
         try:
             from io import BytesIO
@@ -1023,17 +1039,53 @@ class GlobalMailShipping(ShippingCarrierBase):
             if not reader.pages:
                 return pdf_bytes
             src = reader.pages[0]
-            mb = src.mediabox
-            src_w = float(mb.width)
-            src_h = float(mb.height)
-            if src_w <= 0 or src_h <= 0:
+
+            # Pick the tightest box the PDF exposes: trim > crop > media.
+            box = None
+            for attr in ("trimbox", "cropbox", "mediabox"):
+                b = getattr(src, attr, None)
+                if b is None:
+                    continue
+                try:
+                    if float(b.width) > 0 and float(b.height) > 0:
+                        box = b
+                        break
+                except Exception:
+                    continue
+            if box is None:
                 return pdf_bytes
 
+            box_x0 = float(box.left)
+            box_y0 = float(box.bottom)
+            box_w = float(box.width)
+            box_h = float(box.height)
+            if box_w <= 0 or box_h <= 0:
+                return pdf_bytes
+
+            # Heuristic: A4/A5 portrait labels usually put the printable
+            # label in the top half and leave the bottom half empty.
+            # If source is meaningfully larger than 4x6 AND aspect is close
+            # to standard paper, take just the top half (content region).
+            a4_ratio = 842.0 / 595.0  # ~1.414
+            src_ratio = box_h / box_w if box_w else 0
+            looks_like_paper = abs(src_ratio - a4_ratio) < 0.05 or abs(src_ratio - (1.0 / a4_ratio)) < 0.05
+            significantly_bigger = box_w > TARGET_W * 1.3 or box_h > TARGET_H * 1.3
+            if looks_like_paper and significantly_bigger and src_ratio > 1.0:
+                # Keep the upper half of the page (where DPI/DHL prints
+                # the actual label) – the lower half is the receipt /
+                # tear-off strip that's typically blank.
+                box_y0 = box_y0 + box_h / 2.0
+                box_h = box_h / 2.0
+
+            # We'll now fit (box_x0, box_y0, box_w, box_h) into 4x6.
             inner_w = max(TARGET_W - 2 * margin_pt, 1.0)
             inner_h = max(TARGET_H - 2 * margin_pt, 1.0)
-            scale = min(inner_w / src_w, inner_h / src_h)
-            tx = (TARGET_W - src_w * scale) / 2.0
-            ty = (TARGET_H - src_h * scale) / 2.0
+            scale = min(inner_w / box_w, inner_h / box_h)
+            # Center the scaled content inside the target.
+            scaled_w = box_w * scale
+            scaled_h = box_h * scale
+            tx = (TARGET_W - scaled_w) / 2.0 - box_x0 * scale
+            ty = (TARGET_H - scaled_h) / 2.0 - box_y0 * scale
 
             writer = PdfWriter()
             page = writer.add_blank_page(width=TARGET_W, height=TARGET_H)
