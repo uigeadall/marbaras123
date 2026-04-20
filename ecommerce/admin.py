@@ -1836,6 +1836,18 @@ class OrderAdmin(admin.ModelAdmin):
 
         action = (request.POST.get("action") or "").strip() if request.method == "POST" else ""
 
+        # A click on a row's delete button submits name=del value=<idx>
+        # without setting action — detect it here and switch branches.
+        delete_row_idx = None
+        if request.method == "POST":
+            _del_raw = request.POST.get("del")
+            if _del_raw not in (None, ""):
+                try:
+                    delete_row_idx = int(_del_raw)
+                    action = "delete"
+                except ValueError:
+                    delete_row_idx = None
+
         # ------ STEP 2: user has edited the preview table → emit CSV ------
         if request.method == "POST" and action == "export":
             try:
@@ -1925,7 +1937,7 @@ class OrderAdmin(admin.ModelAdmin):
             return response
 
         # ------ STEP 1: user pasted addresses → render editable preview ---
-        if request.method == "POST" and action in ("preview", "clear", ""):
+        if request.method == "POST" and action in ("preview", "clear", "delete", ""):
             text = request.POST.get("addresses", "") or ""
             ekp = request.POST.get("ekp", default_ekp).strip() or default_ekp
             product = (
@@ -1967,6 +1979,8 @@ class OrderAdmin(admin.ModelAdmin):
             # Keep previously-parsed rows submitted via the hidden
             # `row_N_*` inputs so they are not lost when the user
             # pastes more addresses. A "Clear list" submit drops them.
+            # An explicit per-row delete (action=delete + del=N) skips
+            # that one index.
             rows = []
             if action != "clear":
                 try:
@@ -1974,6 +1988,8 @@ class OrderAdmin(admin.ModelAdmin):
                 except ValueError:
                     existing_n = 0
                 for i in range(existing_n):
+                    if action == "delete" and i == delete_row_idx:
+                        continue
                     name = (request.POST.get(f"row_{i}_name") or "").strip()
                     if not name:
                         continue
@@ -2018,7 +2034,10 @@ class OrderAdmin(admin.ModelAdmin):
                         ).strip(),
                     })
 
-            blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
+            if action in ("clear", "delete"):
+                blocks = []
+            else:
+                blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
             skipped = 0
             starting_idx = len(rows)
             for idx, b in enumerate(blocks):

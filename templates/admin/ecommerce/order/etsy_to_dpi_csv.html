@@ -330,43 +330,15 @@ The Netherlands
               {% endif %}
             </td>
             <td style="text-align:center;">
-              <button type="button" class="btn-delete-row" title="Delete this row"
-                      onclick="e2dpiDeleteRow(this);">🗑️</button>
+              <button type="submit" name="del" value="{{ forloop.counter0 }}"
+                      class="btn-delete-row" formnovalidate
+                      title="Delete this row (saved on server — survives refresh)"
+                      onclick="return confirm('Delete this row?');">🗑️</button>
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-
-      <script>
-        function e2dpiDeleteRow(btn) {
-          if (!confirm("Delete this row?")) return;
-          var tr = btn.closest("tr");
-          if (!tr) return;
-          tr.parentNode.removeChild(tr);
-          var rows = document.querySelectorAll("#e2dpi-table tbody tr");
-          rows.forEach(function (r, i) {
-            var cell = r.querySelector(".row-number strong");
-            if (cell) cell.textContent = String(i + 1);
-          });
-          var countLabel = document.getElementById("e2dpi-row-count");
-          if (countLabel) countLabel.textContent = String(rows.length);
-          var exportBtn = document.getElementById("e2dpi-export-btn");
-          if (exportBtn) {
-            exportBtn.textContent =
-              "⬇️ Export CSV (" + rows.length +
-              (rows.length === 1 ? " row)" : " rows)");
-          }
-          if (rows.length === 0) {
-            var summary = document.querySelector(".e2dpi-summary");
-            if (summary) summary.style.display = "none";
-            var bar = document.querySelector(".e2dpi-export-bar");
-            if (bar) bar.style.display = "none";
-            var tbl = document.getElementById("e2dpi-table");
-            if (tbl) tbl.style.display = "none";
-          }
-        }
-      </script>
 
       <div class="e2dpi-export-bar">
         <button type="submit" name="action" value="export" class="btn btn-export" id="e2dpi-export-btn">
