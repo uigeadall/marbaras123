@@ -49,7 +49,7 @@
   .e2dpi-card textarea {
     width: 100%;
     box-sizing: border-box;
-    min-height: 220px;
+    min-height: 200px;
     padding: 10px;
     border: 1px solid #d1d5db;
     border-radius: 6px;
@@ -78,17 +78,17 @@
     font-size: 12.5px;
     font-family: inherit;
   }
-  .e2dpi-parse-btn {
-    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  .btn {
+    border: none; border-radius: 8px;
+    padding: 10px 18px; font-weight: 700;
+    font-size: 14px; cursor: pointer;
     color: white;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
   }
-  .e2dpi-parse-btn:hover { opacity: .92; }
+  .btn:hover { opacity: .92; }
+  .btn-parse   { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+  .btn-export  { background: linear-gradient(135deg, #059669, #047857); padding: 12px 24px; font-size: 15px; }
+  .btn-clear   { background: #ef4444; }
+  .btn-ghost   { background: #6b7280; }
 
   .e2dpi-hint {
     background: #fef3c7;
@@ -105,9 +105,10 @@
     background: #f0fdf4;
     border: 1px solid #86efac;
     border-radius: 8px;
-    padding: 9px 14px;
+    padding: 10px 14px;
     font-size: 12.5px;
     margin: 16px 0 10px 0;
+    align-items: center;
   }
   .e2dpi-summary strong { color: #065f46; }
 
@@ -161,15 +162,6 @@
     border-radius: 10px;
     border: 1px solid #86efac;
   }
-  .btn-export {
-    background: linear-gradient(135deg, #059669, #047857);
-    color: white; border: none;
-    padding: 11px 22px;
-    border-radius: 8px;
-    font-weight: 800; font-size: 14px;
-    cursor: pointer;
-  }
-  .btn-export:hover { opacity: .9; }
   .col-small { width: 60px; }
   .col-md    { width: 110px; }
 </style>
@@ -177,13 +169,12 @@
 <div class="e2dpi-wrap">
   <div class="e2dpi-hero">
     <h1>📋 Etsy / Amazon → DPI CSV</h1>
-    <p>Paste addresses below, hit <strong>Parse</strong>, edit each row in the table that appears, then <strong>Export CSV</strong>.</p>
+    <p>Paste addresses, click <strong>Parse &amp; add below</strong> to append them to the list. Repeat as many times as needed. When done, <strong>Export CSV</strong>.</p>
   </div>
 
-  {# -------- PASTE / SETTINGS FORM -------- #}
+  {# ========== SINGLE FORM: holds paste area, settings AND the rows ========== #}
   <form method="post">
     {% csrf_token %}
-    <input type="hidden" name="action" value="preview">
 
     <div class="e2dpi-grid">
       <div class="e2dpi-card">
@@ -198,14 +189,15 @@ treilerweg
 8c
 2583 DC Den Haag
 The Netherlands
-0611957095">{{ addresses_raw }}</textarea>
+0611957095"></textarea>
         <div class="e2dpi-hint">
-          <strong>One recipient per block, separated by a blank line.</strong> Parser auto-detects name, street+No, ZIP+city, country, phone, email.
+          <strong>The textarea is cleared after each Parse</strong> so you can paste the next recipient(s) without wiping previous ones.
+          Previously parsed rows are preserved in the table below.
         </div>
       </div>
 
       <div class="e2dpi-card">
-        <h3>2) Global defaults (applied when rows are parsed)</h3>
+        <h3>2) Global defaults (applied to newly-parsed rows only)</h3>
         <div class="e2dpi-settings">
           <label>EKP
             <input type="text" name="ekp" value="{{ default_ekp }}">
@@ -213,8 +205,8 @@ The Netherlands
           <label>Product code
             <input type="text" name="product" value="{{ default_product }}">
           </label>
-          <label>Default weight (g) *
-            <input type="number" name="weight" min="1" step="1" value="{{ default_weight_val }}" required>
+          <label>Default weight (g)
+            <input type="number" name="weight" min="1" step="1" value="{{ default_weight_val }}">
           </label>
           <label>Reference prefix
             <input type="text" name="ref_prefix" value="{{ ref_prefix }}">
@@ -237,37 +229,34 @@ The Netherlands
           <label>CN22 — Default item value
             <input type="text" name="item_value" value="{{ default_value_val }}" placeholder="19.90">
           </label>
-          <label style="grid-column: span 2;">Custom references (optional, one per line, in same order as blocks)
+          <label style="grid-column: span 2;">Custom references (optional, one per line, applied to NEW rows only)
             <textarea name="custom_refs" rows="2" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;">{{ custom_refs_raw }}</textarea>
           </label>
         </div>
-        <div style="margin-top:10px;text-align:right;">
-          <button type="submit" class="e2dpi-parse-btn">🔍 Parse &amp; show table below ↓</button>
+        <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px;">
+          <button type="submit" name="action" value="preview" class="btn btn-parse" formnovalidate>
+            🔍 Parse &amp; add below ↓
+          </button>
         </div>
       </div>
     </div>
-  </form>
 
-  {# -------- EDITABLE TABLE + EXPORT (same page) -------- #}
-  {% if rows %}
-    <div class="e2dpi-summary">
-      <div>✅ <strong>{{ rows|length }}</strong> row(s) parsed</div>
-      {% if skipped %}<div style="color:#dc2626">⚠️ <strong>{{ skipped }}</strong> skipped (missing country)</div>{% endif %}
-      <div><span class="badge badge-eu">EU</span> weight only</div>
-      <div><span class="badge badge-non-eu">NON-EU</span> + HS / value</div>
-      <div style="margin-left:auto;color:#065f46;">Edit any field → then Export CSV ↓</div>
-    </div>
+    {# ========== TABLE — always inside the SAME form ========== #}
+    {% if rows %}
+      <div class="e2dpi-summary">
+        <div>✅ <strong>{{ rows|length }}</strong> row(s) in list</div>
+        {% if skipped %}<div style="color:#dc2626">⚠️ <strong>{{ skipped }}</strong> skipped (no country)</div>{% endif %}
+        <div><span class="badge badge-eu">EU</span> weight only</div>
+        <div><span class="badge badge-non-eu">NON-EU</span> + HS / value</div>
+        <div style="margin-left:auto;">
+          <button type="submit" name="action" value="clear" class="btn btn-clear" formnovalidate
+                  onclick="return confirm('Clear all rows? This cannot be undone.');">
+            🗑️ Clear list
+          </button>
+        </div>
+      </div>
 
-    <form method="post">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="export">
       <input type="hidden" name="rows_count" value="{{ rows|length }}">
-      <input type="hidden" name="ekp" value="{{ ekp }}">
-      <input type="hidden" name="product" value="{{ product }}">
-      <input type="hidden" name="hs_code" value="{{ hs_code }}">
-      <input type="hidden" name="currency" value="{{ currency }}">
-      <input type="hidden" name="origin" value="{{ origin }}">
-      <input type="hidden" name="description" value="{{ description }}">
 
       <table class="e2dpi-table">
         <thead>
@@ -327,12 +316,14 @@ The Netherlands
       </table>
 
       <div class="e2dpi-export-bar">
-        <button type="submit" class="btn-export">⬇️ Export CSV</button>
+        <button type="submit" name="action" value="export" class="btn btn-export">
+          ⬇️ Export CSV ({{ rows|length }} row{{ rows|length|pluralize }})
+        </button>
         <span style="font-size:12.5px;color:#065f46;">
-          File will contain {{ rows|length }} row(s) · 22 columns · UTF-8 encoded for DPI
+          Generates <code>dpi_prelabeled_items.csv</code> · UTF-8 · 22 columns
         </span>
       </div>
-    </form>
-  {% endif %}
+    {% endif %}
+  </form>
 </div>
 {% endblock %}

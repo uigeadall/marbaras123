@@ -1925,7 +1925,7 @@ class OrderAdmin(admin.ModelAdmin):
             return response
 
         # ------ STEP 1: user pasted addresses → render editable preview ---
-        if request.method == "POST" and action in ("preview", ""):
+        if request.method == "POST" and action in ("preview", "clear", ""):
             text = request.POST.get("addresses", "") or ""
             ekp = request.POST.get("ekp", default_ekp).strip() or default_ekp
             product = (
@@ -1964,9 +1964,63 @@ class OrderAdmin(admin.ModelAdmin):
                 if ln.strip()
             ]
 
-            blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
+            # Keep previously-parsed rows submitted via the hidden
+            # `row_N_*` inputs so they are not lost when the user
+            # pastes more addresses. A "Clear list" submit drops them.
             rows = []
+            if action != "clear":
+                try:
+                    existing_n = int(request.POST.get("rows_count") or 0)
+                except ValueError:
+                    existing_n = 0
+                for i in range(existing_n):
+                    name = (request.POST.get(f"row_{i}_name") or "").strip()
+                    if not name:
+                        continue
+                    country = (
+                        request.POST.get(f"row_{i}_country") or ""
+                    ).strip().upper()
+                    if not country:
+                        continue
+                    rows.append({
+                        "name": name,
+                        "street": (
+                            request.POST.get(f"row_{i}_street") or ""
+                        ).strip(),
+                        "address2": (
+                            request.POST.get(f"row_{i}_address2") or ""
+                        ).strip(),
+                        "city": (
+                            request.POST.get(f"row_{i}_city") or ""
+                        ).strip(),
+                        "state": (
+                            request.POST.get(f"row_{i}_state") or ""
+                        ).strip(),
+                        "postcode": (
+                            request.POST.get(f"row_{i}_postcode") or ""
+                        ).strip(),
+                        "country": country,
+                        "is_eu": country in _EU,
+                        "phone": (
+                            request.POST.get(f"row_{i}_phone") or ""
+                        ).strip(),
+                        "email": (
+                            request.POST.get(f"row_{i}_email") or ""
+                        ).strip(),
+                        "weight": (
+                            request.POST.get(f"row_{i}_weight") or ""
+                        ).strip() or default_weight,
+                        "ref": (
+                            request.POST.get(f"row_{i}_ref") or ""
+                        ).strip(),
+                        "item_value": (
+                            request.POST.get(f"row_{i}_value") or ""
+                        ).strip(),
+                    })
+
+            blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
             skipped = 0
+            starting_idx = len(rows)
             for idx, b in enumerate(blocks):
                 parsed = _parse_block(b)
                 if not parsed or not parsed["country"]:
@@ -1977,11 +2031,9 @@ class OrderAdmin(admin.ModelAdmin):
                     if parsed["house_no"]
                     else parsed["street"]
                 )
-                if (
-                    len(rows) < len(custom_refs)
-                    and custom_refs[len(rows)]
-                ):
-                    cust_ref = custom_refs[len(rows)]
+                new_idx = len(rows) - starting_idx
+                if new_idx < len(custom_refs) and custom_refs[new_idx]:
+                    cust_ref = custom_refs[new_idx]
                 else:
                     cust_ref = f"{ref_prefix}-{len(rows) + 1:03d}"
                 rows.append({
