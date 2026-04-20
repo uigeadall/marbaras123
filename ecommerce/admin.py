@@ -435,6 +435,57 @@ def _dpi_csv_piece_netweight(*candidates):
     return 80
 
 
+# Canada: DPI / paste parsing — province names from Amazon, postal A1A 1A1
+_CA_PROVINCE_NAME_TO_CODE = {
+    "alberta": "AB",
+    "british columbia": "BC",
+    "manitoba": "MB",
+    "new brunswick": "NB",
+    "newfoundland and labrador": "NL",
+    "newfoundland": "NL",
+    "nova scotia": "NS",
+    "northwest territories": "NT",
+    "nunavut": "NU",
+    "ontario": "ON",
+    "prince edward island": "PE",
+    "quebec": "QC",
+    "saskatchewan": "SK",
+    "yukon": "YT",
+    "yukon territory": "YT",
+}
+
+
+def _normalize_canadian_postal(raw):
+    import re as _re
+
+    t = (raw or "").strip().upper()
+    if not t:
+        return ""
+    s = _re.sub(r"\s+", "", t)
+    if _re.fullmatch(r"[A-Z]\d[A-Z]\d[A-Z]\d", s):
+        return f"{s[:3]} {s[3:]}"
+    return t
+
+
+def _normalize_ca_province(raw):
+    if not raw:
+        return ""
+    s = (raw or "").strip()
+    if len(s) == 2 and s.isalpha():
+        return s.upper()
+    key = s.lower().replace(".", "").strip()
+    return _CA_PROVINCE_NAME_TO_CODE.get(key, s[:15])
+
+
+def _apply_canada_address_fixes(postcode, state, country):
+    if (country or "").strip().upper() != "CA":
+        return postcode, state
+    return (
+        _normalize_canadian_postal(postcode),
+        _normalize_ca_province(state),
+    )
+
+
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -1935,6 +1986,10 @@ class OrderAdmin(admin.ModelAdmin):
             val_ne = _dpi_csv_piece_value_str(order_total)
             qty_ne = max(qty_total, 1)
             net_ne = _dpi_csv_piece_netweight(total_weight_g)
+            _pc = _short(getattr(o, "postal_code", "") or "", 15)
+            _st = ""
+            if dest == "CA":
+                _pc, _st = _apply_canada_address_fixes(_pc, _st, "CA")
             row = _dpi_efile_row(
                 product=product,
                 service_level=default_service,
@@ -1953,8 +2008,8 @@ class OrderAdmin(admin.ModelAdmin):
                 address_line_2="",
                 address_line_3="",
                 city=_short(getattr(o, "city", "") or "", 30),
-                state="",
-                postal_code=_short(getattr(o, "postal_code", "") or "", 15),
+                state=_st,
+                postal_code=_pc,
                 destination_country=dest,
                 weight_g=total_weight_g,
                 currency=default_currency,
@@ -2048,6 +2103,19 @@ class OrderAdmin(admin.ModelAdmin):
         def _parse_postcode_city(line):
             """Return (postcode, city, state) or None."""
             s = line.strip().rstrip(",")
+            # Canada: "Toronto, ON M5H 2N2" / "Vancouver BC V6B1A1" (not US ZIP)
+            m = _re.match(
+                r"^(.+?),?\s+([A-Z]{2})\s+"
+                r"([A-Z]\d[A-Z]\s*\d[A-Z]\d)\s*$",
+                s,
+                _re.IGNORECASE,
+            )
+            if m:
+                return (
+                    _normalize_canadian_postal(m.group(3)),
+                    m.group(1).strip(),
+                    m.group(2).upper(),
+                )
             m = _re.match(
                 r"^(.+?),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$", s
             )
@@ -2102,7 +2170,7 @@ class OrderAdmin(admin.ModelAdmin):
             if _re.fullmatch(
                 r"[A-Z]\d[A-Z]\s?\d[A-Z]\d", s, _re.IGNORECASE,
             ):
-                return s.upper()
+                return _normalize_canadian_postal(s)
             # US ZIP (12345 or 12345-6789) / generic numeric 4-6 digits
             if _re.fullmatch(r"\d{5}(?:-\d{4})?", s):
                 return s
@@ -2259,6 +2327,9 @@ class OrderAdmin(admin.ModelAdmin):
                 street = rest[0].strip()
                 address2 = " ".join(r.strip() for r in rest[1:])
 
+            postcode, state = _apply_canada_address_fixes(
+                postcode, state, country
+            )
             return {
                 "name": name,
                 "street": street,
@@ -2396,6 +2467,9 @@ class OrderAdmin(admin.ModelAdmin):
                 cn22_raw = (
                     request.POST.get(f"row_{i}_cn22_lines") or ""
                 ).strip()
+                postcode, state = _apply_canada_address_fixes(
+                    postcode, state, country
+                )
                 piece_hs = row_hs or hs_code
                 piece_origin = row_origin or origin
                 is_eu = country in _EU
@@ -2563,6 +2637,13 @@ class OrderAdmin(admin.ModelAdmin):
                     ).strip().upper()
                     if not country:
                         continue
+                    _pc = (
+                        request.POST.get(f"row_{i}_postcode") or ""
+                    ).strip()
+                    _st = (
+                        request.POST.get(f"row_{i}_state") or ""
+                    ).strip()
+                    _pc, _st = _apply_canada_address_fixes(_pc, _st, country)
                     rows.append({
                         "name": name,
                         "street": (
@@ -2574,12 +2655,8 @@ class OrderAdmin(admin.ModelAdmin):
                         "city": (
                             request.POST.get(f"row_{i}_city") or ""
                         ).strip(),
-                        "state": (
-                            request.POST.get(f"row_{i}_state") or ""
-                        ).strip(),
-                        "postcode": (
-                            request.POST.get(f"row_{i}_postcode") or ""
-                        ).strip(),
+                        "state": _st,
+                        "postcode": _pc,
                         "country": country,
                         "is_eu": country in _EU,
                         "phone": (
@@ -2751,6 +2828,9 @@ class OrderAdmin(admin.ModelAdmin):
                             city = _amz_get(rec, "ship-city")
                             state = _amz_get(rec, "ship-state")
                             postcode = _amz_get(rec, "ship-postal-code")
+                            postcode, state = _apply_canada_address_fixes(
+                                postcode, state, country
+                            )
 
                             new_idx = len(rows) - starting_idx
                             if (
@@ -5245,6 +5325,10 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
             val_ne = _dpi_csv_piece_value_str(order_total)
             net_ne = _dpi_csv_piece_netweight(total_weight_g)
+            _pc = _short(getattr(mo, "postal_code", "") or "", 15)
+            _st = _short(getattr(mo, "state", "") or "", 30)
+            if dest == "CA":
+                _pc, _st = _apply_canada_address_fixes(_pc, _st, "CA")
             row = _dpi_efile_row(
                 product=product,
                 service_level=default_service,
@@ -5271,8 +5355,8 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 ),
                 address_line_3="",
                 city=_short(getattr(mo, "city", "") or "", 30),
-                state=_short(getattr(mo, "state", "") or "", 30),
-                postal_code=_short(getattr(mo, "postal_code", "") or "", 15),
+                state=_st,
+                postal_code=_pc,
                 destination_country=dest,
                 weight_g=total_weight_g,
                 currency=getattr(mo, "currency", "") or default_currency,
