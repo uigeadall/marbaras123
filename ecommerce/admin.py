@@ -1825,7 +1825,107 @@ class OrderAdmin(admin.ModelAdmin):
         )
         default_origin = getattr(settings, "SHOP_COUNTRY", "BG") or "BG"
 
-        if request.method == "POST":
+        service_level = (
+            getattr(settings, "GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
+            or "PRIORITY"
+        )
+        content_type_default = (
+            getattr(settings, "GLOBAL_MAIL_CONTENT_TYPE", "SALE_GOODS")
+            or "SALE_GOODS"
+        )
+
+        action = (request.POST.get("action") or "").strip() if request.method == "POST" else ""
+
+        # ------ STEP 2: user has edited the preview table → emit CSV ------
+        if request.method == "POST" and action == "export":
+            try:
+                n = int(request.POST.get("rows_count") or 0)
+            except ValueError:
+                n = 0
+            ekp = request.POST.get("ekp", default_ekp).strip() or default_ekp
+            product = (
+                request.POST.get("product", default_product).strip()
+                or default_product
+            )
+            hs_code = (
+                request.POST.get("hs_code", default_hs).strip() or default_hs
+            )
+            currency = (
+                request.POST.get("currency", default_currency).strip()
+                or default_currency
+            )
+            origin = (
+                request.POST.get("origin", default_origin).strip().upper()
+                or default_origin
+            )
+            default_desc = (
+                request.POST.get("description", "Silver jewellery").strip()
+                or "Silver jewellery"
+            )
+
+            response = HttpResponse(content_type="text/csv; charset=utf-8")
+            response["Content-Disposition"] = (
+                'attachment; filename="dpi_prelabeled_items.csv"'
+            )
+            response.write("\ufeff")
+            writer = csv.writer(
+                response, delimiter=",", quoting=csv.QUOTE_MINIMAL
+            )
+            writer.writerow([
+                "PRODUCT", "SERVICE_LEVEL", "CUST_EKP", "AWB",
+                "REGISTERED_BARCODE", "CUST_REF", "NAME",
+                "RECIPIENT_PHONE", "RECIPIENT_EMAIL",
+                "ADDRESS_LINE_1", "ADDRESS_LINE_2", "ADDRESS_LINE_3",
+                "CITY", "STATE", "POSTAL_CODE", "DESTINATION_COUNTRY",
+                "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE", "CURRENCY",
+                "HS_CODE", "ORIGIN_COUNTRY",
+            ])
+
+            exported = 0
+            for i in range(n):
+                name = (request.POST.get(f"row_{i}_name") or "").strip()
+                if not name:
+                    continue
+                country = (
+                    request.POST.get(f"row_{i}_country") or ""
+                ).strip().upper()
+                if not country:
+                    continue
+                street = (request.POST.get(f"row_{i}_street") or "").strip()
+                address2 = (request.POST.get(f"row_{i}_address2") or "").strip()
+                city = (request.POST.get(f"row_{i}_city") or "").strip()
+                state = (request.POST.get(f"row_{i}_state") or "").strip()
+                postcode = (
+                    request.POST.get(f"row_{i}_postcode") or ""
+                ).strip()
+                phone_raw = (request.POST.get(f"row_{i}_phone") or "").strip()
+                phone = _parse_phone(phone_raw) or phone_raw
+                email = (request.POST.get(f"row_{i}_email") or "").strip()
+                weight = (request.POST.get(f"row_{i}_weight") or "").strip()
+                cust_ref = (request.POST.get(f"row_{i}_ref") or "").strip()
+                item_value = (
+                    request.POST.get(f"row_{i}_value") or ""
+                ).strip()
+
+                is_eu = country in _EU
+                writer.writerow([
+                    product, service_level, ekp, "", "", cust_ref,
+                    name, phone, email,
+                    street, address2, "",
+                    city, state, postcode, country,
+                    weight, content_type_default,
+                    "" if is_eu else item_value,
+                    currency,
+                    "" if is_eu else hs_code,
+                    origin,
+                ])
+                exported += 1
+
+            messages.success(request, f"Exported {exported} row(s).")
+            return response
+
+        # ------ STEP 1: user pasted addresses → render editable preview ---
+        if request.method == "POST" and action in ("preview", ""):
             text = request.POST.get("addresses", "") or ""
             ekp = request.POST.get("ekp", default_ekp).strip() or default_ekp
             product = (
@@ -1843,17 +1943,17 @@ class OrderAdmin(admin.ModelAdmin):
                 request.POST.get("origin", default_origin).strip().upper()
                 or default_origin
             )
-            default_weight = request.POST.get("weight", "").strip()
+            default_weight = request.POST.get("weight", "80").strip() or "80"
             default_desc = (
                 request.POST.get("description", "Silver jewellery").strip()
                 or "Silver jewellery"
             )
-            default_qty = request.POST.get("qty", "1").strip() or "1"
             default_value = request.POST.get("item_value", "").strip()
             default_email = request.POST.get("default_email", "").strip()
-            default_phone = request.POST.get("default_phone", "").strip()
-            if default_phone:
-                default_phone = _parse_phone(default_phone) or default_phone
+            default_phone_raw = request.POST.get("default_phone", "").strip()
+            default_phone = (
+                _parse_phone(default_phone_raw) or default_phone_raw
+            )
             ref_prefix = (
                 request.POST.get("ref_prefix", "ETSY").strip() or "ETSY"
             )
@@ -1867,101 +1967,61 @@ class OrderAdmin(admin.ModelAdmin):
             blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
             rows = []
             skipped = 0
-            for b in blocks:
+            for idx, b in enumerate(blocks):
                 parsed = _parse_block(b)
-                if not parsed:
+                if not parsed or not parsed["country"]:
                     skipped += 1
                     continue
-                if not parsed["country"]:
-                    skipped += 1
-                    continue
-                rows.append(parsed)
-
-            response = HttpResponse(content_type="text/csv; charset=utf-8")
-            response["Content-Disposition"] = (
-                'attachment; filename="dpi_prelabeled_items.csv"'
-            )
-            response.write("\ufeff")
-            writer = csv.writer(
-                response, delimiter=",", quoting=csv.QUOTE_MINIMAL
-            )
-            service_level = (
-                getattr(settings, "GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
-                or "PRIORITY"
-            )
-            content_type_default = (
-                getattr(settings, "GLOBAL_MAIL_CONTENT_TYPE", "SALE_GOODS")
-                or "SALE_GOODS"
-            )
-            writer.writerow([
-                "PRODUCT",
-                "SERVICE_LEVEL",
-                "CUST_EKP",
-                "AWB",
-                "REGISTERED_BARCODE",
-                "CUST_REF",
-                "NAME",
-                "RECIPIENT_PHONE",
-                "RECIPIENT_EMAIL",
-                "ADDRESS_LINE_1",
-                "ADDRESS_LINE_2",
-                "ADDRESS_LINE_3",
-                "CITY",
-                "STATE",
-                "POSTAL_CODE",
-                "DESTINATION_COUNTRY",
-                "WEIGHT",
-                "CONTENT_TYPE",
-                "TOTAL_VALUE",
-                "CURRENCY",
-                "HS_CODE",
-                "ORIGIN_COUNTRY",
-            ])
-            for idx, r in enumerate(rows, start=1):
-                country = r["country"]
-                is_eu = country in _EU
                 street_full = (
-                    f"{r['street']} {r['house_no']}".strip()
-                    if r["house_no"]
-                    else r["street"]
+                    f"{parsed['street']} {parsed['house_no']}".strip()
+                    if parsed["house_no"]
+                    else parsed["street"]
                 )
-                phone = r["phone"] or default_phone
-                email = r["email"] or default_email
-                if idx - 1 < len(custom_refs) and custom_refs[idx - 1]:
-                    cust_ref = custom_refs[idx - 1]
+                if (
+                    len(rows) < len(custom_refs)
+                    and custom_refs[len(rows)]
+                ):
+                    cust_ref = custom_refs[len(rows)]
                 else:
-                    cust_ref = f"{ref_prefix}-{idx:03d}"
-                writer.writerow([
-                    product,
-                    service_level,
-                    ekp,
-                    "",
-                    "",
-                    cust_ref,
-                    r["name"],
-                    phone,
-                    email,
-                    street_full,
-                    r["address2"],
-                    "",
-                    r["city"],
-                    r["state"],
-                    r["postcode"],
-                    country,
-                    default_weight,
-                    content_type_default,
-                    "" if is_eu else default_value,
-                    currency,
-                    "" if is_eu else hs_code,
-                    origin,
-                ])
+                    cust_ref = f"{ref_prefix}-{len(rows) + 1:03d}"
+                rows.append({
+                    "name": parsed["name"],
+                    "street": street_full,
+                    "address2": parsed["address2"],
+                    "city": parsed["city"],
+                    "state": parsed["state"],
+                    "postcode": parsed["postcode"],
+                    "country": parsed["country"],
+                    "is_eu": parsed["country"] in _EU,
+                    "phone": parsed["phone"] or default_phone,
+                    "email": parsed["email"] or default_email,
+                    "weight": default_weight,
+                    "ref": cust_ref,
+                    "item_value": default_value,
+                })
 
-            messages.success(
+            from django.template.response import TemplateResponse
+            context = {
+                **self.admin_site.each_context(request),
+                "title": "Review and edit — DPI CSV",
+                "rows": rows,
+                "skipped": skipped,
+                "ekp": ekp,
+                "product": product,
+                "hs_code": hs_code,
+                "currency": currency,
+                "origin": origin,
+                "description": default_desc,
+                "addresses_raw": text,
+                "opts": self.model._meta,
+            }
+            return TemplateResponse(
                 request,
-                f"Exported {len(rows)} row(s){', skipped ' + str(skipped) if skipped else ''}.",
+                "admin/ecommerce/order/etsy_to_dpi_csv_edit.html",
+                context,
             )
-            return response
 
+        # ------ STEP 0: blank form ----------------------------------------
         from django.template.response import TemplateResponse
         context = {
             **self.admin_site.each_context(request),
