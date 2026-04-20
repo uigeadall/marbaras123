@@ -273,6 +273,8 @@ def _dpi_efile_row(
     declared_origin="",
     total_customs_value="1.00",
     declared_items=None,
+    sender_customs_reference="",
+    importer_customs_reference="",
 ):
     """Build one data row for DPI eFile CSV (178 columns, ';' delimiter).
 
@@ -315,7 +317,13 @@ def _dpi_efile_row(
     if is_eu:
         for _ in range(25):
             row.extend(["", "", "", "", "", ""])
-        row.extend(["", "false", "", "", "false"])
+        row.extend([
+            "",
+            "false",
+            (sender_customs_reference or "").strip(),
+            (importer_customs_reference or "").strip(),
+            "false",
+        ])
         return row
 
     hs_d = _dpi_csv_hs_code_digits(declared_hs)
@@ -384,8 +392,8 @@ def _dpi_efile_row(
     row.extend([
         total_customs_value,
         "false",
-        "",
-        "",
+        (sender_customs_reference or "").strip(),
+        (importer_customs_reference or "").strip(),
         "false",
     ])
     assert len(row) == 178
@@ -2077,6 +2085,22 @@ class OrderAdmin(admin.ModelAdmin):
                 declared_hs=default_hs,
                 declared_origin=origin_country,
                 total_customs_value=val_ne,
+                sender_customs_reference=str(
+                    getattr(
+                        settings,
+                        "GLOBAL_MAIL_SENDER_CUSTOMS_REFERENCE",
+                        "",
+                    )
+                    or ""
+                ),
+                importer_customs_reference=str(
+                    getattr(
+                        settings,
+                        "GLOBAL_MAIL_IMPORTER_CUSTOMS_REFERENCE",
+                        "",
+                    )
+                    or ""
+                ),
             )
             writer.writerow(row)
 
@@ -2095,6 +2119,9 @@ class OrderAdmin(admin.ModelAdmin):
         ``eFile_Template.csv``, including ``DECLARED_*`` / ``TOTAL_VALUE``).
         """
         import re as _re
+
+        def _short_txt(s, n):
+            return ((s or "").strip())[:n]
 
         _COUNTRY_MAP = {
             "bulgaria": "BG", "българия": "BG",
@@ -2388,7 +2415,7 @@ class OrderAdmin(admin.ModelAdmin):
             # "6 Yew Tree Close" doesn't get flipped to "Yew Tree Close 6".
             # We still split only the explicit two-line German pattern
             # where the house number is on its own line.
-            street, house_no, address2 = "", "", ""
+            street, house_no, address2, address3 = "", "", "", ""
             if len(rest) == 1:
                 street = rest[0].strip()
             elif len(rest) == 2:
@@ -2401,9 +2428,22 @@ class OrderAdmin(admin.ModelAdmin):
                 else:
                     street = rest[0].strip()
                     address2 = rest[1].strip()
-            elif len(rest) >= 3:
+            elif len(rest) == 3:
+                if _re.fullmatch(
+                    r"\d+[A-Za-z]?(?:[\-/]\d+[A-Za-z]?)?",
+                    rest[2].strip(),
+                ):
+                    street = rest[0].strip()
+                    address2 = rest[1].strip()
+                    house_no = rest[2].strip()
+                else:
+                    street = rest[0].strip()
+                    address2 = rest[1].strip()
+                    address3 = rest[2].strip()
+            elif len(rest) >= 4:
                 street = rest[0].strip()
-                address2 = " ".join(r.strip() for r in rest[1:])
+                address2 = rest[1].strip()
+                address3 = " ".join(r.strip() for r in rest[2:])
 
             postcode, state = _apply_dpi_destination_fixes(
                 postcode, state, country
@@ -2413,6 +2453,7 @@ class OrderAdmin(admin.ModelAdmin):
                 "street": street,
                 "house_no": house_no,
                 "address2": address2,
+                "address3": address3,
                 "postcode": postcode,
                 "city": city,
                 "state": state,
@@ -2495,6 +2536,20 @@ class OrderAdmin(admin.ModelAdmin):
             default_item_value = (
                 request.POST.get("item_value", "") or ""
             ).strip()
+            _sc_set = str(
+                getattr(settings, "GLOBAL_MAIL_SENDER_CUSTOMS_REFERENCE", "")
+                or ""
+            )
+            _ic_set = str(
+                getattr(settings, "GLOBAL_MAIL_IMPORTER_CUSTOMS_REFERENCE", "")
+                or ""
+            )
+            sender_cref = (
+                request.POST.get("sender_customs_reference") or ""
+            ).strip() or _sc_set
+            importer_cref = (
+                request.POST.get("importer_customs_reference") or ""
+            ).strip() or _ic_set
 
             response = HttpResponse(content_type="text/csv; charset=utf-8")
             response["Content-Disposition"] = (
@@ -2518,6 +2573,9 @@ class OrderAdmin(admin.ModelAdmin):
                     continue
                 street = (request.POST.get(f"row_{i}_street") or "").strip()
                 address2 = (request.POST.get(f"row_{i}_address2") or "").strip()
+                address3 = (
+                    request.POST.get(f"row_{i}_address3") or ""
+                ).strip()
                 city = (request.POST.get(f"row_{i}_city") or "").strip()
                 state = (request.POST.get(f"row_{i}_state") or "").strip()
                 postcode = (
@@ -2590,9 +2648,9 @@ class OrderAdmin(admin.ModelAdmin):
                         recipient_name=name[:35] if len(name) > 35 else name,
                         recipient_phone=phone,
                         recipient_email=email,
-                        address_line_1=street,
-                        address_line_2=address2,
-                        address_line_3="",
+                        address_line_1=_short_txt(street, 40),
+                        address_line_2=_short_txt(address2, 40),
+                        address_line_3=_short_txt(address3, 40),
                         city=city,
                         state=state,
                         postal_code=postcode,
@@ -2609,6 +2667,8 @@ class OrderAdmin(admin.ModelAdmin):
                         declared_hs=piece_hs,
                         declared_origin=piece_origin,
                         total_customs_value=piece_val,
+                        sender_customs_reference=sender_cref,
+                        importer_customs_reference=importer_cref,
                     )
                 else:
                     row = _dpi_efile_row(
@@ -2621,9 +2681,9 @@ class OrderAdmin(admin.ModelAdmin):
                         recipient_name=name[:35] if len(name) > 35 else name,
                         recipient_phone=phone,
                         recipient_email=email,
-                        address_line_1=street,
-                        address_line_2=address2,
-                        address_line_3="",
+                        address_line_1=_short_txt(street, 40),
+                        address_line_2=_short_txt(address2, 40),
+                        address_line_3=_short_txt(address3, 40),
                         city=city,
                         state=state,
                         postal_code=postcode,
@@ -2639,6 +2699,8 @@ class OrderAdmin(admin.ModelAdmin):
                         declared_hs=piece_hs,
                         declared_origin=piece_origin,
                         total_customs_value=piece_val,
+                        sender_customs_reference=sender_cref,
+                        importer_customs_reference=importer_cref,
                     )
                 writer.writerow(row)
                 exported += 1
@@ -2692,6 +2754,12 @@ class OrderAdmin(admin.ModelAdmin):
                 for ln in custom_refs_raw.splitlines()
                 if ln.strip()
             ]
+            sender_cref = (
+                request.POST.get("sender_customs_reference") or ""
+            ).strip()
+            importer_cref = (
+                request.POST.get("importer_customs_reference") or ""
+            ).strip()
 
             # Keep previously-parsed rows submitted via the hidden
             # `row_N_*` inputs so they are not lost when the user
@@ -2729,6 +2797,9 @@ class OrderAdmin(admin.ModelAdmin):
                         ).strip(),
                         "address2": (
                             request.POST.get(f"row_{i}_address2") or ""
+                        ).strip(),
+                        "address3": (
+                            request.POST.get(f"row_{i}_address3") or ""
                         ).strip(),
                         "city": (
                             request.POST.get(f"row_{i}_city") or ""
@@ -2896,13 +2967,8 @@ class OrderAdmin(admin.ModelAdmin):
                             phone = _parse_phone(phone_raw) or phone_raw
                             email = _amz_get(rec, "buyer-email")
                             street = _amz_get(rec, "ship-address-1")
-                            address2_parts = [
-                                p for p in (
-                                    _amz_get(rec, "ship-address-2"),
-                                    _amz_get(rec, "ship-address-3"),
-                                ) if p
-                            ]
-                            address2 = " ".join(address2_parts)
+                            address2 = _amz_get(rec, "ship-address-2")
+                            address3 = _amz_get(rec, "ship-address-3")
                             city = _amz_get(rec, "ship-city")
                             state = _amz_get(rec, "ship-state")
                             postcode = _amz_get(rec, "ship-postal-code")
@@ -2934,6 +3000,7 @@ class OrderAdmin(admin.ModelAdmin):
                                 "name": name[:35],
                                 "street": street,
                                 "address2": address2,
+                                "address3": address3,
                                 "city": city,
                                 "state": state,
                                 "postcode": postcode,
@@ -2989,6 +3056,7 @@ class OrderAdmin(admin.ModelAdmin):
                     "name": parsed["name"],
                     "street": street_full,
                     "address2": parsed["address2"],
+                    "address3": parsed.get("address3", ""),
                     "city": parsed["city"],
                     "state": parsed["state"],
                     "postcode": parsed["postcode"],
@@ -3037,6 +3105,8 @@ class OrderAdmin(admin.ModelAdmin):
                 "default_content_type": content_type,
                 "cn22_piece_weight": cn22_piece_weight,
                 "custom_refs_raw": custom_refs_raw,
+                "default_sender_cref": sender_cref,
+                "default_importer_cref": importer_cref,
                 "opts": self.model._meta,
             }
             return TemplateResponse(
@@ -3047,6 +3117,14 @@ class OrderAdmin(admin.ModelAdmin):
 
         # ------ STEP 0: blank form ----------------------------------------
         from django.template.response import TemplateResponse
+        _sc0 = str(
+            getattr(settings, "GLOBAL_MAIL_SENDER_CUSTOMS_REFERENCE", "")
+            or ""
+        )
+        _ic0 = str(
+            getattr(settings, "GLOBAL_MAIL_IMPORTER_CUSTOMS_REFERENCE", "")
+            or ""
+        )
         context = {
             **self.admin_site.each_context(request),
             "title": "Etsy/Amazon addresses → DPI CSV",
@@ -3067,6 +3145,8 @@ class OrderAdmin(admin.ModelAdmin):
             "custom_refs_raw": "",
             "addresses_raw": "",
             "rows": [],
+            "default_sender_cref": _sc0,
+            "default_importer_cref": _ic0,
             "opts": self.model._meta,
         }
         return TemplateResponse(
@@ -5447,6 +5527,22 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 declared_hs=default_hs,
                 declared_origin=origin_country,
                 total_customs_value=val_ne,
+                sender_customs_reference=str(
+                    getattr(
+                        settings,
+                        "GLOBAL_MAIL_SENDER_CUSTOMS_REFERENCE",
+                        "",
+                    )
+                    or ""
+                ),
+                importer_customs_reference=str(
+                    getattr(
+                        settings,
+                        "GLOBAL_MAIL_IMPORTER_CUSTOMS_REFERENCE",
+                        "",
+                    )
+                    or ""
+                ),
             )
             writer.writerow(row)
 

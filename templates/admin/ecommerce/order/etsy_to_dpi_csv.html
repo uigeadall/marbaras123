@@ -235,6 +235,7 @@ The Netherlands
         <div class="e2dpi-hint">
           <strong>The textarea is cleared after each Parse</strong> so you can paste the next recipient(s) without wiping previous ones.
           Previously parsed rows are preserved in the table below.
+          <span style="display:block;margin-top:6px;">До <strong>три</strong> реда адрес преди град/държава се разпределят в колоните „Street“, „Address line 2“ и „Address line 3“ (DPI <code>ADDRESS_LINE_1…3</code>).</span>
         </div>
       </div>
 
@@ -299,6 +300,12 @@ The Netherlands
           </label>
           <label style="grid-column: span 2;">Описание на съдържанието по подразбиране
             <input type="text" name="description" value="{{ default_description }}" placeholder="напр. Silver jewellery">
+          </label>
+          <label>SENDER_CUSTOMS_REFERENCE <span style="font-weight:400;color:#64748b;">(митница — подател)</span>
+            <input type="text" name="sender_customs_reference" value="{{ default_sender_cref|default:'' }}" maxlength="80" placeholder="по избор">
+          </label>
+          <label>IMPORTER_CUSTOMS_REFERENCE <span style="font-weight:400;color:#64748b;">(митница — вносител)</span>
+            <input type="text" name="importer_customs_reference" value="{{ default_importer_cref|default:'' }}" maxlength="80" placeholder="по избор">
           </label>
           <p style="grid-column:1/-1;margin:0;font-size:12px;color:#475569;line-height:1.45;">
             <strong>Няколко продукта в един пакет:</strong> за всеки Non-EU ред в таблицата има поле
@@ -367,7 +374,8 @@ The Netherlands
             <td style="min-width: 260px;">
               <input type="text" name="row_{{ forloop.counter0 }}_name" value="{{ r.name }}" style="font-weight:600;margin-bottom:3px;">
               <input type="text" name="row_{{ forloop.counter0 }}_street" value="{{ r.street }}" placeholder="Street + No." style="margin-bottom:3px;">
-              <input type="text" name="row_{{ forloop.counter0 }}_address2" value="{{ r.address2 }}" placeholder="Address 2" style="margin-bottom:3px;">
+              <input type="text" name="row_{{ forloop.counter0 }}_address2" value="{{ r.address2 }}" placeholder="Address line 2" style="margin-bottom:3px;">
+              <input type="text" name="row_{{ forloop.counter0 }}_address3" value="{{ r.address3|default:'' }}" placeholder="Address line 3" style="margin-bottom:3px;">
               <div style="display:flex;gap:3px;">
                 <input type="text" name="row_{{ forloop.counter0 }}_postcode" value="{{ r.postcode }}" placeholder="ZIP" style="flex:0 0 75px;">
                 <input type="text" name="row_{{ forloop.counter0 }}_city" value="{{ r.city }}" placeholder="City" style="flex:1;">
