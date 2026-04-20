@@ -164,6 +164,24 @@
   }
   .col-small { width: 60px; }
   .col-md    { width: 110px; }
+
+  .btn-delete-row {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    border-radius: 6px;
+    padding: 5px 7px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.15s;
+  }
+  .btn-delete-row:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: white;
+    transform: scale(1.08);
+  }
 </style>
 
 <div class="e2dpi-wrap">
@@ -208,9 +226,6 @@ The Netherlands
           <label>Default weight (g)
             <input type="number" name="weight" min="1" step="1" value="{{ default_weight_val }}">
           </label>
-          <label>Reference prefix
-            <input type="text" name="ref_prefix" value="{{ ref_prefix }}">
-          </label>
           <label>Default email
             <input type="email" name="default_email" value="{{ default_shop_email }}">
           </label>
@@ -244,7 +259,7 @@ The Netherlands
     {# ========== TABLE — always inside the SAME form ========== #}
     {% if rows %}
       <div class="e2dpi-summary">
-        <div>✅ <strong>{{ rows|length }}</strong> row(s) in list</div>
+        <div>✅ <strong id="e2dpi-row-count">{{ rows|length }}</strong> row(s) in list</div>
         {% if skipped %}<div style="color:#dc2626">⚠️ <strong>{{ skipped }}</strong> skipped (no country)</div>{% endif %}
         <div><span class="badge badge-eu">EU</span> weight only</div>
         <div><span class="badge badge-non-eu">NON-EU</span> + HS / value</div>
@@ -258,7 +273,7 @@ The Netherlands
 
       <input type="hidden" name="rows_count" value="{{ rows|length }}">
 
-      <table class="e2dpi-table">
+      <table class="e2dpi-table" id="e2dpi-table">
         <thead>
           <tr>
             <th class="col-small">#</th>
@@ -269,17 +284,18 @@ The Netherlands
             <th class="col-md">Phone</th>
             <th>Email</th>
             <th class="col-md">Item value<br><small style="font-weight:400;opacity:.7">(Non-EU)</small></th>
+            <th style="width:44px;">&nbsp;</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
-          <tr class="{% if r.is_eu %}eu-row{% else %}non-eu-row{% endif %}">
-            <td>
+          <tr class="{% if r.is_eu %}eu-row{% else %}non-eu-row{% endif %}" data-row-idx="{{ forloop.counter0 }}">
+            <td class="row-number">
               <strong>{{ forloop.counter }}</strong>
               <br><span class="badge {% if r.is_eu %}badge-eu{% else %}badge-non-eu{% endif %}">{% if r.is_eu %}EU{% else %}Non-EU{% endif %}</span>
             </td>
             <td>
-              <input type="text" name="row_{{ forloop.counter0 }}_ref" value="{{ r.ref }}">
+              <input type="text" name="row_{{ forloop.counter0 }}_ref" value="{{ r.ref }}" placeholder="(optional)">
             </td>
             <td style="min-width: 260px;">
               <input type="text" name="row_{{ forloop.counter0 }}_name" value="{{ r.name }}" style="font-weight:600;margin-bottom:3px;">
@@ -310,13 +326,47 @@ The Netherlands
                 <span style="color:#9ca3af;font-size:11px;">n/a</span>
               {% endif %}
             </td>
+            <td style="text-align:center;">
+              <button type="button" class="btn-delete-row" title="Delete this row"
+                      onclick="e2dpiDeleteRow(this);">🗑️</button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
 
+      <script>
+        function e2dpiDeleteRow(btn) {
+          if (!confirm("Delete this row?")) return;
+          var tr = btn.closest("tr");
+          if (!tr) return;
+          tr.parentNode.removeChild(tr);
+          var rows = document.querySelectorAll("#e2dpi-table tbody tr");
+          rows.forEach(function (r, i) {
+            var cell = r.querySelector(".row-number strong");
+            if (cell) cell.textContent = String(i + 1);
+          });
+          var countLabel = document.getElementById("e2dpi-row-count");
+          if (countLabel) countLabel.textContent = String(rows.length);
+          var exportBtn = document.getElementById("e2dpi-export-btn");
+          if (exportBtn) {
+            exportBtn.textContent =
+              "⬇️ Export CSV (" + rows.length +
+              (rows.length === 1 ? " row)" : " rows)");
+          }
+          if (rows.length === 0) {
+            var summary = document.querySelector(".e2dpi-summary");
+            if (summary) summary.style.display = "none";
+            var bar = document.querySelector(".e2dpi-export-bar");
+            if (bar) bar.style.display = "none";
+            var tbl = document.getElementById("e2dpi-table");
+            if (tbl) tbl.style.display = "none";
+          }
+        }
+      </script>
+
       <div class="e2dpi-export-bar">
-        <button type="submit" name="action" value="export" class="btn btn-export">
+        <button type="submit" name="action" value="export" class="btn btn-export" id="e2dpi-export-btn">
           ⬇️ Export CSV ({{ rows|length }} row{{ rows|length|pluralize }})
         </button>
         <span style="font-size:12.5px;color:#065f46;">

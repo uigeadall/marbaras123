@@ -1954,9 +1954,6 @@ class OrderAdmin(admin.ModelAdmin):
             default_phone = (
                 _parse_phone(default_phone_raw) or default_phone_raw
             )
-            ref_prefix = (
-                request.POST.get("ref_prefix", "ETSY").strip() or "ETSY"
-            )
             custom_refs_raw = request.POST.get("custom_refs", "") or ""
             custom_refs = [
                 ln.strip()
@@ -2035,7 +2032,7 @@ class OrderAdmin(admin.ModelAdmin):
                 if new_idx < len(custom_refs) and custom_refs[new_idx]:
                     cust_ref = custom_refs[new_idx]
                 else:
-                    cust_ref = f"{ref_prefix}-{len(rows) + 1:03d}"
+                    cust_ref = ""
                 rows.append({
                     "name": parsed["name"],
                     "street": street_full,
@@ -2065,7 +2062,6 @@ class OrderAdmin(admin.ModelAdmin):
                 "origin": origin,
                 "description": default_desc,
                 "addresses_raw": text,
-                "ref_prefix": ref_prefix,
                 "default_weight_val": default_weight,
                 "default_shop_email": default_email
                     or (getattr(settings, "SHOP_EMAIL", "") or ""),
@@ -2104,7 +2100,6 @@ class OrderAdmin(admin.ModelAdmin):
             "default_shop_phone": getattr(settings, "SHOP_PHONE", "") or "",
             "default_weight_val": "80",
             "default_value_val": "",
-            "ref_prefix": "ETSY",
             "custom_refs_raw": "",
             "addresses_raw": "",
             "rows": [],
