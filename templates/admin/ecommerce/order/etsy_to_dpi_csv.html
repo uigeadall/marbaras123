@@ -303,6 +303,8 @@ The Netherlands
             <th class="col-md">Phone</th>
             <th>Email</th>
             <th class="col-md">Item value<br><small style="font-weight:400;opacity:.7">(Non-EU)</small></th>
+            <th class="col-small">Qty<br><small style="font-weight:400;opacity:.7">(CN22)</small></th>
+            <th>Customs description<br><small style="font-weight:400;opacity:.7">(CN22, Non-EU)</small></th>
             <th style="width:44px;">&nbsp;</th>
           </tr>
         </thead>
@@ -345,8 +347,17 @@ The Netherlands
                 <span style="color:#9ca3af;font-size:11px;">n/a</span>
               {% endif %}
             </td>
-            <input type="hidden" name="row_{{ forloop.counter0 }}_description" value="{{ r.description|default:'' }}">
-            <input type="hidden" name="row_{{ forloop.counter0 }}_qty" value="{{ r.qty|default:'1' }}">
+            <td>
+              <input type="number" name="row_{{ forloop.counter0 }}_qty" value="{{ r.qty|default:'1' }}" min="1" step="1" style="width:54px;text-align:center;">
+            </td>
+            <td style="min-width:180px;">
+              {% if not r.is_eu %}
+                <input type="text" name="row_{{ forloop.counter0 }}_description" value="{{ r.description|default:'' }}" placeholder="Silver jewellery" maxlength="100">
+              {% else %}
+                <input type="hidden" name="row_{{ forloop.counter0 }}_description" value="{{ r.description|default:'' }}">
+                <span style="color:#9ca3af;font-size:11px;">n/a</span>
+              {% endif %}
+            </td>
             <td style="text-align:center;">
               <button type="submit" name="del" value="{{ forloop.counter0 }}"
                       class="btn-delete-row" formnovalidate
