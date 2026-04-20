@@ -1460,6 +1460,8 @@ class OrderAdmin(admin.ModelAdmin):
             "CURRENCY",
             "HS_CODE",
             "ORIGIN_COUNTRY",
+            "CONTENT_DESCRIPTION",
+            "QUANTITY",
         ]
         writer.writerow(columns)
 
@@ -1586,6 +1588,8 @@ class OrderAdmin(admin.ModelAdmin):
                 default_currency,
                 "" if is_eu else default_hs,
                 origin_country,
+                "" if is_eu else content_desc,
+                "" if is_eu else max(qty_total, 1),
             ]
             writer.writerow(row)
 
@@ -1977,6 +1981,7 @@ class OrderAdmin(admin.ModelAdmin):
                 "CITY", "STATE", "POSTAL_CODE", "DESTINATION_COUNTRY",
                 "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE", "CURRENCY",
                 "HS_CODE", "ORIGIN_COUNTRY",
+                "CONTENT_DESCRIPTION", "QUANTITY",
             ])
 
             exported = 0
@@ -2016,6 +2021,8 @@ class OrderAdmin(admin.ModelAdmin):
                     currency,
                     "" if is_eu else hs_code,
                     origin,
+                    "" if is_eu else default_desc,
+                    "" if is_eu else "1",
                 ])
                 exported += 1
 
@@ -4471,6 +4478,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             "ADDRESS_LINE_3", "CITY", "STATE", "POSTAL_CODE",
             "DESTINATION_COUNTRY", "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE",
             "CURRENCY", "HS_CODE", "ORIGIN_COUNTRY",
+            "CONTENT_DESCRIPTION", "QUANTITY",
         ]
         writer.writerow(columns)
 
@@ -4547,6 +4555,15 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
                 "PL", "PT", "RO", "SK", "SI", "ES", "SE",
             }
+            mp_desc = "Silver jewellery"
+            items_summary = (getattr(mo, "items_summary", "") or "").strip()
+            if items_summary:
+                mp_desc = _short(items_summary, 33)
+            try:
+                mp_qty = max(int(getattr(mo, "item_count", 1) or 1), 1)
+            except Exception:
+                mp_qty = 1
+
             row = [
                 product,
                 default_service,
@@ -4570,6 +4587,8 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 getattr(mo, "currency", "") or default_currency,
                 "" if is_eu else default_hs,
                 origin_country,
+                "" if is_eu else mp_desc,
+                "" if is_eu else mp_qty,
             ]
             writer.writerow(row)
 
