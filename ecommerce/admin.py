@@ -37,6 +37,62 @@ from .models import (
 from .utils.emailing import send_order_shipped_email
 
 
+# DPI bulk CSV: customs columns use the same names as the JSON API
+# (camelCase). The customer portal import often ignores UPPER_SNAKE aliases.
+DPI_CSV_CONTENT_HEADERS = (
+    "contentPieceIndexNumber",
+    "contentPieceAmount",
+    "contentPieceDescription",
+    "contentPieceHsCode",
+    "contentPieceValue",
+    "contentPieceOrigin",
+    "contentPieceNetweight",
+)
+
+
+def _dpi_csv_hs_code_digits(raw):
+    import re as _re
+
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    digits = _re.sub(r"\D", "", s)
+    return digits if digits else s
+
+
+def _dpi_csv_piece_description(raw, default="Silver jewellery"):
+    s = (raw or "").strip().replace('"', "").replace("'", "")
+    if not s:
+        s = default
+    if len(s) <= 33:
+        return s if len(s) >= 3 else (s + " item")[:33]
+    cut = s[:33]
+    if " " in cut[-10:]:
+        cut = cut.rsplit(" ", 1)[0]
+    return (cut[:33].strip() or default)[:33]
+
+
+def _dpi_csv_piece_value_str(raw):
+    try:
+        v = float(str(raw).replace(",", ".").strip() or "0")
+    except ValueError:
+        v = 0.0
+    v = max(round(v, 2), 1.0)
+    return f"{v:.2f}"
+
+
+def _dpi_csv_piece_netweight(*candidates):
+    for c in candidates:
+        if c is None or c == "":
+            continue
+        try:
+            w = int(float(str(c).replace(",", ".").strip()))
+            return max(w, 1)
+        except (ValueError, TypeError):
+            continue
+    return 80
+
+
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -1426,6 +1482,11 @@ class OrderAdmin(admin.ModelAdmin):
 
         Column layout matches the file DPI accepts for bulk upload
         (PRODUCT, SERVICE_LEVEL, CUST_EKP, AWB, REGISTERED_BARCODE, …).
+        Customs line items use **camelCase** headers matching the JSON API:
+        contentPieceIndexNumber, contentPieceAmount, contentPieceDescription,
+        contentPieceHsCode, contentPieceValue, contentPieceOrigin,
+        contentPieceNetweight (not CONTENT_PIECE_*), so the customer portal
+        import can populate CN22.
         When an order has already been shipped via DPI, its AWB and
         item barcode are included so the file is ready for re-dispatch
         or manifesting; otherwise those columns stay empty.
@@ -1460,16 +1521,7 @@ class OrderAdmin(admin.ModelAdmin):
             "CURRENCY",
             "HS_CODE",
             "ORIGIN_COUNTRY",
-            # Customs line-item (CN22) — DPI API contentPiece* fields,
-            # mapped to uppercase snake_case column names which the
-            # Customer Portal CSV import uses to populate the per-item
-            # content-entry row.
-            "CONTENT_PIECE_AMOUNT",
-            "CONTENT_PIECE_DESCRIPTION",
-            "CONTENT_PIECE_HSCODE",
-            "CONTENT_PIECE_VALUE",
-            "CONTENT_PIECE_ORIGIN",
-            "CONTENT_PIECE_NETWEIGHT",
+            *DPI_CSV_CONTENT_HEADERS,
         ]
         writer.writerow(columns)
 
@@ -1573,6 +1625,11 @@ class OrderAdmin(admin.ModelAdmin):
                 "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
                 "PL", "PT", "RO", "SK", "SI", "ES", "SE",
             }
+            hs_ne = "" if is_eu else _dpi_csv_hs_code_digits(default_hs)
+            val_ne = "" if is_eu else _dpi_csv_piece_value_str(order_total)
+            desc_ne = "" if is_eu else _dpi_csv_piece_description(content_desc)
+            qty_ne = "" if is_eu else max(qty_total, 1)
+            net_ne = "" if is_eu else _dpi_csv_piece_netweight(total_weight_g)
             row = [
                 product,
                 default_service,
@@ -1592,16 +1649,23 @@ class OrderAdmin(admin.ModelAdmin):
                 dest,
                 total_weight_g,
                 default_nature,
-                "" if is_eu else f"{round(order_total, 2):.2f}",
+                val_ne,
                 default_currency,
-                "" if is_eu else default_hs,
-                origin_country,
-                "" if is_eu else max(qty_total, 1),
-                "" if is_eu else content_desc,
-                "" if is_eu else default_hs,
-                "" if is_eu else f"{round(order_total, 2):.2f}",
+                hs_ne,
                 "" if is_eu else origin_country,
-                "" if is_eu else total_weight_g,
+                *(
+                    ("", "", "", "", "", "", "")
+                    if is_eu
+                    else (
+                        1,
+                        qty_ne,
+                        desc_ne,
+                        hs_ne,
+                        val_ne,
+                        origin_country,
+                        net_ne,
+                    )
+                ),
             ]
             writer.writerow(row)
 
@@ -1983,6 +2047,9 @@ class OrderAdmin(admin.ModelAdmin):
             cn22_piece_weight_global = (
                 request.POST.get("cn22_piece_weight", "") or ""
             ).strip()
+            default_item_value = (
+                request.POST.get("item_value", "") or ""
+            ).strip()
 
             response = HttpResponse(content_type="text/csv; charset=utf-8")
             response["Content-Disposition"] = (
@@ -2000,9 +2067,7 @@ class OrderAdmin(admin.ModelAdmin):
                 "CITY", "STATE", "POSTAL_CODE", "DESTINATION_COUNTRY",
                 "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE", "CURRENCY",
                 "HS_CODE", "ORIGIN_COUNTRY",
-                "CONTENT_PIECE_AMOUNT", "CONTENT_PIECE_DESCRIPTION",
-                "CONTENT_PIECE_HSCODE", "CONTENT_PIECE_VALUE",
-                "CONTENT_PIECE_ORIGIN", "CONTENT_PIECE_NETWEIGHT",
+                *DPI_CSV_CONTENT_HEADERS,
             ])
 
             exported = 0
@@ -2043,25 +2108,48 @@ class OrderAdmin(admin.ModelAdmin):
                 row_cn22_w = (request.POST.get(f"row_{i}_cn22_w") or "").strip()
                 piece_hs = row_hs or hs_code
                 piece_origin = row_origin or origin
-                piece_net = row_cn22_w or cn22_piece_weight_global or weight
-
                 is_eu = country in _EU
+                try:
+                    row_qty_i = max(
+                        int(float(str(row_qty).replace(",", ".").strip())),
+                        1,
+                    )
+                except (ValueError, TypeError):
+                    row_qty_i = 1
+                val_raw = (
+                    (item_value or default_item_value or "1").strip() or "1"
+                )
+                piece_hs_d = _dpi_csv_hs_code_digits(piece_hs)
+                piece_desc = _dpi_csv_piece_description(row_desc, default_desc)
+                piece_val = (
+                    "" if is_eu else _dpi_csv_piece_value_str(val_raw)
+                )
+                piece_net_i = _dpi_csv_piece_netweight(
+                    row_cn22_w, cn22_piece_weight_global, weight
+                )
                 writer.writerow([
                     product, service_level, ekp, "", "", cust_ref,
                     name, phone, email,
                     street, address2, "",
                     city, state, postcode, country,
                     weight, content_type_val,
-                    "" if is_eu else item_value,
+                    piece_val,
                     currency,
-                    "" if is_eu else piece_hs,
+                    "" if is_eu else piece_hs_d,
                     piece_origin if not is_eu else "",
-                    "" if is_eu else row_qty,
-                    "" if is_eu else row_desc,
-                    "" if is_eu else piece_hs,
-                    "" if is_eu else item_value,
-                    "" if is_eu else piece_origin,
-                    "" if is_eu else piece_net,
+                    *(
+                        ("", "", "", "", "", "", "")
+                        if is_eu
+                        else (
+                            1,
+                            row_qty_i,
+                            piece_desc,
+                            piece_hs_d,
+                            piece_val,
+                            piece_origin,
+                            piece_net_i,
+                        )
+                    ),
                 ])
                 exported += 1
 
@@ -4734,9 +4822,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             "ADDRESS_LINE_3", "CITY", "STATE", "POSTAL_CODE",
             "DESTINATION_COUNTRY", "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE",
             "CURRENCY", "HS_CODE", "ORIGIN_COUNTRY",
-            "CONTENT_PIECE_AMOUNT", "CONTENT_PIECE_DESCRIPTION",
-            "CONTENT_PIECE_HSCODE", "CONTENT_PIECE_VALUE",
-            "CONTENT_PIECE_ORIGIN", "CONTENT_PIECE_NETWEIGHT",
+            *DPI_CSV_CONTENT_HEADERS,
         ]
         writer.writerow(columns)
 
@@ -4822,6 +4908,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             except Exception:
                 mp_qty = 1
 
+            hs_ne = "" if is_eu else _dpi_csv_hs_code_digits(default_hs)
+            val_ne = "" if is_eu else _dpi_csv_piece_value_str(order_total)
+            desc_ne = "" if is_eu else _dpi_csv_piece_description(mp_desc)
+            qty_ne = "" if is_eu else mp_qty
+            net_ne = "" if is_eu else _dpi_csv_piece_netweight(total_weight_g)
             row = [
                 product,
                 default_service,
@@ -4841,16 +4932,23 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 dest,
                 total_weight_g,
                 default_nature,
-                "" if is_eu else f"{round(order_total, 2):.2f}",
+                val_ne,
                 getattr(mo, "currency", "") or default_currency,
-                "" if is_eu else default_hs,
-                origin_country,
-                "" if is_eu else mp_qty,
-                "" if is_eu else mp_desc,
-                "" if is_eu else default_hs,
-                "" if is_eu else f"{round(order_total, 2):.2f}",
+                hs_ne,
                 "" if is_eu else origin_country,
-                "" if is_eu else total_weight_g,
+                *(
+                    ("", "", "", "", "", "", "")
+                    if is_eu
+                    else (
+                        1,
+                        qty_ne,
+                        desc_ne,
+                        hs_ne,
+                        val_ne,
+                        origin_country,
+                        net_ne,
+                    )
+                ),
             ]
             writer.writerow(row)
 
