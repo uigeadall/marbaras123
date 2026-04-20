@@ -100,6 +100,149 @@ def _dpi_efile_detailed_desc(raw, default="Silver jewellery", max_len=200):
     return (cut.strip() or default)[:max_len]
 
 
+def _parse_cn22_package_lines(
+    raw,
+    *,
+    row_value_str,
+    row_weight_str,
+    default_desc,
+):
+    """Parse multi-product CN22 input for one shipment.
+
+    *Empty* ``raw`` → return ``None`` (caller uses single-slot mode).
+
+    Each **line** is either:
+    - ``qty | description | value | netweight_g`` (``|`` or ``;``),
+      missing value/weight filled from row totals (split across omitted lines).
+    - Or **comma-separated** names: ``pendant, ring, necklace`` → one line
+      each, qty 1, value/weight split evenly from the row.
+
+    Returns list of dicts with ``qty, desc, value_str, netw`` (hs/origin
+    filled by caller).
+    """
+    import re as _re
+
+    text = (raw or "").strip()
+    if not text:
+        return None
+
+    lines = [
+        ln.strip()
+        for ln in _re.sub(r"\r\n|\r", "\n", text).split("\n")
+        if ln.strip()
+    ]
+    if not lines:
+        return None
+
+    items = []
+    for line in lines:
+        sep = "|" if "|" in line else (";" if ";" in line else None)
+        if sep is None:
+            for chunk in [p.strip() for p in line.split(",") if p.strip()]:
+                items.append({
+                    "qty": 1,
+                    "desc": chunk,
+                    "val_raw": None,
+                    "nw_raw": None,
+                })
+            continue
+        parts = [p.strip() for p in line.split(sep)]
+        parts.extend([""] * (4 - len(parts)))
+        q_raw, d_raw, v_raw, w_raw = parts[0], parts[1], parts[2], parts[3]
+        try:
+            qty = max(int(float(q_raw.replace(",", "."))) if q_raw else 1, 1)
+        except (ValueError, TypeError):
+            qty = 1
+        desc = (d_raw or default_desc or "Silver jewellery").strip()
+        v_st = v_raw.strip() if v_raw else ""
+        w_st = w_raw.strip() if w_raw else ""
+        items.append({
+            "qty": qty,
+            "desc": desc,
+            "val_raw": v_st if v_st else None,
+            "nw_raw": w_st if w_st else None,
+        })
+
+    if not items:
+        return None
+    items = items[:25]
+
+    try:
+        row_total = float(
+            str(row_value_str).replace(",", ".").strip() or "0"
+        )
+    except (ValueError, TypeError):
+        row_total = 0.0
+    if row_total <= 0:
+        row_total = 1.0
+    try:
+        row_w = int(
+            float(str(row_weight_str).replace(",", ".").strip() or "80")
+        )
+    except (ValueError, TypeError):
+        row_w = 80
+    row_w = max(row_w, 1)
+
+    explicit_sum = 0.0
+    for it in items:
+        if it["val_raw"] is None:
+            continue
+        try:
+            explicit_sum += float(
+                str(it["val_raw"]).replace(",", ".").strip()
+            )
+        except (ValueError, TypeError):
+            it["val_raw"] = None
+    missing_v = [it for it in items if it["val_raw"] is None]
+    rem_v = max(row_total - explicit_sum, 0.0)
+    for it in items:
+        if it["val_raw"] is not None:
+            it["value_str"] = _dpi_csv_piece_value_str(it["val_raw"])
+    if missing_v:
+        share = rem_v / len(missing_v) if rem_v > 0 else row_total / len(items)
+        vs = f"{max(round(share, 2), 1.0):.2f}"
+        for it in missing_v:
+            it["value_str"] = vs
+
+    sum_explicit_nw = 0
+    for it in items:
+        if not it["nw_raw"]:
+            it["netw_int"] = None
+            continue
+        try:
+            nw = max(
+                int(float(str(it["nw_raw"]).replace(",", ".").strip())),
+                1,
+            )
+            it["netw_int"] = nw
+            sum_explicit_nw += nw
+        except (ValueError, TypeError):
+            it["netw_int"] = None
+    missing_nw = [it for it in items if it["netw_int"] is None]
+    rem_w = max(row_w - sum_explicit_nw, 0)
+    if missing_nw:
+        each = max(rem_w // len(missing_nw), 1)
+        for it in missing_nw:
+            it["netw"] = each
+    for it in items:
+        if "netw" not in it:
+            it["netw"] = it["netw_int"]
+
+    out = []
+    for it in items:
+        out.append({
+            "qty": it["qty"],
+            "desc": _dpi_efile_detailed_desc(
+                it["desc"], default_desc or "Silver jewellery"
+            ),
+            "value_str": it["value_str"],
+            "netw": it["netw"],
+            "hs": "",
+            "origin": "",
+        })
+    return out
+
+
 def _dpi_efile_row(
     *,
     product,
@@ -129,8 +272,14 @@ def _dpi_efile_row(
     declared_hs="",
     declared_origin="",
     total_customs_value="1.00",
+    declared_items=None,
 ):
-    """Build one data row for DPI eFile CSV (178 columns, ';' delimiter)."""
+    """Build one data row for DPI eFile CSV (178 columns, ';' delimiter).
+
+    If ``declared_items`` is a non-empty list, fills DECLARED slots 1–25 from
+    it (each dict: qty, desc, value_str, netw, hs, origin). Otherwise uses
+    the single-slot scalar arguments.
+    """
     try:
         w_int = int(float(str(weight_g).replace(",", ".").strip()))
     except (ValueError, TypeError):
@@ -169,26 +318,69 @@ def _dpi_efile_row(
         row.extend(["", "false", "", "", "false"])
         return row
 
-    try:
-        dq = max(int(float(str(declared_qty).replace(",", ".").strip())), 1)
-    except (ValueError, TypeError):
-        dq = 1
-    try:
-        nw = int(float(str(declared_netweight_g).replace(",", ".").strip()))
-    except (ValueError, TypeError):
-        nw = w_int
-    nw = max(nw, 1)
+    hs_d = _dpi_csv_hs_code_digits(declared_hs)
+    org = declared_origin or ""
 
-    row.extend([
-        str(dq),
-        _dpi_efile_detailed_desc(declared_description),
-        str(nw),
-        declared_line_value,
-        _dpi_csv_hs_code_digits(declared_hs),
-        declared_origin or "",
-    ])
-    for _ in range(24):
-        row.extend(["", "", "", "", "", ""])
+    if declared_items:
+        slots = []
+        total_sum = 0.0
+        for it in declared_items[:25]:
+            vstr = it.get("value_str") or "1.00"
+            try:
+                total_sum += float(str(vstr).replace(",", ".").strip())
+            except (ValueError, TypeError):
+                total_sum += 1.0
+            slots.append({
+                "qty": it.get("qty", 1),
+                "desc": it.get("desc", ""),
+                "netw": max(int(it.get("netw", 1)), 1),
+                "value_str": vstr,
+                "hs": _dpi_csv_hs_code_digits(
+                    it.get("hs") or declared_hs
+                ),
+                "origin": (it.get("origin") or org or ""),
+            })
+        total_customs_value = f"{max(round(total_sum, 2), 1.0):.2f}"
+        for i in range(25):
+            if i < len(slots):
+                s = slots[i]
+                row.extend([
+                    str(s["qty"]),
+                    _dpi_efile_detailed_desc(s["desc"]),
+                    str(s["netw"]),
+                    s["value_str"],
+                    s["hs"],
+                    s["origin"],
+                ])
+            else:
+                row.extend(["", "", "", "", "", ""])
+    else:
+        try:
+            dq = max(
+                int(float(str(declared_qty).replace(",", ".").strip())),
+                1,
+            )
+        except (ValueError, TypeError):
+            dq = 1
+        try:
+            nw = int(
+                float(str(declared_netweight_g).replace(",", ".").strip())
+            )
+        except (ValueError, TypeError):
+            nw = w_int
+        nw = max(nw, 1)
+
+        row.extend([
+            str(dq),
+            _dpi_efile_detailed_desc(declared_description),
+            str(nw),
+            declared_line_value,
+            hs_d,
+            org,
+        ])
+        for _ in range(24):
+            row.extend(["", "", "", "", "", ""])
+
     row.extend([
         total_customs_value,
         "false",
@@ -2201,6 +2393,9 @@ class OrderAdmin(admin.ModelAdmin):
                     request.POST.get(f"row_{i}_origin") or ""
                 ).strip().upper()
                 row_cn22_w = (request.POST.get(f"row_{i}_cn22_w") or "").strip()
+                cn22_raw = (
+                    request.POST.get(f"row_{i}_cn22_lines") or ""
+                ).strip()
                 piece_hs = row_hs or hs_code
                 piece_origin = row_origin or origin
                 is_eu = country in _EU
@@ -2220,35 +2415,79 @@ class OrderAdmin(admin.ModelAdmin):
                 piece_net_i = _dpi_csv_piece_netweight(
                     row_cn22_w, cn22_piece_weight_global, weight
                 )
-                row = _dpi_efile_row(
-                    product=product,
-                    service_level=service_level,
-                    customer_ekp=ekp,
-                    awb="",
-                    registered_barcode="",
-                    cust_ref=cust_ref,
-                    recipient_name=name[:35] if len(name) > 35 else name,
-                    recipient_phone=phone,
-                    recipient_email=email,
-                    address_line_1=street,
-                    address_line_2=address2,
-                    address_line_3="",
-                    city=city,
-                    state=state,
-                    postal_code=postcode,
-                    destination_country=country,
-                    weight_g=weight,
-                    currency=currency,
-                    content_type=content_type_val,
-                    is_eu=is_eu,
-                    declared_qty=row_qty_i,
-                    declared_description=piece_desc,
-                    declared_netweight_g=piece_net_i,
-                    declared_line_value=piece_val,
-                    declared_hs=piece_hs,
-                    declared_origin=piece_origin,
-                    total_customs_value=piece_val,
-                )
+                multi_items = None
+                if (not is_eu) and cn22_raw:
+                    multi_items = _parse_cn22_package_lines(
+                        cn22_raw,
+                        row_value_str=val_raw,
+                        row_weight_str=weight,
+                        default_desc=row_desc or default_desc,
+                    )
+                    if multi_items:
+                        for d in multi_items:
+                            d["hs"] = piece_hs_d
+                            d["origin"] = piece_origin or ""
+                if multi_items:
+                    row = _dpi_efile_row(
+                        product=product,
+                        service_level=service_level,
+                        customer_ekp=ekp,
+                        awb="",
+                        registered_barcode="",
+                        cust_ref=cust_ref,
+                        recipient_name=name[:35] if len(name) > 35 else name,
+                        recipient_phone=phone,
+                        recipient_email=email,
+                        address_line_1=street,
+                        address_line_2=address2,
+                        address_line_3="",
+                        city=city,
+                        state=state,
+                        postal_code=postcode,
+                        destination_country=country,
+                        weight_g=weight,
+                        currency=currency,
+                        content_type=content_type_val,
+                        is_eu=is_eu,
+                        declared_items=multi_items,
+                        declared_qty=1,
+                        declared_description="",
+                        declared_netweight_g=piece_net_i,
+                        declared_line_value=piece_val,
+                        declared_hs=piece_hs,
+                        declared_origin=piece_origin,
+                        total_customs_value=piece_val,
+                    )
+                else:
+                    row = _dpi_efile_row(
+                        product=product,
+                        service_level=service_level,
+                        customer_ekp=ekp,
+                        awb="",
+                        registered_barcode="",
+                        cust_ref=cust_ref,
+                        recipient_name=name[:35] if len(name) > 35 else name,
+                        recipient_phone=phone,
+                        recipient_email=email,
+                        address_line_1=street,
+                        address_line_2=address2,
+                        address_line_3="",
+                        city=city,
+                        state=state,
+                        postal_code=postcode,
+                        destination_country=country,
+                        weight_g=weight,
+                        currency=currency,
+                        content_type=content_type_val,
+                        is_eu=is_eu,
+                        declared_qty=row_qty_i,
+                        declared_description=piece_desc,
+                        declared_netweight_g=piece_net_i,
+                        declared_line_value=piece_val,
+                        declared_hs=piece_hs,
+                        declared_origin=piece_origin,
+                        total_customs_value=piece_val,
+                    )
                 writer.writerow(row)
                 exported += 1
 
@@ -2373,6 +2612,9 @@ class OrderAdmin(admin.ModelAdmin):
                         "cn22_netweight": (
                             request.POST.get(f"row_{i}_cn22_w") or ""
                         ).strip(),
+                        "cn22_lines": (
+                            request.POST.get(f"row_{i}_cn22_lines") or ""
+                        ),
                     })
 
             skipped = 0
@@ -2549,6 +2791,7 @@ class OrderAdmin(admin.ModelAdmin):
                                 "hs_override": "",
                                 "origin_override": "",
                                 "cn22_netweight": "",
+                                "cn22_lines": "",
                             })
                             amazon_added += 1
 
@@ -2603,6 +2846,7 @@ class OrderAdmin(admin.ModelAdmin):
                     "hs_override": "",
                     "origin_override": "",
                     "cn22_netweight": "",
+                    "cn22_lines": "",
                 })
 
             from django.template.response import TemplateResponse

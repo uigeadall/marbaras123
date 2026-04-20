@@ -182,6 +182,17 @@
     color: white;
     transform: scale(1.08);
   }
+  .e2dpi-cn22-lines {
+    width: 100%;
+    min-height: 72px;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    resize: vertical;
+    box-sizing: border-box;
+  }
 </style>
 
 <div class="e2dpi-wrap">
@@ -289,6 +300,12 @@ The Netherlands
           <label style="grid-column: span 2;">Описание на съдържанието по подразбиране
             <input type="text" name="description" value="{{ default_description }}" placeholder="напр. Silver jewellery">
           </label>
+          <p style="grid-column:1/-1;margin:0;font-size:12px;color:#475569;line-height:1.45;">
+            <strong>Няколко продукта в един пакет:</strong> за всеки Non-EU ред в таблицата има поле
+            „CN22 — няколко артикула“. Можеш да напишеш напр.
+            <code>pendant, ring, necklace</code> (разделени със запетая) или по ред:
+            <code>1 | Silver pendant | 35.00 | 25</code> — стойността/теглото от колоните на реда се разпределят, ако ги пропуснеш.
+          </p>
           <label style="grid-column: span 2;">Персонални референции (по избор, по един ред — само за НОВИ редове при Parse)
             <textarea name="custom_refs" rows="2" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;">{{ custom_refs_raw }}</textarea>
           </label>
@@ -415,6 +432,21 @@ The Netherlands
                       onclick="return confirm('Delete this row?');">🗑️</button>
             </td>
           </tr>
+          {% if not r.is_eu %}
+          <tr class="e2dpi-cn22-multi">
+            <td colspan="14" style="background:#f8fafc;padding:10px 14px 14px;border-bottom:1px solid #e2e8f0;">
+              <label style="display:block;font-size:12.5px;font-weight:600;color:#334155;margin-bottom:6px;">
+                CN22 — няколко артикула в този пакет (до 25 реда в DPI)
+              </label>
+              <textarea name="row_{{ forloop.counter0 }}_cn22_lines" rows="3" class="e2dpi-cn22-lines"
+                        placeholder="Пример със запетаи: pendant, ring, necklace&#10;Или по ред:&#10;1 | Silver pendant | 35.00 | 25&#10;1 | Silver ring | 40.00 | 20">{{ r.cn22_lines|default:'' }}</textarea>
+              <div style="font-size:11px;color:#64748b;margin-top:6px;line-height:1.4;">
+                Ако полето е <strong>празно</strong>, се ползват колоните „Qty“, „Описание CN22“, „Item value“ и „Тегло CN22“ за <strong>един</strong> артикул.
+                Разделители в реда: <code>|</code> или <code>;</code>. Полета стойност и тегло (g) са незадължителни — делят се от общата стойност/тегло на пратката.
+              </div>
+            </td>
+          </tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -426,7 +458,7 @@ The Netherlands
         <span style="font-size:12.5px;color:#065f46;">
           Generates <code>dpi_prelabeled_items.csv</code> · UTF-8 BOM · <strong>разделител ;</strong>
           · <strong>178 колони</strong> като официалния DPI eFile template
-          (<code>DECLARED_*</code> слот 1 за CN22)
+          (<code>DECLARED_*</code> слотове 1–25 за CN22)
         </span>
       </div>
     {% endif %}
