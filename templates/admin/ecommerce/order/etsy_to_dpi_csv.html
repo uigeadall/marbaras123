@@ -239,8 +239,13 @@ The Netherlands
           <label>Тегло пратка по подразбиране (g)
             <input type="number" name="weight" min="1" step="1" value="{{ default_weight_val }}">
           </label>
-          <label>Префикс референция
+          <label>Префикс референция (CUST_REF)
             <input type="text" name="ref_prefix" value="{{ ref_prefix }}">
+            <span style="display:block;font-size:11px;color:#64748b;font-weight:400;margin-top:4px;">
+              При <strong>paste на адреси</strong>: всяка нова партида получава точно този текст (без <code>-1</code>, <code>-2</code>).
+              При <strong>Amazon CSV</strong>: по подразбиране се ползва <code>order-id</code> от файла (уникално); полето по-горе не се добавя към Amazon редовете.
+              За различна референция на всеки ред ползвай списъка „Персонални референции“ по-долу.
+            </span>
           </label>
           <label>Имейл по подразбиране
             <input type="email" name="default_email" value="{{ default_shop_email }}">

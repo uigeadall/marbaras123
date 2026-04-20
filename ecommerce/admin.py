@@ -2517,7 +2517,8 @@ class OrderAdmin(admin.ModelAdmin):
                             ):
                                 cust_ref = custom_refs[new_idx]
                             else:
-                                cust_ref = f"{ref_prefix}-{len(rows) + 1}"
+                                # Unique per order — no "-1","-2" suffix from our side
+                                cust_ref = oid
 
                             desc_text = (
                                 " / ".join(agg["desc_parts"])[:100]
@@ -2581,7 +2582,8 @@ class OrderAdmin(admin.ModelAdmin):
                 if new_idx < len(custom_refs) and custom_refs[new_idx]:
                     cust_ref = custom_refs[new_idx]
                 else:
-                    cust_ref = f"{ref_prefix}-{len(rows) + 1}"
+                    # Use prefix exactly as entered (e.g. "ss13"), no "-1" suffix
+                    cust_ref = ref_prefix
                 rows.append({
                     "name": parsed["name"],
                     "street": street_full,
