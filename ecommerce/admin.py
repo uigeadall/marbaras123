@@ -486,6 +486,61 @@ def _apply_canada_address_fixes(postcode, state, country):
     )
 
 
+# Australia: 4-digit postcodes; states/territories NSW, VIC, QLD, SA, WA, TAS, NT, ACT
+_AU_STATE_NAME_TO_CODE = {
+    "new south wales": "NSW",
+    "victoria": "VIC",
+    "queensland": "QLD",
+    "south australia": "SA",
+    "western australia": "WA",
+    "tasmania": "TAS",
+    "northern territory": "NT",
+    "australian capital territory": "ACT",
+    "act": "ACT",
+}
+_AU_STATE_CODES_SET = frozenset(_AU_STATE_NAME_TO_CODE.values())
+
+
+def _normalize_australian_postal(raw):
+    import re as _re
+
+    t = (raw or "").strip()
+    if not t:
+        return ""
+    digits = _re.sub(r"\D", "", t)
+    if len(digits) == 4:
+        return digits
+    return t[:15]
+
+
+def _normalize_au_state(raw):
+    if not raw:
+        return ""
+    s = (raw or "").strip()
+    u = s.upper()
+    if u in _AU_STATE_CODES_SET:
+        return u
+    key = s.lower().replace(".", "").strip()
+    return _AU_STATE_NAME_TO_CODE.get(key, s[:10])
+
+
+def _apply_australia_address_fixes(postcode, state, country):
+    if (country or "").strip().upper() != "AU":
+        return postcode, state
+    return (
+        _normalize_australian_postal(postcode),
+        _normalize_au_state(state),
+    )
+
+
+def _apply_dpi_destination_fixes(postcode, state, country):
+    """Normalize postal + region for DPI eFile (CA / AU)."""
+    pc, st = postcode, state
+    pc, st = _apply_canada_address_fixes(pc, st, country)
+    pc, st = _apply_australia_address_fixes(pc, st, country)
+    return pc, st
+
+
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -1934,6 +1989,7 @@ class OrderAdmin(admin.ModelAdmin):
                     "UNITED STATES": "US", "FRANCE": "FR", "ITALY": "IT",
                     "SPAIN": "ES", "NETHERLANDS": "NL", "BELGIUM": "BE",
                     "AUSTRIA": "AT", "SWITZERLAND": "CH", "POLAND": "PL",
+                    "CANADA": "CA", "AUSTRALIA": "AU",
                 }
                 dest = _iso.get(dest, dest[:2])
 
@@ -1988,8 +2044,7 @@ class OrderAdmin(admin.ModelAdmin):
             net_ne = _dpi_csv_piece_netweight(total_weight_g)
             _pc = _short(getattr(o, "postal_code", "") or "", 15)
             _st = ""
-            if dest == "CA":
-                _pc, _st = _apply_canada_address_fixes(_pc, _st, "CA")
+            _pc, _st = _apply_dpi_destination_fixes(_pc, _st, dest)
             row = _dpi_efile_row(
                 product=product,
                 service_level=default_service,
@@ -2116,6 +2171,23 @@ class OrderAdmin(admin.ModelAdmin):
                     m.group(1).strip(),
                     m.group(2).upper(),
                 )
+            # Australia: "Sydney NSW 2000" / "Melbourne, VIC 3000" (4-digit postal)
+            m = _re.match(
+                r"^(.+?),?\s+([A-Za-z]{2,3})\s+(\d{4})\s*$",
+                s,
+                _re.IGNORECASE,
+            )
+            if m:
+                city = m.group(1).strip()
+                st_raw = m.group(2).strip()
+                pc = m.group(3).strip()
+                st = _normalize_au_state(st_raw)
+                if st in _AU_STATE_CODES_SET:
+                    return (
+                        _normalize_australian_postal(pc),
+                        city,
+                        st,
+                    )
             m = _re.match(
                 r"^(.+?),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$", s
             )
@@ -2150,7 +2222,7 @@ class OrderAdmin(admin.ModelAdmin):
                 return m.group(2).upper(), m.group(1).strip(), ""
             return None
 
-        def _is_postcode_only(line):
+        def _is_postcode_only(line, country_hint=""):
             """Detect a postcode when it's alone on its own line.
 
             Returns the normalised postcode or None.
@@ -2158,6 +2230,12 @@ class OrderAdmin(admin.ModelAdmin):
             s = (line or "").strip()
             if not s:
                 return None
+            # Australia: lone 4-digit line when country is already known
+            if (
+                (country_hint or "").strip().upper() == "AU"
+                and _re.fullmatch(r"\d{4}", s)
+            ):
+                return _normalize_australian_postal(s)
             # UK (DE7 6PX, SW1A 1AA, L1 8JQ, EC1V 2NX)
             if _re.fullmatch(
                 r"[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}", s, _re.IGNORECASE,
@@ -2290,7 +2368,7 @@ class OrderAdmin(admin.ModelAdmin):
             # for UK, the county) from the lines that precede it.
             if not postcode:
                 for i in range(len(rest) - 1, -1, -1):
-                    pc = _is_postcode_only(rest[i])
+                    pc = _is_postcode_only(rest[i], country_hint=country)
                     if pc:
                         postcode = pc
                         rest.pop(i)
@@ -2327,7 +2405,7 @@ class OrderAdmin(admin.ModelAdmin):
                 street = rest[0].strip()
                 address2 = " ".join(r.strip() for r in rest[1:])
 
-            postcode, state = _apply_canada_address_fixes(
+            postcode, state = _apply_dpi_destination_fixes(
                 postcode, state, country
             )
             return {
@@ -2467,7 +2545,7 @@ class OrderAdmin(admin.ModelAdmin):
                 cn22_raw = (
                     request.POST.get(f"row_{i}_cn22_lines") or ""
                 ).strip()
-                postcode, state = _apply_canada_address_fixes(
+                postcode, state = _apply_dpi_destination_fixes(
                     postcode, state, country
                 )
                 piece_hs = row_hs or hs_code
@@ -2643,7 +2721,7 @@ class OrderAdmin(admin.ModelAdmin):
                     _st = (
                         request.POST.get(f"row_{i}_state") or ""
                     ).strip()
-                    _pc, _st = _apply_canada_address_fixes(_pc, _st, country)
+                    _pc, _st = _apply_dpi_destination_fixes(_pc, _st, country)
                     rows.append({
                         "name": name,
                         "street": (
@@ -2828,7 +2906,7 @@ class OrderAdmin(admin.ModelAdmin):
                             city = _amz_get(rec, "ship-city")
                             state = _amz_get(rec, "ship-state")
                             postcode = _amz_get(rec, "ship-postal-code")
-                            postcode, state = _apply_canada_address_fixes(
+                            postcode, state = _apply_dpi_destination_fixes(
                                 postcode, state, country
                             )
 
@@ -5287,6 +5365,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     "UNITED STATES": "US", "FRANCE": "FR", "ITALY": "IT",
                     "SPAIN": "ES", "NETHERLANDS": "NL", "BELGIUM": "BE",
                     "AUSTRIA": "AT", "SWITZERLAND": "CH", "POLAND": "PL",
+                    "CANADA": "CA", "AUSTRALIA": "AU",
                 }
                 dest = _iso.get(dest, dest[:2])
 
@@ -5327,8 +5406,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             net_ne = _dpi_csv_piece_netweight(total_weight_g)
             _pc = _short(getattr(mo, "postal_code", "") or "", 15)
             _st = _short(getattr(mo, "state", "") or "", 30)
-            if dest == "CA":
-                _pc, _st = _apply_canada_address_fixes(_pc, _st, "CA")
+            _pc, _st = _apply_dpi_destination_fixes(_pc, _st, dest)
             row = _dpi_efile_row(
                 product=product,
                 service_level=default_service,
