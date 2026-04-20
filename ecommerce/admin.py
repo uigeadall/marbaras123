@@ -2023,6 +2023,12 @@ class OrderAdmin(admin.ModelAdmin):
                 item_value = (
                     request.POST.get(f"row_{i}_value") or ""
                 ).strip()
+                row_desc = (
+                    request.POST.get(f"row_{i}_description") or ""
+                ).strip() or default_desc
+                row_qty = (
+                    request.POST.get(f"row_{i}_qty") or "1"
+                ).strip() or "1"
 
                 is_eu = country in _EU
                 writer.writerow([
@@ -2035,8 +2041,8 @@ class OrderAdmin(admin.ModelAdmin):
                     currency,
                     "" if is_eu else hs_code,
                     origin,
-                    "" if is_eu else "1",
-                    "" if is_eu else default_desc,
+                    "" if is_eu else row_qty,
+                    "" if is_eu else row_desc,
                     "" if is_eu else hs_code,
                     "" if is_eu else item_value,
                     "" if is_eu else origin,
@@ -2143,13 +2149,202 @@ class OrderAdmin(admin.ModelAdmin):
                         "item_value": (
                             request.POST.get(f"row_{i}_value") or ""
                         ).strip(),
+                        "description": (
+                            request.POST.get(f"row_{i}_description") or ""
+                        ).strip(),
+                        "qty": (
+                            request.POST.get(f"row_{i}_qty") or "1"
+                        ).strip() or "1",
                     })
+
+            skipped = 0
+
+            # ---- Amazon Seller Central CSV import (tab-separated) ----
+            # One row per order-id. Duplicate order-item-ids for the same
+            # order are aggregated (qty + item_price summed).
+            if action not in ("clear", "delete"):
+                amz_file = request.FILES.get("amazon_csv")
+                if amz_file:
+                    try:
+                        raw = amz_file.read()
+                        text_content = None
+                        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+                            try:
+                                text_content = raw.decode(enc)
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        if text_content is None:
+                            text_content = raw.decode("utf-8", errors="replace")
+
+                        import csv as _csv
+                        import io as _io
+                        sniff_sample = text_content[:4096]
+                        delim = "\t" if sniff_sample.count("\t") > sniff_sample.count(",") else ","
+                        reader = _csv.DictReader(
+                            _io.StringIO(text_content), delimiter=delim
+                        )
+
+                        by_order = {}
+                        order_first_seen = []
+                        for amz_row in reader:
+                            order_id = (
+                                amz_row.get("order-id")
+                                or amz_row.get("Order ID")
+                                or amz_row.get("order_id")
+                                or ""
+                            ).strip()
+                            if not order_id:
+                                continue
+                            if order_id not in by_order:
+                                by_order[order_id] = {
+                                    "raw": amz_row,
+                                    "qty": 0,
+                                    "value": 0.0,
+                                    "desc_parts": [],
+                                }
+                                order_first_seen.append(order_id)
+                            agg = by_order[order_id]
+                            try:
+                                qty = int(
+                                    (amz_row.get("quantity-purchased") or "1").strip()
+                                    or "1"
+                                )
+                            except ValueError:
+                                qty = 1
+                            try:
+                                price = float(
+                                    (amz_row.get("item-price") or "0").strip()
+                                    or "0"
+                                )
+                            except ValueError:
+                                price = 0.0
+                            agg["qty"] += max(qty, 1)
+                            agg["value"] += price
+                            pname = (
+                                amz_row.get("product-name")
+                                or amz_row.get("product_name")
+                                or ""
+                            ).strip()
+                            if pname and pname not in agg["desc_parts"]:
+                                agg["desc_parts"].append(pname)
+
+                        def _amz_get(rec, *keys):
+                            for k in keys:
+                                v = (rec.get(k) or "").strip()
+                                if v:
+                                    return v
+                            return ""
+
+                        _COUNTRY_AMZ = {
+                            "UNITED STATES": "US", "UNITED KINGDOM": "GB",
+                            "GREAT BRITAIN": "GB", "USA": "US", "U.S.A.": "US",
+                            "U.K.": "GB", "UK": "GB", "GERMANY": "DE",
+                            "FRANCE": "FR", "ITALY": "IT", "SPAIN": "ES",
+                            "NETHERLANDS": "NL", "BELGIUM": "BE",
+                            "AUSTRIA": "AT", "CANADA": "CA", "AUSTRALIA": "AU",
+                            "JAPAN": "JP", "MEXICO": "MX", "BRAZIL": "BR",
+                            "IRELAND": "IE", "POLAND": "PL", "SWEDEN": "SE",
+                            "DENMARK": "DK", "FINLAND": "FI", "NORWAY": "NO",
+                            "SWITZERLAND": "CH", "PORTUGAL": "PT",
+                            "GREECE": "GR", "ROMANIA": "RO", "BULGARIA": "BG",
+                            "CZECHIA": "CZ", "CZECH REPUBLIC": "CZ",
+                            "HUNGARY": "HU", "SLOVAKIA": "SK",
+                            "SLOVENIA": "SI", "CROATIA": "HR", "ESTONIA": "EE",
+                            "LATVIA": "LV", "LITHUANIA": "LT",
+                            "LUXEMBOURG": "LU", "MALTA": "MT", "CYPRUS": "CY",
+                        }
+
+                        amazon_added = 0
+                        for oid in order_first_seen:
+                            agg = by_order[oid]
+                            rec = agg["raw"]
+                            name = _amz_get(
+                                rec, "recipient-name", "buyer-name",
+                            )
+                            if not name:
+                                skipped += 1
+                                continue
+                            country_raw = _amz_get(rec, "ship-country").upper()
+                            country = (
+                                _COUNTRY_AMZ.get(country_raw)
+                                or (country_raw[:2] if len(country_raw) >= 2 else "")
+                            )
+                            if not country:
+                                skipped += 1
+                                continue
+
+                            phone_raw = _amz_get(
+                                rec, "ship-phone-number",
+                                "buyer-phone-number",
+                            )
+                            phone = _parse_phone(phone_raw) or phone_raw
+                            email = _amz_get(rec, "buyer-email")
+                            street = _amz_get(rec, "ship-address-1")
+                            address2_parts = [
+                                p for p in (
+                                    _amz_get(rec, "ship-address-2"),
+                                    _amz_get(rec, "ship-address-3"),
+                                ) if p
+                            ]
+                            address2 = " ".join(address2_parts)
+                            city = _amz_get(rec, "ship-city")
+                            state = _amz_get(rec, "ship-state")
+                            postcode = _amz_get(rec, "ship-postal-code")
+
+                            new_idx = len(rows) - starting_idx
+                            if (
+                                new_idx < len(custom_refs)
+                                and custom_refs[new_idx]
+                            ):
+                                cust_ref = custom_refs[new_idx]
+                            else:
+                                cust_ref = f"{ref_prefix}-{len(rows) + 1}"
+
+                            desc_text = (
+                                " / ".join(agg["desc_parts"])[:100]
+                                or default_desc
+                            )
+                            item_value = (
+                                f"{round(agg['value'], 2):.2f}"
+                                if agg["value"] > 0
+                                else default_value
+                            )
+
+                            rows.append({
+                                "name": name[:35],
+                                "street": street,
+                                "address2": address2,
+                                "city": city,
+                                "state": state,
+                                "postcode": postcode,
+                                "country": country,
+                                "is_eu": country in _EU,
+                                "phone": phone or default_phone,
+                                "email": email or default_email,
+                                "weight": default_weight,
+                                "ref": cust_ref,
+                                "item_value": item_value,
+                                "description": desc_text,
+                                "qty": str(max(agg["qty"], 1)),
+                            })
+                            amazon_added += 1
+
+                        if amazon_added:
+                            messages.success(
+                                request,
+                                f"Amazon CSV: added {amazon_added} order(s).",
+                            )
+                    except Exception as e:
+                        messages.error(
+                            request,
+                            f"Failed to parse Amazon CSV: {e}",
+                        )
 
             if action in ("clear", "delete"):
                 blocks = []
             else:
                 blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
-            skipped = 0
             starting_idx = len(rows)
             for idx, b in enumerate(blocks):
                 parsed = _parse_block(b)

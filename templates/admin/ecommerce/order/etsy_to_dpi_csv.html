@@ -191,12 +191,25 @@
   </div>
 
   {# ========== SINGLE FORM: holds paste area, settings AND the rows ========== #}
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
 
     <div class="e2dpi-grid">
       <div class="e2dpi-card">
-        <h3>1) Paste addresses (one recipient per block, blank line between)</h3>
+        <h3>1a) Upload Amazon orders CSV <span style="font-size:12px;font-weight:500;color:#6b7280;">(preferred)</span></h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input type="file" name="amazon_csv" accept=".csv,.tsv,.txt"
+                 style="padding:8px;border:1px dashed #94a3b8;border-radius:6px;background:#f8fafc;">
+          <div class="e2dpi-hint">
+            Upload the <code>*.csv</code> file you download from
+            <strong>Amazon Seller Central → Orders → Order Reports</strong>
+            (tab-separated). Each order becomes a row with the product name,
+            quantity and item price pre-filled. Click
+            <em>Parse &amp; add below ↓</em> to add them to the table.
+          </div>
+        </div>
+
+        <h3 style="margin-top:16px;">1b) Or paste addresses (one recipient per block)</h3>
         <textarea name="addresses" placeholder="Sébastien Mesnard
 16 rue Vandrezanne
 75013 Paris
@@ -332,6 +345,8 @@ The Netherlands
                 <span style="color:#9ca3af;font-size:11px;">n/a</span>
               {% endif %}
             </td>
+            <input type="hidden" name="row_{{ forloop.counter0 }}_description" value="{{ r.description|default:'' }}">
+            <input type="hidden" name="row_{{ forloop.counter0 }}_qty" value="{{ r.qty|default:'1' }}">
             <td style="text-align:center;">
               <button type="submit" name="del" value="{{ forloop.counter0 }}"
                       class="btn-delete-row" formnovalidate
