@@ -1430,10 +1430,11 @@ class OrderAdmin(admin.ModelAdmin):
         item barcode are included so the file is ready for re-dispatch
         or manifesting; otherwise those columns stay empty.
         """
-        response = HttpResponse(content_type="text/csv")
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = (
-            'attachment; filename="dpi_bulk_dispatch.csv"'
+            'attachment; filename="dpi_prelabeled_items.csv"'
         )
+        response.write("\ufeff")
         writer = csv.writer(response, delimiter=",", quoting=csv.QUOTE_MINIMAL)
 
         columns = [
@@ -1441,14 +1442,10 @@ class OrderAdmin(admin.ModelAdmin):
             "SERVICE_LEVEL",
             "CUST_EKP",
             "AWB",
-            "BAG_ID",
-            "FORMAT",
-            "SHIPMENT_TYPE",
             "REGISTERED_BARCODE",
             "CUST_REF",
             "NAME",
             "RECIPIENT_PHONE",
-            "RECIPIENT_PHONE_2",
             "RECIPIENT_EMAIL",
             "ADDRESS_LINE_1",
             "ADDRESS_LINE_2",
@@ -1456,18 +1453,13 @@ class OrderAdmin(admin.ModelAdmin):
             "CITY",
             "STATE",
             "POSTAL_CODE",
-            "COUNTRY",
-            "SHIPMENT_WEIGHT",
-            "SHIPMENT_AMOUNT",
-            "SHIPMENT_CURRENCY",
-            "SHIPMENT_NATURETYPE",
-            "RETURN_ITEM_WANTED",
-            "CONTENT_DESCRIPTION",
-            "CONTENT_HS_CODE",
-            "CONTENT_ORIGIN",
-            "CONTENT_AMOUNT",
-            "CONTENT_VALUE",
-            "CONTENT_NET_WEIGHT",
+            "DESTINATION_COUNTRY",
+            "WEIGHT",
+            "CONTENT_TYPE",
+            "TOTAL_VALUE",
+            "CURRENCY",
+            "HS_CODE",
+            "ORIGIN_COUNTRY",
         ]
         writer.writerow(columns)
 
@@ -1566,19 +1558,20 @@ class OrderAdmin(admin.ModelAdmin):
                 if nm:
                     content_desc = _short(nm, 33)
 
+            is_eu = dest in {
+                "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+                "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+                "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+            }
             row = [
                 product,
                 default_service,
                 ekp,
                 getattr(o, "awb", "") or "",
-                "",
-                "",
-                "",
                 getattr(o, "tracking_number", "") or "",
                 str(o.id),
                 _short(getattr(o, "full_name", "") or "Recipient", 35),
                 _sanitize_phone(getattr(o, "phone", "") or ""),
-                "",
                 _short(getattr(o, "email", "") or "", 80),
                 _short(getattr(o, "address", "") or "", 40),
                 "",
@@ -1588,23 +1581,18 @@ class OrderAdmin(admin.ModelAdmin):
                 _short(getattr(o, "postal_code", "") or "", 15),
                 dest,
                 total_weight_g,
-                f"{round(order_total, 2):.2f}",
-                default_currency,
                 default_nature,
-                "false",
-                content_desc,
-                default_hs,
+                "" if is_eu else f"{round(order_total, 2):.2f}",
+                default_currency,
+                "" if is_eu else default_hs,
                 origin_country,
-                max(qty_total, 1),
-                f"{round(order_total, 2):.2f}",
-                max(total_weight_g, 10),
             ]
             writer.writerow(row)
 
         return response
 
     export_dpi_bulk_csv.short_description = (
-        "📄 Export to DPI bulk dispatch CSV"
+        "📄 Export to DPI prelabeled items CSV"
     )
 
     # ------------------------------------------------------------------
@@ -1876,45 +1864,77 @@ class OrderAdmin(admin.ModelAdmin):
                     continue
                 rows.append(parsed)
 
-            response = HttpResponse(content_type="text/csv")
+            response = HttpResponse(content_type="text/csv; charset=utf-8")
             response["Content-Disposition"] = (
-                'attachment; filename="dpi_addresses.csv"'
+                'attachment; filename="dpi_prelabeled_items.csv"'
             )
+            response.write("\ufeff")
             writer = csv.writer(
                 response, delimiter=",", quoting=csv.QUOTE_MINIMAL
             )
+            service_level = (
+                getattr(settings, "GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
+                or "PRIORITY"
+            )
+            content_type_default = (
+                getattr(settings, "GLOBAL_MAIL_CONTENT_TYPE", "SALE_GOODS")
+                or "SALE_GOODS"
+            )
             writer.writerow([
-                "Name", "Street", "HouseNo", "Address2", "Postcode",
-                "City", "Country", "Weight_g", "ProductCode", "Email",
-                "Phone", "Reference", "EKP", "CN22_Required", "HSCode",
-                "ItemValue", "Currency", "Description", "Qty",
-                "OriginCountry",
+                "PRODUCT",
+                "SERVICE_LEVEL",
+                "CUST_EKP",
+                "AWB",
+                "REGISTERED_BARCODE",
+                "CUST_REF",
+                "NAME",
+                "RECIPIENT_PHONE",
+                "RECIPIENT_EMAIL",
+                "ADDRESS_LINE_1",
+                "ADDRESS_LINE_2",
+                "ADDRESS_LINE_3",
+                "CITY",
+                "STATE",
+                "POSTAL_CODE",
+                "DESTINATION_COUNTRY",
+                "WEIGHT",
+                "CONTENT_TYPE",
+                "TOTAL_VALUE",
+                "CURRENCY",
+                "HS_CODE",
+                "ORIGIN_COUNTRY",
             ])
             for idx, r in enumerate(rows, start=1):
                 country = r["country"]
                 is_eu = country in _EU
-                cn22_required = "false" if is_eu else "true"
+                street_full = (
+                    f"{r['street']} {r['house_no']}".strip()
+                    if r["house_no"]
+                    else r["street"]
+                )
                 writer.writerow([
+                    product,
+                    service_level,
+                    ekp,
+                    "",
+                    "",
+                    f"ETSY-{idx:03d}",
                     r["name"],
-                    r["street"],
-                    r["house_no"],
+                    r["phone"],
+                    r["email"],
+                    street_full,
                     r["address2"],
-                    r["postcode"],
+                    "",
                     r["city"],
+                    r["state"],
+                    r["postcode"],
                     country,
                     default_weight,
-                    product,
-                    r["email"],
-                    r["phone"],
-                    f"ETSY-{idx:03d}",
-                    ekp,
-                    cn22_required,
-                    "" if is_eu else hs_code,
+                    content_type_default,
                     "" if is_eu else default_value,
-                    "" if is_eu else currency,
-                    "" if is_eu else default_desc,
-                    "" if is_eu else default_qty,
-                    "" if is_eu else origin,
+                    currency,
+                    "" if is_eu else hs_code,
+                    origin,
                 ])
 
             messages.success(
@@ -4177,23 +4197,21 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     # DPI bulk-dispatch CSV export (same format as OrderAdmin)
     # ------------------------------------------------------------------
     def export_dpi_bulk_csv(self, request, queryset):
-        """Export selected marketplace orders to DPI bulk dispatch CSV."""
-        response = HttpResponse(content_type="text/csv")
+        """Export selected marketplace orders to DPI prelabeled items CSV."""
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = (
-            'attachment; filename="dpi_bulk_dispatch.csv"'
+            'attachment; filename="dpi_prelabeled_items.csv"'
         )
+        response.write("\ufeff")
         writer = csv.writer(response, delimiter=",", quoting=csv.QUOTE_MINIMAL)
 
         columns = [
-            "PRODUCT", "SERVICE_LEVEL", "CUST_EKP", "AWB", "BAG_ID",
-            "FORMAT", "SHIPMENT_TYPE", "REGISTERED_BARCODE", "CUST_REF",
-            "NAME", "RECIPIENT_PHONE", "RECIPIENT_PHONE_2", "RECIPIENT_EMAIL",
-            "ADDRESS_LINE_1", "ADDRESS_LINE_2", "ADDRESS_LINE_3",
-            "CITY", "STATE", "POSTAL_CODE", "COUNTRY",
-            "SHIPMENT_WEIGHT", "SHIPMENT_AMOUNT", "SHIPMENT_CURRENCY",
-            "SHIPMENT_NATURETYPE", "RETURN_ITEM_WANTED",
-            "CONTENT_DESCRIPTION", "CONTENT_HS_CODE", "CONTENT_ORIGIN",
-            "CONTENT_AMOUNT", "CONTENT_VALUE", "CONTENT_NET_WEIGHT",
+            "PRODUCT", "SERVICE_LEVEL", "CUST_EKP", "AWB",
+            "REGISTERED_BARCODE", "CUST_REF", "NAME", "RECIPIENT_PHONE",
+            "RECIPIENT_EMAIL", "ADDRESS_LINE_1", "ADDRESS_LINE_2",
+            "ADDRESS_LINE_3", "CITY", "STATE", "POSTAL_CODE",
+            "DESTINATION_COUNTRY", "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE",
+            "CURRENCY", "HS_CODE", "ORIGIN_COUNTRY",
         ]
         writer.writerow(columns)
 
@@ -4265,19 +4283,20 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             if order_total <= 0:
                 order_total = 1.0
 
+            is_eu = dest in {
+                "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+                "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+                "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+            }
             row = [
                 product,
                 default_service,
                 ekp,
                 getattr(mo, "awb", "") or "",
-                "",
-                "",
-                "",
                 getattr(mo, "tracking_number", "") or "",
                 _short(getattr(mo, "external_order_id", "") or str(mo.id), 30),
                 _short(getattr(mo, "buyer_name", "") or "Recipient", 35),
                 _sanitize_phone(getattr(mo, "buyer_phone", "") or ""),
-                "",
                 _short(getattr(mo, "buyer_email", "") or "", 80),
                 _short(getattr(mo, "address_line1", "") or "", 40),
                 _short(getattr(mo, "address_line2", "") or "", 40),
@@ -4287,22 +4306,17 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 _short(getattr(mo, "postal_code", "") or "", 15),
                 dest,
                 total_weight_g,
-                f"{round(order_total, 2):.2f}",
-                getattr(mo, "currency", "") or default_currency,
                 default_nature,
-                "false",
-                _short(getattr(mo, "items_summary", "") or "Silver jewellery", 33),
-                default_hs,
+                "" if is_eu else f"{round(order_total, 2):.2f}",
+                getattr(mo, "currency", "") or default_currency,
+                "" if is_eu else default_hs,
                 origin_country,
-                max(int(getattr(mo, "item_count", 1) or 1), 1),
-                f"{round(order_total, 2):.2f}",
-                max(total_weight_g, 10),
             ]
             writer.writerow(row)
 
         return response
 
-    export_dpi_bulk_csv.short_description = "📄 Export to DPI bulk dispatch CSV"
+    export_dpi_bulk_csv.short_description = "📄 Export to DPI prelabeled items CSV"
 
     # ------------------------------------------------------------------
     # Custom URLs
