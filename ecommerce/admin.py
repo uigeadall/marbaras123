@@ -1607,6 +1607,341 @@ class OrderAdmin(admin.ModelAdmin):
         "📄 Export to DPI bulk dispatch CSV"
     )
 
+    # ------------------------------------------------------------------
+    # Etsy / Amazon address text → DPI CSV
+    # ------------------------------------------------------------------
+    def etsy_to_dpi_csv_view(self, request):
+        """Paste raw address blocks (one recipient per block, separated
+        by a blank line) and download a DPI-ready CSV.
+
+        Matches the layout of the in-browser "DP Address → CSV" tool:
+        Name, Street, HouseNo, Address2, Postcode, City, Country,
+        Weight_g, ProductCode, Email, Phone, Reference, EKP,
+        CN22_Required, HSCode, ItemValue, Currency, Description, Qty,
+        OriginCountry.
+        """
+        import re as _re
+
+        _COUNTRY_MAP = {
+            "bulgaria": "BG", "българия": "BG",
+            "germany": "DE", "deutschland": "DE", "германия": "DE",
+            "united kingdom": "GB", "great britain": "GB", "uk": "GB",
+            "england": "GB", "scotland": "GB", "wales": "GB",
+            "usa": "US", "u.s.a.": "US", "united states": "US",
+            "united states of america": "US", "america": "US",
+            "france": "FR", "italy": "IT", "italia": "IT",
+            "spain": "ES", "españa": "ES", "espana": "ES",
+            "netherlands": "NL", "the netherlands": "NL",
+            "holland": "NL", "nederland": "NL",
+            "belgium": "BE", "belgië": "BE", "belgique": "BE",
+            "austria": "AT", "österreich": "AT", "osterreich": "AT",
+            "switzerland": "CH", "schweiz": "CH", "suisse": "CH",
+            "poland": "PL", "polska": "PL",
+            "portugal": "PT", "greece": "GR", "ελλάδα": "GR",
+            "sweden": "SE", "sverige": "SE",
+            "norway": "NO", "norge": "NO",
+            "denmark": "DK", "danmark": "DK",
+            "finland": "FI", "suomi": "FI",
+            "ireland": "IE", "éire": "IE",
+            "czech republic": "CZ", "czechia": "CZ", "česko": "CZ",
+            "slovakia": "SK", "slovensko": "SK",
+            "hungary": "HU", "magyarország": "HU",
+            "romania": "RO", "românia": "RO",
+            "croatia": "HR", "hrvatska": "HR",
+            "slovenia": "SI", "slovenija": "SI",
+            "luxembourg": "LU", "estonia": "EE", "eesti": "EE",
+            "latvia": "LV", "latvija": "LV",
+            "lithuania": "LT", "lietuva": "LT",
+            "malta": "MT", "cyprus": "CY",
+            "canada": "CA", "australia": "AU", "new zealand": "NZ",
+            "japan": "JP", "singapore": "SG", "hong kong": "HK",
+            "china": "CN", "india": "IN", "brazil": "BR", "brasil": "BR",
+            "mexico": "MX", "méxico": "MX",
+            "united arab emirates": "AE", "uae": "AE",
+            "israel": "IL", "south africa": "ZA",
+            "turkey": "TR", "türkiye": "TR",
+            "iceland": "IS", "island": "IS",
+            "serbia": "RS", "srbija": "RS",
+            "ukraine": "UA", "україна": "UA",
+        }
+        _EU = {
+            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+            "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+            "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+        }
+
+        def _parse_country(line):
+            if not line:
+                return None
+            s = line.strip().rstrip(".,")
+            key = s.lower()
+            if key in _COUNTRY_MAP:
+                return _COUNTRY_MAP[key]
+            if _re.fullmatch(r"[A-Za-z]{2}", s):
+                return s.upper()
+            return None
+
+        def _parse_postcode_city(line):
+            """Return (postcode, city, state) or None."""
+            s = line.strip().rstrip(",")
+            m = _re.match(
+                r"^(.+?),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$", s
+            )
+            if m:
+                return (
+                    m.group(3),
+                    m.group(1).strip().title(),
+                    m.group(2).upper(),
+                )
+            m = _re.match(r"^(\d{4}\s?[A-Z]{2})\s+(.+)$", s)
+            if m:
+                return m.group(1), m.group(2).strip(), ""
+            m = _re.match(r"^(\d{4,6})\s+(.+?)\s+([A-Z]{2})$", s)
+            if m:
+                return m.group(1), m.group(2).strip().title(), m.group(3)
+            m = _re.match(r"^(\d{4,6})\s+(.+)$", s)
+            if m:
+                return m.group(1), m.group(2).strip(), ""
+            m = _re.match(
+                r"^([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s+(.+)$", s,
+            )
+            if m:
+                return m.group(1), m.group(2).strip(), ""
+            m = _re.match(
+                r"^(.+?),?\s+([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$", s,
+            )
+            if m:
+                return m.group(2), m.group(1).strip(), ""
+            return None
+
+        def _parse_phone(line):
+            if not line:
+                return None
+            s = line.strip()
+            s = _re.sub(
+                r"(?i)^(tel|tel\.|phone|mobile|gsm|тел|тел\.)\s*:?\s*",
+                "",
+                s,
+            )
+            digits_only = _re.sub(r"[^\d]", "", s)
+            if len(digits_only) < 7:
+                return None
+            has_plus = s.lstrip().startswith("+")
+            cleaned = _re.sub(r"[^\d\s\.\-\(\)]", "", s)
+            if has_plus:
+                cleaned = "+" + cleaned.lstrip()
+            return cleaned.strip()[:25]
+
+        def _looks_like_phone(line):
+            return _parse_phone(line) is not None
+
+        def _split_street(line):
+            s = line.strip().rstrip(",")
+            m = _re.match(
+                r"^(.+?)\s+(\d+[A-Za-z]?(?:[\-/]\d+[A-Za-z]?)?)$", s,
+            )
+            if m:
+                return m.group(1), m.group(2)
+            m = _re.match(r"^(\d+[A-Za-z]?)\s+(.+)$", s)
+            if m:
+                return m.group(2), m.group(1)
+            return s, ""
+
+        def _parse_block(raw):
+            lines = [
+                ln.strip().rstrip(",")
+                for ln in raw.strip().split("\n")
+                if ln.strip()
+            ]
+            if not lines:
+                return None
+            if len(lines) == 1 and "," in lines[0]:
+                parts = [p.strip() for p in lines[0].split(",") if p.strip()]
+                lines = parts
+            name = lines[0]
+            rest = lines[1:]
+
+            email = ""
+            for i in range(len(rest) - 1, -1, -1):
+                if "@" in rest[i] and " " not in rest[i].strip():
+                    email = rest.pop(i).strip()
+                    break
+
+            phone = ""
+            for i in range(len(rest) - 1, -1, -1):
+                p = _parse_phone(rest[i])
+                if p and _looks_like_phone(rest[i]):
+                    digits = _re.sub(r"[^\d]", "", rest[i])
+                    if len(digits) >= 7 and len(digits) / max(len(rest[i]), 1) > 0.4:
+                        phone = p
+                        rest.pop(i)
+                        break
+
+            country = ""
+            for i in range(len(rest) - 1, -1, -1):
+                c = _parse_country(rest[i])
+                if c:
+                    country = c
+                    rest.pop(i)
+                    break
+
+            postcode, city, state = "", "", ""
+            for i in range(len(rest) - 1, -1, -1):
+                res = _parse_postcode_city(rest[i])
+                if res:
+                    postcode, city, state = res
+                    rest.pop(i)
+                    break
+
+            street, house_no, address2 = "", "", ""
+            if len(rest) == 1:
+                street, house_no = _split_street(rest[0])
+            elif len(rest) == 2:
+                if _re.fullmatch(
+                    r"\d+[A-Za-z]?(?:[\-/]\d+[A-Za-z]?)?", rest[1].strip()
+                ):
+                    street = rest[0].strip()
+                    house_no = rest[1].strip()
+                else:
+                    street, house_no = _split_street(rest[0])
+                    address2 = rest[1].strip()
+            elif len(rest) >= 3:
+                street, house_no = _split_street(rest[0])
+                address2 = " ".join(r.strip() for r in rest[1:])
+
+            return {
+                "name": name,
+                "street": street,
+                "house_no": house_no,
+                "address2": address2,
+                "postcode": postcode,
+                "city": city,
+                "state": state,
+                "country": country,
+                "phone": phone,
+                "email": email,
+            }
+
+        default_ekp = str(
+            getattr(settings, "GLOBAL_MAIL_CUSTOMER_EKP", "") or "316276595"
+        )
+        default_product = (
+            getattr(settings, "GLOBAL_MAIL_PRODUCT_CODE", "PRIO") or "PRIO"
+        )
+        default_hs = (
+            getattr(settings, "GLOBAL_MAIL_DEFAULT_HS_CODE", "7113.11")
+            or "7113.11"
+        )
+        default_currency = (
+            getattr(settings, "GLOBAL_MAIL_CURRENCY", "EUR") or "EUR"
+        )
+        default_origin = getattr(settings, "SHOP_COUNTRY", "BG") or "BG"
+
+        if request.method == "POST":
+            text = request.POST.get("addresses", "") or ""
+            ekp = request.POST.get("ekp", default_ekp).strip() or default_ekp
+            product = (
+                request.POST.get("product", default_product).strip()
+                or default_product
+            )
+            hs_code = (
+                request.POST.get("hs_code", default_hs).strip() or default_hs
+            )
+            currency = (
+                request.POST.get("currency", default_currency).strip()
+                or default_currency
+            )
+            origin = (
+                request.POST.get("origin", default_origin).strip().upper()
+                or default_origin
+            )
+            default_weight = request.POST.get("weight", "").strip()
+            default_desc = (
+                request.POST.get("description", "Silver jewellery").strip()
+                or "Silver jewellery"
+            )
+            default_qty = request.POST.get("qty", "1").strip() or "1"
+            default_value = request.POST.get("item_value", "").strip()
+
+            blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
+            rows = []
+            skipped = 0
+            for b in blocks:
+                parsed = _parse_block(b)
+                if not parsed:
+                    skipped += 1
+                    continue
+                if not parsed["country"]:
+                    skipped += 1
+                    continue
+                rows.append(parsed)
+
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = (
+                'attachment; filename="dpi_addresses.csv"'
+            )
+            writer = csv.writer(
+                response, delimiter=",", quoting=csv.QUOTE_MINIMAL
+            )
+            writer.writerow([
+                "Name", "Street", "HouseNo", "Address2", "Postcode",
+                "City", "Country", "Weight_g", "ProductCode", "Email",
+                "Phone", "Reference", "EKP", "CN22_Required", "HSCode",
+                "ItemValue", "Currency", "Description", "Qty",
+                "OriginCountry",
+            ])
+            for idx, r in enumerate(rows, start=1):
+                country = r["country"]
+                is_eu = country in _EU
+                cn22_required = "false" if is_eu else "true"
+                writer.writerow([
+                    r["name"],
+                    r["street"],
+                    r["house_no"],
+                    r["address2"],
+                    r["postcode"],
+                    r["city"],
+                    country,
+                    default_weight,
+                    product,
+                    r["email"],
+                    r["phone"],
+                    f"ETSY-{idx:03d}",
+                    ekp,
+                    cn22_required,
+                    "" if is_eu else hs_code,
+                    "" if is_eu else default_value,
+                    "" if is_eu else currency,
+                    "" if is_eu else default_desc,
+                    "" if is_eu else default_qty,
+                    "" if is_eu else origin,
+                ])
+
+            messages.success(
+                request,
+                f"Exported {len(rows)} row(s){', skipped ' + str(skipped) if skipped else ''}.",
+            )
+            return response
+
+        from django.template.response import TemplateResponse
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Etsy/Amazon addresses → DPI CSV",
+            "default_ekp": default_ekp,
+            "default_product": default_product,
+            "default_hs": default_hs,
+            "default_currency": default_currency,
+            "default_origin": default_origin,
+            "default_description": "Silver jewellery",
+            "default_qty": "1",
+            "opts": self.model._meta,
+        }
+        return TemplateResponse(
+            request,
+            "admin/ecommerce/order/etsy_to_dpi_csv.html",
+            context,
+        )
+
     def save_model(self, request, obj, form, change):
         """Override save to auto-create shipping label for new orders."""
         is_new = not change  # change=False means it's a new object
@@ -2362,6 +2697,11 @@ class OrderAdmin(admin.ModelAdmin):
                 '<int:order_id>/print-test-label/',
                 self.admin_site.admin_view(self.print_test_label_for_order_view),
                 name='print_test_label_for_order',
+            ),
+            path(
+                'etsy-to-dpi-csv/',
+                self.admin_site.admin_view(self.etsy_to_dpi_csv_view),
+                name='etsy_to_dpi_csv',
             ),
         ]
         return custom_urls + urls

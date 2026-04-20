@@ -1,0 +1,214 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | {{ site_title }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url 'admin:ecommerce_order_changelist' %}">Orders</a>
+  &rsaquo; Etsy/Amazon → DPI CSV
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .e2dpi-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .e2dpi-hero {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: white;
+    padding: 18px 22px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+  }
+  .e2dpi-hero h1 {
+    margin: 0 0 6px 0;
+    font-size: 20px;
+  }
+  .e2dpi-hero p {
+    margin: 0;
+    opacity: 0.95;
+    font-size: 13px;
+  }
+  .e2dpi-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 900px) {
+    .e2dpi-grid { grid-template-columns: 1fr; }
+  }
+  .e2dpi-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .e2dpi-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #111827;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .e2dpi-card textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 360px;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+  .e2dpi-card .hint {
+    font-size: 12px;
+    color: #6b7280;
+    margin: 8px 0 0 0;
+  }
+  .e2dpi-settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+  }
+  .e2dpi-settings-grid label {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    color: #374151;
+    font-weight: 600;
+    gap: 4px;
+  }
+  .e2dpi-settings-grid input {
+    padding: 7px 9px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .e2dpi-submit {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .e2dpi-btn {
+    background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .e2dpi-btn:hover { opacity: 0.9; }
+  .e2dpi-note {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: #78350f;
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  pre.e2dpi-example {
+    background: #f3f4f6;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #374151;
+    overflow-x: auto;
+    margin: 0;
+  }
+</style>
+
+<div class="e2dpi-wrap">
+  <div class="e2dpi-hero">
+    <h1>📋 Etsy/Amazon addresses → DPI CSV</h1>
+    <p>Paste raw address text below. Separate each recipient with a blank line. Submit to download a DPI-ready CSV.</p>
+  </div>
+
+  <div class="e2dpi-note">
+    <strong>Rules:</strong>
+    &nbsp;• One recipient per block, blocks separated by a <strong>blank line</strong>.
+    &nbsp;• EU destinations need only <code>Weight_g</code>.
+    &nbsp;• Non-EU (US, UK, CH, NO, …) automatically get <code>HSCode</code>, <code>Currency</code>, <code>OriginCountry</code> + you should set a default <code>Description / Qty / ItemValue</code>.
+    &nbsp;• You can edit the CSV afterwards in Numbers/Excel if needed.
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="e2dpi-grid">
+      <div class="e2dpi-card">
+        <h3>1) Paste addresses</h3>
+        <textarea name="addresses" placeholder="Sébastien Mesnard
+16 rue Vandrezanne
+75013 Paris
+France
+
+Lykle Bruinsma
+treilerweg
+8c
+2583 DC Den Haag
+The Netherlands
+0611957095
+
+Michael Peedin
+401 east Waddell st.
+selma, NC 27576
+United States"></textarea>
+        <p class="hint">Supported formats: multi-line block, single-line comma-separated, with/without phone, with/without email.</p>
+      </div>
+
+      <div class="e2dpi-card">
+        <h3>2) Global settings</h3>
+        <div class="e2dpi-settings-grid">
+          <label>EKP
+            <input type="text" name="ekp" value="{{ default_ekp }}">
+          </label>
+          <label>Product code
+            <input type="text" name="product" value="{{ default_product }}">
+          </label>
+          <label>Default weight (g)
+            <input type="number" name="weight" min="1" step="1" placeholder="e.g. 80">
+          </label>
+          <label>CN22 — HS code
+            <input type="text" name="hs_code" value="{{ default_hs }}">
+          </label>
+          <label>CN22 — Currency
+            <input type="text" name="currency" value="{{ default_currency }}">
+          </label>
+          <label>CN22 — Origin country
+            <input type="text" name="origin" value="{{ default_origin }}" maxlength="2">
+          </label>
+          <label>CN22 — Description
+            <input type="text" name="description" value="{{ default_description }}">
+          </label>
+          <label>CN22 — Qty
+            <input type="number" name="qty" min="1" step="1" value="{{ default_qty }}">
+          </label>
+          <label style="grid-column: span 2;">CN22 — Item value (per row)
+            <input type="text" name="item_value" placeholder="e.g. 19.90">
+          </label>
+        </div>
+        <p class="hint" style="margin-top: 12px;">These apply automatically to every Non-EU row. Leave CN22 fields empty if all your destinations are EU.</p>
+      </div>
+    </div>
+
+    <div class="e2dpi-submit">
+      <button type="submit" class="e2dpi-btn">⬇️ Generate &amp; download CSV</button>
+      <span style="font-size: 12px; color: #6b7280;">CSV columns: Name, Street, HouseNo, Address2, Postcode, City, Country, Weight_g, ProductCode, Email, Phone, Reference, EKP, CN22_Required, HSCode, ItemValue, Currency, Description, Qty, OriginCountry</span>
+    </div>
+  </form>
+</div>
+{% endblock %}
