@@ -188,6 +188,15 @@ United States"></textarea>
           <label style="grid-column: span 2;">Default phone (fallback)
             <input type="text" name="default_phone" value="{{ default_shop_phone }}" placeholder="e.g. +359 888 123 456">
           </label>
+          <label>Reference prefix
+            <input type="text" name="ref_prefix" value="ETSY" placeholder="ETSY">
+          </label>
+          <label>&nbsp;
+            <span style="font-size:11px;color:#6b7280;font-weight:400;">Auto-generated: PREFIX-001, PREFIX-002…</span>
+          </label>
+          <label style="grid-column: span 2;">Custom references (optional, one per line — same order as addresses)
+            <textarea name="custom_refs" rows="4" placeholder="Etsy-12345&#10;Etsy-12346&#10;Amazon-XYZ-001&#10;..." style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical;"></textarea>
+          </label>
           <label>CN22 — HS code
             <input type="text" name="hs_code" value="{{ default_hs }}">
           </label>

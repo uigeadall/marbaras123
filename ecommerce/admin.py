@@ -1854,6 +1854,15 @@ class OrderAdmin(admin.ModelAdmin):
             default_phone = request.POST.get("default_phone", "").strip()
             if default_phone:
                 default_phone = _parse_phone(default_phone) or default_phone
+            ref_prefix = (
+                request.POST.get("ref_prefix", "ETSY").strip() or "ETSY"
+            )
+            custom_refs_raw = request.POST.get("custom_refs", "") or ""
+            custom_refs = [
+                ln.strip()
+                for ln in custom_refs_raw.splitlines()
+                if ln.strip()
+            ]
 
             blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
             rows = []
@@ -1918,13 +1927,17 @@ class OrderAdmin(admin.ModelAdmin):
                 )
                 phone = r["phone"] or default_phone
                 email = r["email"] or default_email
+                if idx - 1 < len(custom_refs) and custom_refs[idx - 1]:
+                    cust_ref = custom_refs[idx - 1]
+                else:
+                    cust_ref = f"{ref_prefix}-{idx:03d}"
                 writer.writerow([
                     product,
                     service_level,
                     ekp,
                     "",
                     "",
-                    f"ETSY-{idx:03d}",
+                    cust_ref,
                     r["name"],
                     phone,
                     email,
