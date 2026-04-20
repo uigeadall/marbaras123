@@ -1691,16 +1691,76 @@ class OrderAdmin(admin.ModelAdmin):
             if m:
                 return m.group(1), m.group(2).strip(), ""
             m = _re.match(
-                r"^([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s+(.+)$", s,
+                r"^([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s+(.+)$",
+                s,
+                _re.IGNORECASE,
             )
             if m:
-                return m.group(1), m.group(2).strip(), ""
+                return m.group(1).upper(), m.group(2).strip(), ""
             m = _re.match(
-                r"^(.+?),?\s+([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$", s,
+                r"^(.+?),?\s+([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})$",
+                s,
+                _re.IGNORECASE,
             )
             if m:
-                return m.group(2), m.group(1).strip(), ""
+                return m.group(2).upper(), m.group(1).strip(), ""
             return None
+
+        def _is_postcode_only(line):
+            """Detect a postcode when it's alone on its own line.
+
+            Returns the normalised postcode or None.
+            """
+            s = (line or "").strip()
+            if not s:
+                return None
+            # UK (DE7 6PX, SW1A 1AA, L1 8JQ, EC1V 2NX)
+            if _re.fullmatch(
+                r"[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}", s, _re.IGNORECASE,
+            ):
+                return s.upper()
+            # Dutch (2583 DC)
+            if _re.fullmatch(r"\d{4}\s?[A-Z]{2}", s, _re.IGNORECASE):
+                return s.upper()
+            # Canadian (K1A 0B1)
+            if _re.fullmatch(
+                r"[A-Z]\d[A-Z]\s?\d[A-Z]\d", s, _re.IGNORECASE,
+            ):
+                return s.upper()
+            # US ZIP (12345 or 12345-6789) / generic numeric 4-6 digits
+            if _re.fullmatch(r"\d{5}(?:-\d{4})?", s):
+                return s
+            if _re.fullmatch(r"\d{4,6}", s):
+                return s
+            return None
+
+        _UK_COUNTY_HINTS = {
+            "cornwall", "devon", "dorset", "durham", "essex",
+            "hampshire", "kent", "lancashire", "merseyside", "norfolk",
+            "northumberland", "rutland", "shropshire", "somerset",
+            "staffordshire", "suffolk", "surrey", "wiltshire",
+            "worcestershire", "greater london", "greater manchester",
+            "east sussex", "west sussex", "isle of wight",
+            "tyne and wear", "east riding of yorkshire",
+            "west midlands", "south yorkshire", "north yorkshire",
+            "west yorkshire", "cambridgeshire", "cumbria",
+            "derbyshire", "gloucestershire", "herefordshire",
+            "hertfordshire", "leicestershire", "lincolnshire",
+            "northamptonshire", "nottinghamshire", "oxfordshire",
+            "warwickshire", "bedfordshire", "berkshire",
+            "buckinghamshire", "cheshire",
+        }
+
+        def _looks_like_uk_county(s):
+            t = (s or "").strip().lower()
+            if not t:
+                return False
+            if t in _UK_COUNTY_HINTS:
+                return True
+            # Anything ending in "shire" and no digits (house numbers etc.)
+            if t.endswith("shire") and not _re.search(r"\d", t):
+                return True
+            return False
 
         def _parse_phone(line):
             if not line:
@@ -1781,20 +1841,46 @@ class OrderAdmin(admin.ModelAdmin):
                     rest.pop(i)
                     break
 
+            # Fallback: postcode is on its own line (common Amazon UK /
+            # single-line postcode pastes). Also pull the city (and,
+            # for UK, the county) from the lines that precede it.
+            if not postcode:
+                for i in range(len(rest) - 1, -1, -1):
+                    pc = _is_postcode_only(rest[i])
+                    if pc:
+                        postcode = pc
+                        rest.pop(i)
+                        # For GB, a county may sit right above the
+                        # postcode, with the actual post-town above it.
+                        if (
+                            country == "GB"
+                            and rest
+                            and _looks_like_uk_county(rest[-1])
+                        ):
+                            state = rest.pop(-1).strip().title()
+                        if rest:
+                            city = rest.pop(-1).strip().title()
+                        break
+
+            # Preserve the original line verbatim so UK / FR / US-style
+            # "6 Yew Tree Close" doesn't get flipped to "Yew Tree Close 6".
+            # We still split only the explicit two-line German pattern
+            # where the house number is on its own line.
             street, house_no, address2 = "", "", ""
             if len(rest) == 1:
-                street, house_no = _split_street(rest[0])
+                street = rest[0].strip()
             elif len(rest) == 2:
                 if _re.fullmatch(
-                    r"\d+[A-Za-z]?(?:[\-/]\d+[A-Za-z]?)?", rest[1].strip()
+                    r"\d+[A-Za-z]?(?:[\-/]\d+[A-Za-z]?)?",
+                    rest[1].strip(),
                 ):
                     street = rest[0].strip()
                     house_no = rest[1].strip()
                 else:
-                    street, house_no = _split_street(rest[0])
+                    street = rest[0].strip()
                     address2 = rest[1].strip()
             elif len(rest) >= 3:
-                street, house_no = _split_street(rest[0])
+                street = rest[0].strip()
                 address2 = " ".join(r.strip() for r in rest[1:])
 
             return {
