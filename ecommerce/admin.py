@@ -1976,6 +1976,13 @@ class OrderAdmin(admin.ModelAdmin):
                 request.POST.get("description", "Silver jewellery").strip()
                 or "Silver jewellery"
             )
+            content_type_val = (
+                request.POST.get("content_type", content_type_default).strip()
+                or content_type_default
+            )
+            cn22_piece_weight_global = (
+                request.POST.get("cn22_piece_weight", "") or ""
+            ).strip()
 
             response = HttpResponse(content_type="text/csv; charset=utf-8")
             response["Content-Disposition"] = (
@@ -2029,6 +2036,14 @@ class OrderAdmin(admin.ModelAdmin):
                 row_qty = (
                     request.POST.get(f"row_{i}_qty") or "1"
                 ).strip() or "1"
+                row_hs = (request.POST.get(f"row_{i}_hs") or "").strip()
+                row_origin = (
+                    request.POST.get(f"row_{i}_origin") or ""
+                ).strip().upper()
+                row_cn22_w = (request.POST.get(f"row_{i}_cn22_w") or "").strip()
+                piece_hs = row_hs or hs_code
+                piece_origin = row_origin or origin
+                piece_net = row_cn22_w or cn22_piece_weight_global or weight
 
                 is_eu = country in _EU
                 writer.writerow([
@@ -2036,17 +2051,17 @@ class OrderAdmin(admin.ModelAdmin):
                     name, phone, email,
                     street, address2, "",
                     city, state, postcode, country,
-                    weight, content_type_default,
+                    weight, content_type_val,
                     "" if is_eu else item_value,
                     currency,
-                    "" if is_eu else hs_code,
-                    origin,
+                    "" if is_eu else piece_hs,
+                    piece_origin if not is_eu else "",
                     "" if is_eu else row_qty,
                     "" if is_eu else row_desc,
-                    "" if is_eu else hs_code,
+                    "" if is_eu else piece_hs,
                     "" if is_eu else item_value,
-                    "" if is_eu else origin,
-                    "" if is_eu else weight,
+                    "" if is_eu else piece_origin,
+                    "" if is_eu else piece_net,
                 ])
                 exported += 1
 
@@ -2077,6 +2092,13 @@ class OrderAdmin(admin.ModelAdmin):
                 request.POST.get("description", "Silver jewellery").strip()
                 or "Silver jewellery"
             )
+            content_type = (
+                request.POST.get("content_type", content_type_default).strip()
+                or content_type_default
+            )
+            cn22_piece_weight = (
+                request.POST.get("cn22_piece_weight", "") or ""
+            ).strip()
             default_value = request.POST.get("item_value", "").strip()
             default_email = request.POST.get("default_email", "").strip()
             default_phone_raw = request.POST.get("default_phone", "").strip()
@@ -2155,6 +2177,15 @@ class OrderAdmin(admin.ModelAdmin):
                         "qty": (
                             request.POST.get(f"row_{i}_qty") or "1"
                         ).strip() or "1",
+                        "hs_override": (
+                            request.POST.get(f"row_{i}_hs") or ""
+                        ).strip(),
+                        "origin_override": (
+                            request.POST.get(f"row_{i}_origin") or ""
+                        ).strip(),
+                        "cn22_netweight": (
+                            request.POST.get(f"row_{i}_cn22_w") or ""
+                        ).strip(),
                     })
 
             skipped = 0
@@ -2327,6 +2358,9 @@ class OrderAdmin(admin.ModelAdmin):
                                 "item_value": item_value,
                                 "description": desc_text,
                                 "qty": str(max(agg["qty"], 1)),
+                                "hs_override": "",
+                                "origin_override": "",
+                                "cn22_netweight": "",
                             })
                             amazon_added += 1
 
@@ -2375,6 +2409,11 @@ class OrderAdmin(admin.ModelAdmin):
                     "weight": default_weight,
                     "ref": cust_ref,
                     "item_value": default_value,
+                    "description": "",
+                    "qty": "1",
+                    "hs_override": "",
+                    "origin_override": "",
+                    "cn22_netweight": "",
                 })
 
             from django.template.response import TemplateResponse
@@ -2404,6 +2443,8 @@ class OrderAdmin(admin.ModelAdmin):
                 "default_description": default_desc,
                 "default_qty": "1",
                 "default_value_val": default_value,
+                "default_content_type": content_type,
+                "cn22_piece_weight": cn22_piece_weight,
                 "custom_refs_raw": custom_refs_raw,
                 "opts": self.model._meta,
             }
@@ -2425,6 +2466,8 @@ class OrderAdmin(admin.ModelAdmin):
             "default_origin": default_origin,
             "default_description": "Silver jewellery",
             "default_qty": "1",
+            "default_content_type": content_type_default,
+            "cn22_piece_weight": "",
             "default_shop_email": getattr(settings, "SHOP_EMAIL", "") or "",
             "default_shop_phone": getattr(settings, "SHOP_PHONE", "") or "",
             "default_weight_val": "80",

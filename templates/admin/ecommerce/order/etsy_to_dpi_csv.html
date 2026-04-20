@@ -228,42 +228,63 @@ The Netherlands
       </div>
 
       <div class="e2dpi-card">
-        <h3>2) Global defaults (applied to newly-parsed rows only)</h3>
+        <h3>2) Доставка и продукт (глобално)</h3>
         <div class="e2dpi-settings">
           <label>EKP
             <input type="text" name="ekp" value="{{ default_ekp }}">
           </label>
-          <label>Product code
+          <label>Product code (DPI)
             <input type="text" name="product" value="{{ default_product }}">
           </label>
-          <label>Default weight (g)
+          <label>Тегло пратка по подразбиране (g)
             <input type="number" name="weight" min="1" step="1" value="{{ default_weight_val }}">
           </label>
-          <label>Reference prefix
+          <label>Префикс референция
             <input type="text" name="ref_prefix" value="{{ ref_prefix }}">
           </label>
-          <label>Default email
+          <label>Имейл по подразбиране
             <input type="email" name="default_email" value="{{ default_shop_email }}">
           </label>
-          <label>Default phone
+          <label>Телефон по подразбиране
             <input type="text" name="default_phone" value="{{ default_shop_phone }}">
           </label>
-          <label>CN22 — HS code
-            <input type="text" name="hs_code" value="{{ default_hs }}">
+        </div>
+
+        <h3 style="margin-top:18px;">3) CN22 — митническа декларация (Non-EU)</h3>
+        <p style="margin:0 0 10px;font-size:12.5px;color:#475569;line-height:1.45;">
+          Попълни тук стойностите за customs: категория на стоката, HS код, валута, произход, описание и стойност по подразбиране.
+          За всеки ред в таблицата можеш да зададеш отделно количество, описание, HS, произход и нетно тегло на стоката (ако са празни — ползват се стойностите отдолу и колоната „Тегло (g)“).
+        </p>
+        <div class="e2dpi-settings">
+          <label>Категория (CONTENT_TYPE)
+            <select name="content_type" style="max-width:100%;padding:6px 8px;border-radius:6px;border:1px solid #cbd5e1;">
+              <option value="SALE_GOODS" {% if default_content_type == "SALE_GOODS" %}selected{% endif %}>Продажба на стоки (SALE_GOODS)</option>
+              <option value="GIFT" {% if default_content_type == "GIFT" %}selected{% endif %}>Подарък (GIFT)</option>
+              <option value="DOCUMENT" {% if default_content_type == "DOCUMENT" %}selected{% endif %}>Документи (DOCUMENT)</option>
+              <option value="RETURNED_GOODS" {% if default_content_type == "RETURNED_GOODS" %}selected{% endif %}>Върната стока (RETURNED_GOODS)</option>
+              <option value="COMMERCIAL_SAMPLE" {% if default_content_type == "COMMERCIAL_SAMPLE" %}selected{% endif %}>Търговска мостра (COMMERCIAL_SAMPLE)</option>
+              <option value="OTHER" {% if default_content_type == "OTHER" %}selected{% endif %}>Друго (OTHER)</option>
+            </select>
           </label>
-          <label>CN22 — Currency
-            <input type="text" name="currency" value="{{ default_currency }}">
+          <label>HS код (тарифен)
+            <input type="text" name="hs_code" value="{{ default_hs }}" placeholder="7113.11">
           </label>
-          <label>CN22 — Origin
-            <input type="text" name="origin" value="{{ default_origin }}" maxlength="2">
+          <label>Валута (стойност)
+            <input type="text" name="currency" value="{{ default_currency }}" maxlength="3" placeholder="EUR">
           </label>
-          <label>CN22 — Default item value
+          <label>Страна на произход (ISO-2)
+            <input type="text" name="origin" value="{{ default_origin }}" maxlength="2" placeholder="BG">
+          </label>
+          <label>Стойност по подразбиране (ако редът няма цена)
             <input type="text" name="item_value" value="{{ default_value_val }}" placeholder="19.90">
           </label>
-          <label style="grid-column: span 2;">CN22 — Default content description
-            <input type="text" name="description" value="{{ default_description }}" placeholder="e.g. Silver jewellery">
+          <label>Нетно тегло стока CN22 по подразбиране (g, незадължително)
+            <input type="number" name="cn22_piece_weight" min="1" step="1" value="{{ cn22_piece_weight }}" placeholder="като теглото на пратката">
           </label>
-          <label style="grid-column: span 2;">Custom references (optional, one per line, applied to NEW rows only)
+          <label style="grid-column: span 2;">Описание на съдържанието по подразбиране
+            <input type="text" name="description" value="{{ default_description }}" placeholder="напр. Silver jewellery">
+          </label>
+          <label style="grid-column: span 2;">Персонални референции (по избор, по един ред — само за НОВИ редове при Parse)
             <textarea name="custom_refs" rows="2" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;">{{ custom_refs_raw }}</textarea>
           </label>
         </div>
@@ -304,7 +325,10 @@ The Netherlands
             <th>Email</th>
             <th class="col-md">Item value<br><small style="font-weight:400;opacity:.7">(Non-EU)</small></th>
             <th class="col-small">Qty<br><small style="font-weight:400;opacity:.7">(CN22)</small></th>
-            <th>Customs description<br><small style="font-weight:400;opacity:.7">(CN22, Non-EU)</small></th>
+            <th>Описание CN22<br><small style="font-weight:400;opacity:.7">(Non-EU)</small></th>
+            <th class="col-md">HS<br><small style="font-weight:400;opacity:.7">(по избор)</small></th>
+            <th>Произход<br><small style="font-weight:400;opacity:.7">(ISO-2)</small></th>
+            <th class="col-small">Тегло CN22<br><small style="font-weight:400;opacity:.7">(g)</small></th>
             <th style="width:44px;">&nbsp;</th>
           </tr>
         </thead>
@@ -355,6 +379,27 @@ The Netherlands
                 <input type="text" name="row_{{ forloop.counter0 }}_description" value="{{ r.description|default:'' }}" placeholder="Silver jewellery" maxlength="100">
               {% else %}
                 <input type="hidden" name="row_{{ forloop.counter0 }}_description" value="{{ r.description|default:'' }}">
+                <span style="color:#9ca3af;font-size:11px;">n/a</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not r.is_eu %}
+                <input type="text" name="row_{{ forloop.counter0 }}_hs" value="{{ r.hs_override|default:'' }}" placeholder="глобален HS" style="width:88px;">
+              {% else %}
+                <span style="color:#9ca3af;font-size:11px;">n/a</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not r.is_eu %}
+                <input type="text" name="row_{{ forloop.counter0 }}_origin" value="{{ r.origin_override|default:'' }}" placeholder="BG" maxlength="2" style="width:44px;text-transform:uppercase;">
+              {% else %}
+                <span style="color:#9ca3af;font-size:11px;">n/a</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not r.is_eu %}
+                <input type="number" name="row_{{ forloop.counter0 }}_cn22_w" value="{{ r.cn22_netweight|default:'' }}" min="1" step="1" placeholder="—" style="width:56px;">
+              {% else %}
                 <span style="color:#9ca3af;font-size:11px;">n/a</span>
               {% endif %}
             </td>
