@@ -1850,6 +1850,10 @@ class OrderAdmin(admin.ModelAdmin):
             )
             default_qty = request.POST.get("qty", "1").strip() or "1"
             default_value = request.POST.get("item_value", "").strip()
+            default_email = request.POST.get("default_email", "").strip()
+            default_phone = request.POST.get("default_phone", "").strip()
+            if default_phone:
+                default_phone = _parse_phone(default_phone) or default_phone
 
             blocks = [b for b in _re.split(r"\n\s*\n", text) if b.strip()]
             rows = []
@@ -1912,6 +1916,8 @@ class OrderAdmin(admin.ModelAdmin):
                     if r["house_no"]
                     else r["street"]
                 )
+                phone = r["phone"] or default_phone
+                email = r["email"] or default_email
                 writer.writerow([
                     product,
                     service_level,
@@ -1920,8 +1926,8 @@ class OrderAdmin(admin.ModelAdmin):
                     "",
                     f"ETSY-{idx:03d}",
                     r["name"],
-                    r["phone"],
-                    r["email"],
+                    phone,
+                    email,
                     street_full,
                     r["address2"],
                     "",
@@ -1954,6 +1960,8 @@ class OrderAdmin(admin.ModelAdmin):
             "default_origin": default_origin,
             "default_description": "Silver jewellery",
             "default_qty": "1",
+            "default_shop_email": getattr(settings, "SHOP_EMAIL", "") or "",
+            "default_shop_phone": getattr(settings, "SHOP_PHONE", "") or "",
             "opts": self.model._meta,
         }
         return TemplateResponse(

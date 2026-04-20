@@ -179,8 +179,14 @@ United States"></textarea>
           <label>Product code
             <input type="text" name="product" value="{{ default_product }}">
           </label>
-          <label>Default weight (g)
-            <input type="number" name="weight" min="1" step="1" placeholder="e.g. 80">
+          <label>Default weight (g) <span style="color:#dc2626">*</span>
+            <input type="number" name="weight" min="1" step="1" value="80" required>
+          </label>
+          <label>Default email (fallback)
+            <input type="email" name="default_email" value="{{ default_shop_email }}" placeholder="e.g. info@marbaras.com">
+          </label>
+          <label style="grid-column: span 2;">Default phone (fallback)
+            <input type="text" name="default_phone" value="{{ default_shop_phone }}" placeholder="e.g. +359 888 123 456">
           </label>
           <label>CN22 — HS code
             <input type="text" name="hs_code" value="{{ default_hs }}">
@@ -201,7 +207,10 @@ United States"></textarea>
             <input type="text" name="item_value" placeholder="e.g. 19.90">
           </label>
         </div>
-        <p class="hint" style="margin-top: 12px;">These apply automatically to every Non-EU row. Leave CN22 fields empty if all your destinations are EU.</p>
+        <p class="hint" style="margin-top: 12px;">
+          <strong>Default email/phone</strong> are used only for rows where Etsy didn't provide contact info (fallback). They go to DPI, not to the customer.<br>
+          <strong>CN22 fields</strong> apply automatically to every Non-EU row. Leave them empty if all your destinations are EU.
+        </p>
       </div>
     </div>
 
