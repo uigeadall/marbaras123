@@ -37,17 +37,167 @@ from .models import (
 from .utils.emailing import send_order_shipped_email
 
 
-# DPI bulk CSV: customs columns use the same names as the JSON API
-# (camelCase). The customer portal import often ignores UPPER_SNAKE aliases.
-DPI_CSV_CONTENT_HEADERS = (
-    "contentPieceIndexNumber",
-    "contentPieceAmount",
-    "contentPieceDescription",
-    "contentPieceHsCode",
-    "contentPieceValue",
-    "contentPieceOrigin",
-    "contentPieceNetweight",
-)
+def _dpi_efile_headers():
+    """Official DPI customer portal eFile template (semicolon-separated)."""
+    base = [
+        "PRODUCT",
+        "SERVICE_LEVEL",
+        "CUST_EKP",
+        "AWB",
+        "BG_ID",
+        "FORMAT",
+        "SHIPMENT_TYPE",
+        "REGISTERED_BARCODE",
+        "CUST_REF",
+        "NAME",
+        "RECIPIENT_PHONE",
+        "RECIPIENT_PHONE_2",
+        "RECIPIENT_EMAIL",
+        "ADDRESS_LINE_1",
+        "ADDRESS_LINE_2",
+        "ADDRESS_LINE_3",
+        "CITY",
+        "STATE",
+        "POSTAL_CODE",
+        "DESTINATION_COUNTRY",
+        "WEIGHT",
+        "CURRENCY",
+        "CONTENT_TYPE",
+    ]
+    declared = []
+    for i in range(1, 26):
+        declared.extend([
+            f"DECLARED_CONTENT_AMOUNT_{i}",
+            f"DETAILED_CONTENT_DESCRIPTIONS_{i}",
+            f"DECLARED_NETWEIGHT_{i}",
+            f"DECLARED_VALUE_{i}",
+            f"DECLARED_HS_CODE_{i}",
+            f"DECLARED_ORIGIN_COUNTRY_{i}",
+        ])
+    tail = [
+        "TOTAL_VALUE",
+        "RETURN_LABEL",
+        "SENDER_CUSTOMS_REFERENCE",
+        "IMPORTER_CUSTOMS_REFERENCE",
+        "PDDP",
+    ]
+    return base + declared + tail
+
+
+DPI_EFILE_HEADERS = _dpi_efile_headers()
+assert len(DPI_EFILE_HEADERS) == 178
+
+
+def _dpi_efile_detailed_desc(raw, default="Silver jewellery", max_len=200):
+    s = (raw or "").strip().replace('"', "").replace("'", "")
+    if not s:
+        s = default
+    if len(s) <= max_len:
+        return s
+    cut = s[:max_len]
+    if " " in cut[-20:]:
+        cut = cut.rsplit(" ", 1)[0]
+    return (cut.strip() or default)[:max_len]
+
+
+def _dpi_efile_row(
+    *,
+    product,
+    service_level,
+    customer_ekp,
+    awb,
+    registered_barcode,
+    cust_ref,
+    recipient_name,
+    recipient_phone,
+    recipient_email,
+    address_line_1,
+    address_line_2,
+    address_line_3,
+    city,
+    state,
+    postal_code,
+    destination_country,
+    weight_g,
+    currency,
+    content_type,
+    is_eu,
+    declared_qty=1,
+    declared_description="",
+    declared_netweight_g=80,
+    declared_line_value="1.00",
+    declared_hs="",
+    declared_origin="",
+    total_customs_value="1.00",
+):
+    """Build one data row for DPI eFile CSV (178 columns, ';' delimiter)."""
+    try:
+        w_int = int(float(str(weight_g).replace(",", ".").strip()))
+    except (ValueError, TypeError):
+        w_int = 80
+    w_int = max(w_int, 1)
+
+    row = [
+        product,
+        service_level,
+        customer_ekp or "",
+        awb or "",
+        "",
+        "",
+        "",
+        registered_barcode or "",
+        cust_ref,
+        recipient_name,
+        recipient_phone or "",
+        "",
+        recipient_email or "",
+        address_line_1,
+        address_line_2 or "",
+        address_line_3 or "",
+        city,
+        state or "",
+        postal_code,
+        destination_country,
+        str(w_int),
+        currency or "",
+        content_type or "",
+    ]
+
+    if is_eu:
+        for _ in range(25):
+            row.extend(["", "", "", "", "", ""])
+        row.extend(["", "false", "", "", "false"])
+        return row
+
+    try:
+        dq = max(int(float(str(declared_qty).replace(",", ".").strip())), 1)
+    except (ValueError, TypeError):
+        dq = 1
+    try:
+        nw = int(float(str(declared_netweight_g).replace(",", ".").strip()))
+    except (ValueError, TypeError):
+        nw = w_int
+    nw = max(nw, 1)
+
+    row.extend([
+        str(dq),
+        _dpi_efile_detailed_desc(declared_description),
+        str(nw),
+        declared_line_value,
+        _dpi_csv_hs_code_digits(declared_hs),
+        declared_origin or "",
+    ])
+    for _ in range(24):
+        row.extend(["", "", "", "", "", ""])
+    row.extend([
+        total_customs_value,
+        "false",
+        "",
+        "",
+        "false",
+    ])
+    assert len(row) == 178
+    return row
 
 
 def _dpi_csv_hs_code_digits(raw):
@@ -1477,53 +1627,18 @@ class OrderAdmin(admin.ModelAdmin):
     # DPI / Deutsche Post International bulk-dispatch CSV export
     # ------------------------------------------------------------------
     def export_dpi_bulk_csv(self, request, queryset):
-        """Export selected orders to a CSV in the DPI bulk dispatch
-        format.
+        """Export selected orders to DPI **eFile** bulk CSV (semicolon).
 
-        Column layout matches the file DPI accepts for bulk upload
-        (PRODUCT, SERVICE_LEVEL, CUST_EKP, AWB, REGISTERED_BARCODE, …).
-        Customs line items use **camelCase** headers matching the JSON API:
-        contentPieceIndexNumber, contentPieceAmount, contentPieceDescription,
-        contentPieceHsCode, contentPieceValue, contentPieceOrigin,
-        contentPieceNetweight (not CONTENT_PIECE_*), so the customer portal
-        import can populate CN22.
-        When an order has already been shipped via DPI, its AWB and
-        item barcode are included so the file is ready for re-dispatch
-        or manifesting; otherwise those columns stay empty.
+        Matches the official portal template: 178 columns including
+        DECLARED_* slots 1–25 and TOTAL_VALUE / PDDP tail fields.
         """
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = (
             'attachment; filename="dpi_prelabeled_items.csv"'
         )
         response.write("\ufeff")
-        writer = csv.writer(response, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-
-        columns = [
-            "PRODUCT",
-            "SERVICE_LEVEL",
-            "CUST_EKP",
-            "AWB",
-            "REGISTERED_BARCODE",
-            "CUST_REF",
-            "NAME",
-            "RECIPIENT_PHONE",
-            "RECIPIENT_EMAIL",
-            "ADDRESS_LINE_1",
-            "ADDRESS_LINE_2",
-            "ADDRESS_LINE_3",
-            "CITY",
-            "STATE",
-            "POSTAL_CODE",
-            "DESTINATION_COUNTRY",
-            "WEIGHT",
-            "CONTENT_TYPE",
-            "TOTAL_VALUE",
-            "CURRENCY",
-            "HS_CODE",
-            "ORIGIN_COUNTRY",
-            *DPI_CSV_CONTENT_HEADERS,
-        ]
-        writer.writerow(columns)
+        writer = csv.writer(response, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(DPI_EFILE_HEADERS)
 
         import re as _re
 
@@ -1618,55 +1733,49 @@ class OrderAdmin(admin.ModelAdmin):
             if first_item is not None:
                 nm = getattr(getattr(first_item, "product", None), "name", "") or ""
                 if nm:
-                    content_desc = _short(nm, 33)
+                    content_desc = nm.strip()
 
             is_eu = dest in {
                 "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
                 "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
                 "PL", "PT", "RO", "SK", "SI", "ES", "SE",
             }
-            hs_ne = "" if is_eu else _dpi_csv_hs_code_digits(default_hs)
-            val_ne = "" if is_eu else _dpi_csv_piece_value_str(order_total)
-            desc_ne = "" if is_eu else _dpi_csv_piece_description(content_desc)
-            qty_ne = "" if is_eu else max(qty_total, 1)
-            net_ne = "" if is_eu else _dpi_csv_piece_netweight(total_weight_g)
-            row = [
-                product,
-                default_service,
-                ekp,
-                getattr(o, "awb", "") or "",
-                getattr(o, "tracking_number", "") or "",
-                str(o.id),
-                _short(getattr(o, "full_name", "") or "Recipient", 35),
-                _sanitize_phone(getattr(o, "phone", "") or ""),
-                _short(getattr(o, "email", "") or "", 80),
-                _short(getattr(o, "address", "") or "", 40),
-                "",
-                "",
-                _short(getattr(o, "city", "") or "", 30),
-                "",
-                _short(getattr(o, "postal_code", "") or "", 15),
-                dest,
-                total_weight_g,
-                default_nature,
-                val_ne,
-                default_currency,
-                hs_ne,
-                "" if is_eu else origin_country,
-                *(
-                    ("", "", "", "", "", "", "")
-                    if is_eu
-                    else (
-                        1,
-                        qty_ne,
-                        desc_ne,
-                        hs_ne,
-                        val_ne,
-                        origin_country,
-                        net_ne,
-                    )
+            val_ne = _dpi_csv_piece_value_str(order_total)
+            qty_ne = max(qty_total, 1)
+            net_ne = _dpi_csv_piece_netweight(total_weight_g)
+            row = _dpi_efile_row(
+                product=product,
+                service_level=default_service,
+                customer_ekp=ekp,
+                awb=getattr(o, "awb", "") or "",
+                registered_barcode=getattr(o, "tracking_number", "") or "",
+                cust_ref=str(o.id),
+                recipient_name=_short(
+                    getattr(o, "full_name", "") or "Recipient", 35
                 ),
-            ]
+                recipient_phone=_sanitize_phone(
+                    getattr(o, "phone", "") or ""
+                ),
+                recipient_email=_short(getattr(o, "email", "") or "", 80),
+                address_line_1=_short(getattr(o, "address", "") or "", 40),
+                address_line_2="",
+                address_line_3="",
+                city=_short(getattr(o, "city", "") or "", 30),
+                state="",
+                postal_code=_short(getattr(o, "postal_code", "") or "", 15),
+                destination_country=dest,
+                weight_g=total_weight_g,
+                currency=default_currency,
+                content_type=default_nature,
+                is_eu=is_eu,
+                declared_qty=qty_ne,
+                declared_description=content_desc,
+                declared_netweight_g=net_ne,
+                declared_line_value=val_ne,
+                declared_hs=default_hs,
+                declared_origin=origin_country,
+                total_customs_value=val_ne,
+            )
             writer.writerow(row)
 
         return response
@@ -1679,14 +1788,9 @@ class OrderAdmin(admin.ModelAdmin):
     # Etsy / Amazon address text → DPI CSV
     # ------------------------------------------------------------------
     def etsy_to_dpi_csv_view(self, request):
-        """Paste raw address blocks (one recipient per block, separated
-        by a blank line) and download a DPI-ready CSV.
-
-        Matches the layout of the in-browser "DP Address → CSV" tool:
-        Name, Street, HouseNo, Address2, Postcode, City, Country,
-        Weight_g, ProductCode, Email, Phone, Reference, EKP,
-        CN22_Required, HSCode, ItemValue, Currency, Description, Qty,
-        OriginCountry.
+        """Paste addresses or import Amazon CSV, then download DPI **eFile**
+        CSV (semicolon separator, 178 columns — same headers as the portal
+        ``eFile_Template.csv``, including ``DECLARED_*`` / ``TOTAL_VALUE``).
         """
         import re as _re
 
@@ -2057,18 +2161,9 @@ class OrderAdmin(admin.ModelAdmin):
             )
             response.write("\ufeff")
             writer = csv.writer(
-                response, delimiter=",", quoting=csv.QUOTE_MINIMAL
+                response, delimiter=";", quoting=csv.QUOTE_MINIMAL
             )
-            writer.writerow([
-                "PRODUCT", "SERVICE_LEVEL", "CUST_EKP", "AWB",
-                "REGISTERED_BARCODE", "CUST_REF", "NAME",
-                "RECIPIENT_PHONE", "RECIPIENT_EMAIL",
-                "ADDRESS_LINE_1", "ADDRESS_LINE_2", "ADDRESS_LINE_3",
-                "CITY", "STATE", "POSTAL_CODE", "DESTINATION_COUNTRY",
-                "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE", "CURRENCY",
-                "HS_CODE", "ORIGIN_COUNTRY",
-                *DPI_CSV_CONTENT_HEADERS,
-            ])
+            writer.writerow(DPI_EFILE_HEADERS)
 
             exported = 0
             for i in range(n):
@@ -2120,37 +2215,41 @@ class OrderAdmin(admin.ModelAdmin):
                     (item_value or default_item_value or "1").strip() or "1"
                 )
                 piece_hs_d = _dpi_csv_hs_code_digits(piece_hs)
-                piece_desc = _dpi_csv_piece_description(row_desc, default_desc)
-                piece_val = (
-                    "" if is_eu else _dpi_csv_piece_value_str(val_raw)
-                )
+                piece_desc = _dpi_efile_detailed_desc(row_desc, default_desc)
+                piece_val = _dpi_csv_piece_value_str(val_raw)
                 piece_net_i = _dpi_csv_piece_netweight(
                     row_cn22_w, cn22_piece_weight_global, weight
                 )
-                writer.writerow([
-                    product, service_level, ekp, "", "", cust_ref,
-                    name, phone, email,
-                    street, address2, "",
-                    city, state, postcode, country,
-                    weight, content_type_val,
-                    piece_val,
-                    currency,
-                    "" if is_eu else piece_hs_d,
-                    piece_origin if not is_eu else "",
-                    *(
-                        ("", "", "", "", "", "", "")
-                        if is_eu
-                        else (
-                            1,
-                            row_qty_i,
-                            piece_desc,
-                            piece_hs_d,
-                            piece_val,
-                            piece_origin,
-                            piece_net_i,
-                        )
-                    ),
-                ])
+                row = _dpi_efile_row(
+                    product=product,
+                    service_level=service_level,
+                    customer_ekp=ekp,
+                    awb="",
+                    registered_barcode="",
+                    cust_ref=cust_ref,
+                    recipient_name=name[:35] if len(name) > 35 else name,
+                    recipient_phone=phone,
+                    recipient_email=email,
+                    address_line_1=street,
+                    address_line_2=address2,
+                    address_line_3="",
+                    city=city,
+                    state=state,
+                    postal_code=postcode,
+                    destination_country=country,
+                    weight_g=weight,
+                    currency=currency,
+                    content_type=content_type_val,
+                    is_eu=is_eu,
+                    declared_qty=row_qty_i,
+                    declared_description=piece_desc,
+                    declared_netweight_g=piece_net_i,
+                    declared_line_value=piece_val,
+                    declared_hs=piece_hs,
+                    declared_origin=piece_origin,
+                    total_customs_value=piece_val,
+                )
+                writer.writerow(row)
                 exported += 1
 
             messages.success(request, f"Exported {exported} row(s).")
@@ -4807,24 +4906,14 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     # DPI bulk-dispatch CSV export (same format as OrderAdmin)
     # ------------------------------------------------------------------
     def export_dpi_bulk_csv(self, request, queryset):
-        """Export selected marketplace orders to DPI prelabeled items CSV."""
+        """Export marketplace orders to DPI eFile CSV (semicolon, 178 cols)."""
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = (
             'attachment; filename="dpi_prelabeled_items.csv"'
         )
         response.write("\ufeff")
-        writer = csv.writer(response, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-
-        columns = [
-            "PRODUCT", "SERVICE_LEVEL", "CUST_EKP", "AWB",
-            "REGISTERED_BARCODE", "CUST_REF", "NAME", "RECIPIENT_PHONE",
-            "RECIPIENT_EMAIL", "ADDRESS_LINE_1", "ADDRESS_LINE_2",
-            "ADDRESS_LINE_3", "CITY", "STATE", "POSTAL_CODE",
-            "DESTINATION_COUNTRY", "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE",
-            "CURRENCY", "HS_CODE", "ORIGIN_COUNTRY",
-            *DPI_CSV_CONTENT_HEADERS,
-        ]
-        writer.writerow(columns)
+        writer = csv.writer(response, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(DPI_EFILE_HEADERS)
 
         import re as _re
 
@@ -4902,54 +4991,55 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             mp_desc = "Silver jewellery"
             items_summary = (getattr(mo, "items_summary", "") or "").strip()
             if items_summary:
-                mp_desc = _short(items_summary, 33)
+                mp_desc = items_summary
             try:
                 mp_qty = max(int(getattr(mo, "item_count", 1) or 1), 1)
             except Exception:
                 mp_qty = 1
 
-            hs_ne = "" if is_eu else _dpi_csv_hs_code_digits(default_hs)
-            val_ne = "" if is_eu else _dpi_csv_piece_value_str(order_total)
-            desc_ne = "" if is_eu else _dpi_csv_piece_description(mp_desc)
-            qty_ne = "" if is_eu else mp_qty
-            net_ne = "" if is_eu else _dpi_csv_piece_netweight(total_weight_g)
-            row = [
-                product,
-                default_service,
-                ekp,
-                getattr(mo, "awb", "") or "",
-                getattr(mo, "tracking_number", "") or "",
-                _short(getattr(mo, "external_order_id", "") or str(mo.id), 30),
-                _short(getattr(mo, "buyer_name", "") or "Recipient", 35),
-                _sanitize_phone(getattr(mo, "buyer_phone", "") or ""),
-                _short(getattr(mo, "buyer_email", "") or "", 80),
-                _short(getattr(mo, "address_line1", "") or "", 40),
-                _short(getattr(mo, "address_line2", "") or "", 40),
-                "",
-                _short(getattr(mo, "city", "") or "", 30),
-                _short(getattr(mo, "state", "") or "", 30),
-                _short(getattr(mo, "postal_code", "") or "", 15),
-                dest,
-                total_weight_g,
-                default_nature,
-                val_ne,
-                getattr(mo, "currency", "") or default_currency,
-                hs_ne,
-                "" if is_eu else origin_country,
-                *(
-                    ("", "", "", "", "", "", "")
-                    if is_eu
-                    else (
-                        1,
-                        qty_ne,
-                        desc_ne,
-                        hs_ne,
-                        val_ne,
-                        origin_country,
-                        net_ne,
-                    )
+            val_ne = _dpi_csv_piece_value_str(order_total)
+            net_ne = _dpi_csv_piece_netweight(total_weight_g)
+            row = _dpi_efile_row(
+                product=product,
+                service_level=default_service,
+                customer_ekp=ekp,
+                awb=getattr(mo, "awb", "") or "",
+                registered_barcode=getattr(mo, "tracking_number", "") or "",
+                cust_ref=_short(
+                    getattr(mo, "external_order_id", "") or str(mo.id), 30
                 ),
-            ]
+                recipient_name=_short(
+                    getattr(mo, "buyer_name", "") or "Recipient", 35
+                ),
+                recipient_phone=_sanitize_phone(
+                    getattr(mo, "buyer_phone", "") or ""
+                ),
+                recipient_email=_short(
+                    getattr(mo, "buyer_email", "") or "", 80
+                ),
+                address_line_1=_short(
+                    getattr(mo, "address_line1", "") or "", 40
+                ),
+                address_line_2=_short(
+                    getattr(mo, "address_line2", "") or "", 40
+                ),
+                address_line_3="",
+                city=_short(getattr(mo, "city", "") or "", 30),
+                state=_short(getattr(mo, "state", "") or "", 30),
+                postal_code=_short(getattr(mo, "postal_code", "") or "", 15),
+                destination_country=dest,
+                weight_g=total_weight_g,
+                currency=getattr(mo, "currency", "") or default_currency,
+                content_type=default_nature,
+                is_eu=is_eu,
+                declared_qty=mp_qty,
+                declared_description=mp_desc,
+                declared_netweight_g=net_ne,
+                declared_line_value=val_ne,
+                declared_hs=default_hs,
+                declared_origin=origin_country,
+                total_customs_value=val_ne,
+            )
             writer.writerow(row)
 
         return response

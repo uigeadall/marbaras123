@@ -419,8 +419,9 @@ The Netherlands
           ⬇️ Export CSV ({{ rows|length }} row{{ rows|length|pluralize }})
         </button>
         <span style="font-size:12.5px;color:#065f46;">
-          Generates <code>dpi_prelabeled_items.csv</code> · UTF-8 · 29 columns
-          · customs: <code>contentPiece*</code> (както в DPI API)
+          Generates <code>dpi_prelabeled_items.csv</code> · UTF-8 BOM · <strong>разделител ;</strong>
+          · <strong>178 колони</strong> като официалния DPI eFile template
+          (<code>DECLARED_*</code> слот 1 за CN22)
         </span>
       </div>
     {% endif %}
