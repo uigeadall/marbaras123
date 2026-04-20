@@ -2003,7 +2003,7 @@ class OrderAdmin(admin.ModelAdmin):
             from django.template.response import TemplateResponse
             context = {
                 **self.admin_site.each_context(request),
-                "title": "Review and edit — DPI CSV",
+                "title": "Etsy/Amazon addresses → DPI CSV",
                 "rows": rows,
                 "skipped": skipped,
                 "ekp": ekp,
@@ -2013,11 +2013,26 @@ class OrderAdmin(admin.ModelAdmin):
                 "origin": origin,
                 "description": default_desc,
                 "addresses_raw": text,
+                "ref_prefix": ref_prefix,
+                "default_weight_val": default_weight,
+                "default_shop_email": default_email
+                    or (getattr(settings, "SHOP_EMAIL", "") or ""),
+                "default_shop_phone": default_phone
+                    or (getattr(settings, "SHOP_PHONE", "") or ""),
+                "default_ekp": ekp,
+                "default_product": product,
+                "default_hs": hs_code,
+                "default_currency": currency,
+                "default_origin": origin,
+                "default_description": default_desc,
+                "default_qty": "1",
+                "default_value_val": default_value,
+                "custom_refs_raw": custom_refs_raw,
                 "opts": self.model._meta,
             }
             return TemplateResponse(
                 request,
-                "admin/ecommerce/order/etsy_to_dpi_csv_edit.html",
+                "admin/ecommerce/order/etsy_to_dpi_csv.html",
                 context,
             )
 
@@ -2035,6 +2050,12 @@ class OrderAdmin(admin.ModelAdmin):
             "default_qty": "1",
             "default_shop_email": getattr(settings, "SHOP_EMAIL", "") or "",
             "default_shop_phone": getattr(settings, "SHOP_PHONE", "") or "",
+            "default_weight_val": "80",
+            "default_value_val": "",
+            "ref_prefix": "ETSY",
+            "custom_refs_raw": "",
+            "addresses_raw": "",
+            "rows": [],
             "opts": self.model._meta,
         }
         return TemplateResponse(

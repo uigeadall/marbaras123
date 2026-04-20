@@ -14,145 +14,180 @@
 
 {% block content %}
 <style>
-  .e2dpi-wrap {
-    max-width: 1200px;
-    margin: 0 auto;
-  }
+  .e2dpi-wrap { max-width: 1500px; margin: 0 auto; }
   .e2dpi-hero {
     background: linear-gradient(135deg, #0ea5e9, #0284c7);
     color: white;
-    padding: 18px 22px;
+    padding: 16px 22px;
     border-radius: 10px;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
   }
-  .e2dpi-hero h1 {
-    margin: 0 0 6px 0;
-    font-size: 20px;
-  }
-  .e2dpi-hero p {
-    margin: 0;
-    opacity: 0.95;
-    font-size: 13px;
-  }
+  .e2dpi-hero h1 { margin: 0 0 4px 0; font-size: 20px; }
+  .e2dpi-hero p { margin: 0; font-size: 13px; opacity: .95; }
+
   .e2dpi-grid {
     display: grid;
     grid-template-columns: 1.2fr 1fr;
-    gap: 18px;
+    gap: 14px;
+    margin-bottom: 14px;
   }
-  @media (max-width: 900px) {
-    .e2dpi-grid { grid-template-columns: 1fr; }
-  }
+  @media (max-width: 900px) { .e2dpi-grid { grid-template-columns: 1fr; } }
+
   .e2dpi-card {
     background: white;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    padding: 16px 18px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    padding: 14px 16px;
   }
   .e2dpi-card h3 {
     margin: 0 0 10px 0;
-    font-size: 14px;
-    color: #111827;
+    font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
+    color: #111827;
   }
   .e2dpi-card textarea {
     width: 100%;
     box-sizing: border-box;
-    min-height: 360px;
-    padding: 12px;
+    min-height: 220px;
+    padding: 10px;
     border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-family: ui-monospace, Menlo, Monaco, Consolas, monospace;
-    font-size: 13px;
+    border-radius: 6px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12.5px;
     line-height: 1.5;
     resize: vertical;
   }
-  .e2dpi-card .hint {
-    font-size: 12px;
-    color: #6b7280;
-    margin: 8px 0 0 0;
-  }
-  .e2dpi-settings-grid {
+  .e2dpi-settings {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px 14px;
+    gap: 8px 12px;
   }
-  .e2dpi-settings-grid label {
+  .e2dpi-settings label {
     display: flex;
     flex-direction: column;
-    font-size: 12px;
-    color: #374151;
+    font-size: 11px;
     font-weight: 600;
-    gap: 4px;
+    color: #374151;
+    gap: 3px;
   }
-  .e2dpi-settings-grid input {
-    padding: 7px 9px;
+  .e2dpi-settings input, .e2dpi-settings textarea {
+    padding: 6px 8px;
     border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 13px;
+    border-radius: 5px;
+    font-size: 12.5px;
     font-family: inherit;
   }
-  .e2dpi-submit {
-    margin-top: 16px;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .e2dpi-btn {
+  .e2dpi-parse-btn {
     background: linear-gradient(135deg, #0ea5e9, #0284c7);
     color: white;
     border: none;
     padding: 10px 18px;
     border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
+    font-weight: 700;
     font-size: 14px;
+    cursor: pointer;
   }
-  .e2dpi-btn:hover { opacity: 0.9; }
-  .e2dpi-note {
+  .e2dpi-parse-btn:hover { opacity: .92; }
+
+  .e2dpi-hint {
     background: #fef3c7;
     border-left: 4px solid #f59e0b;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: 4px;
-    font-size: 12.5px;
-    color: #78350f;
-    margin-bottom: 14px;
-    line-height: 1.5;
-  }
-  pre.e2dpi-example {
-    background: #f3f4f6;
-    padding: 10px 12px;
-    border-radius: 6px;
     font-size: 12px;
-    color: #374151;
-    overflow-x: auto;
-    margin: 0;
+    color: #78350f;
+    margin-top: 10px;
   }
+
+  .e2dpi-summary {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-size: 12.5px;
+    margin: 16px 0 10px 0;
+  }
+  .e2dpi-summary strong { color: #065f46; }
+
+  table.e2dpi-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 12.5px;
+  }
+  table.e2dpi-table th {
+    background: #111827; color: white;
+    padding: 8px; text-align: left;
+    font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.4px; white-space: nowrap;
+  }
+  table.e2dpi-table td {
+    padding: 6px; border-bottom: 1px solid #f1f5f9; vertical-align: top;
+  }
+  table.e2dpi-table tr:last-child td { border-bottom: none; }
+  table.e2dpi-table tr.eu-row td { background: #f0fdf4; }
+  table.e2dpi-table tr.non-eu-row td { background: #fff7ed; }
+
+  table.e2dpi-table input {
+    width: 100%; box-sizing: border-box;
+    padding: 5px 7px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  table.e2dpi-table input:focus {
+    outline: none; border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.18);
+  }
+  .badge {
+    display: inline-block; padding: 1px 6px;
+    border-radius: 4px; font-size: 9.5px;
+    font-weight: 800; text-transform: uppercase;
+  }
+  .badge-eu { background: #d1fae5; color: #065f46; }
+  .badge-non-eu { background: #fed7aa; color: #9a3412; }
+
+  .e2dpi-export-bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin: 14px 0 8px 0;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+    border-radius: 10px;
+    border: 1px solid #86efac;
+  }
+  .btn-export {
+    background: linear-gradient(135deg, #059669, #047857);
+    color: white; border: none;
+    padding: 11px 22px;
+    border-radius: 8px;
+    font-weight: 800; font-size: 14px;
+    cursor: pointer;
+  }
+  .btn-export:hover { opacity: .9; }
+  .col-small { width: 60px; }
+  .col-md    { width: 110px; }
 </style>
 
 <div class="e2dpi-wrap">
   <div class="e2dpi-hero">
-    <h1>📋 Etsy/Amazon addresses → DPI CSV</h1>
-    <p>Paste raw address text below. Separate each recipient with a blank line. Submit to download a DPI-ready CSV.</p>
+    <h1>📋 Etsy / Amazon → DPI CSV</h1>
+    <p>Paste addresses below, hit <strong>Parse</strong>, edit each row in the table that appears, then <strong>Export CSV</strong>.</p>
   </div>
 
-  <div class="e2dpi-note">
-    <strong>Rules:</strong>
-    &nbsp;• One recipient per block, blocks separated by a <strong>blank line</strong>.
-    &nbsp;• EU destinations need only <code>Weight_g</code>.
-    &nbsp;• Non-EU (US, UK, CH, NO, …) automatically get <code>HSCode</code>, <code>Currency</code>, <code>OriginCountry</code> + you should set a default <code>Description / Qty / ItemValue</code>.
-    &nbsp;• You can edit the CSV afterwards in Numbers/Excel if needed.
-  </div>
-
+  {# -------- PASTE / SETTINGS FORM -------- #}
   <form method="post">
     {% csrf_token %}
     <input type="hidden" name="action" value="preview">
 
     <div class="e2dpi-grid">
       <div class="e2dpi-card">
-        <h3>1) Paste addresses</h3>
+        <h3>1) Paste addresses (one recipient per block, blank line between)</h3>
         <textarea name="addresses" placeholder="Sébastien Mesnard
 16 rue Vandrezanne
 75013 Paris
@@ -163,41 +198,32 @@ treilerweg
 8c
 2583 DC Den Haag
 The Netherlands
-0611957095
-
-Michael Peedin
-401 east Waddell st.
-selma, NC 27576
-United States"></textarea>
-        <p class="hint">Supported formats: multi-line block, single-line comma-separated, with/without phone, with/without email.</p>
+0611957095">{{ addresses_raw }}</textarea>
+        <div class="e2dpi-hint">
+          <strong>One recipient per block, separated by a blank line.</strong> Parser auto-detects name, street+No, ZIP+city, country, phone, email.
+        </div>
       </div>
 
       <div class="e2dpi-card">
-        <h3>2) Global settings</h3>
-        <div class="e2dpi-settings-grid">
+        <h3>2) Global defaults (applied when rows are parsed)</h3>
+        <div class="e2dpi-settings">
           <label>EKP
             <input type="text" name="ekp" value="{{ default_ekp }}">
           </label>
           <label>Product code
             <input type="text" name="product" value="{{ default_product }}">
           </label>
-          <label>Default weight (g) <span style="color:#dc2626">*</span>
-            <input type="number" name="weight" min="1" step="1" value="80" required>
-          </label>
-          <label>Default email (fallback)
-            <input type="email" name="default_email" value="{{ default_shop_email }}" placeholder="e.g. info@marbaras.com">
-          </label>
-          <label style="grid-column: span 2;">Default phone (fallback)
-            <input type="text" name="default_phone" value="{{ default_shop_phone }}" placeholder="e.g. +359 888 123 456">
+          <label>Default weight (g) *
+            <input type="number" name="weight" min="1" step="1" value="{{ default_weight_val }}" required>
           </label>
           <label>Reference prefix
-            <input type="text" name="ref_prefix" value="ETSY" placeholder="ETSY">
+            <input type="text" name="ref_prefix" value="{{ ref_prefix }}">
           </label>
-          <label>&nbsp;
-            <span style="font-size:11px;color:#6b7280;font-weight:400;">Auto-generated: PREFIX-001, PREFIX-002…</span>
+          <label>Default email
+            <input type="email" name="default_email" value="{{ default_shop_email }}">
           </label>
-          <label style="grid-column: span 2;">Custom references (optional, one per line — same order as addresses)
-            <textarea name="custom_refs" rows="4" placeholder="Etsy-12345&#10;Etsy-12346&#10;Amazon-XYZ-001&#10;..." style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical;"></textarea>
+          <label>Default phone
+            <input type="text" name="default_phone" value="{{ default_shop_phone }}">
           </label>
           <label>CN22 — HS code
             <input type="text" name="hs_code" value="{{ default_hs }}">
@@ -205,30 +231,108 @@ United States"></textarea>
           <label>CN22 — Currency
             <input type="text" name="currency" value="{{ default_currency }}">
           </label>
-          <label>CN22 — Origin country
+          <label>CN22 — Origin
             <input type="text" name="origin" value="{{ default_origin }}" maxlength="2">
           </label>
-          <label>CN22 — Description
-            <input type="text" name="description" value="{{ default_description }}">
+          <label>CN22 — Default item value
+            <input type="text" name="item_value" value="{{ default_value_val }}" placeholder="19.90">
           </label>
-          <label>CN22 — Qty
-            <input type="number" name="qty" min="1" step="1" value="{{ default_qty }}">
-          </label>
-          <label style="grid-column: span 2;">CN22 — Item value (per row)
-            <input type="text" name="item_value" placeholder="e.g. 19.90">
+          <label style="grid-column: span 2;">Custom references (optional, one per line, in same order as blocks)
+            <textarea name="custom_refs" rows="2" style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;">{{ custom_refs_raw }}</textarea>
           </label>
         </div>
-        <p class="hint" style="margin-top: 12px;">
-          <strong>Default email/phone</strong> are used only for rows where Etsy didn't provide contact info (fallback). They go to DPI, not to the customer.<br>
-          <strong>CN22 fields</strong> apply automatically to every Non-EU row. Leave them empty if all your destinations are EU.
-        </p>
+        <div style="margin-top:10px;text-align:right;">
+          <button type="submit" class="e2dpi-parse-btn">🔍 Parse &amp; show table below ↓</button>
+        </div>
       </div>
     </div>
-
-    <div class="e2dpi-submit">
-      <button type="submit" class="e2dpi-btn">📋 Generate list &amp; edit each row →</button>
-      <span style="font-size: 12px; color: #6b7280;">CSV columns: Name, Street, HouseNo, Address2, Postcode, City, Country, Weight_g, ProductCode, Email, Phone, Reference, EKP, CN22_Required, HSCode, ItemValue, Currency, Description, Qty, OriginCountry</span>
-    </div>
   </form>
+
+  {# -------- EDITABLE TABLE + EXPORT (same page) -------- #}
+  {% if rows %}
+    <div class="e2dpi-summary">
+      <div>✅ <strong>{{ rows|length }}</strong> row(s) parsed</div>
+      {% if skipped %}<div style="color:#dc2626">⚠️ <strong>{{ skipped }}</strong> skipped (missing country)</div>{% endif %}
+      <div><span class="badge badge-eu">EU</span> weight only</div>
+      <div><span class="badge badge-non-eu">NON-EU</span> + HS / value</div>
+      <div style="margin-left:auto;color:#065f46;">Edit any field → then Export CSV ↓</div>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="export">
+      <input type="hidden" name="rows_count" value="{{ rows|length }}">
+      <input type="hidden" name="ekp" value="{{ ekp }}">
+      <input type="hidden" name="product" value="{{ product }}">
+      <input type="hidden" name="hs_code" value="{{ hs_code }}">
+      <input type="hidden" name="currency" value="{{ currency }}">
+      <input type="hidden" name="origin" value="{{ origin }}">
+      <input type="hidden" name="description" value="{{ description }}">
+
+      <table class="e2dpi-table">
+        <thead>
+          <tr>
+            <th class="col-small">#</th>
+            <th>Reference</th>
+            <th>Name / Address</th>
+            <th>Ctry</th>
+            <th class="col-small">Weight (g) *</th>
+            <th class="col-md">Phone</th>
+            <th>Email</th>
+            <th class="col-md">Item value<br><small style="font-weight:400;opacity:.7">(Non-EU)</small></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="{% if r.is_eu %}eu-row{% else %}non-eu-row{% endif %}">
+            <td>
+              <strong>{{ forloop.counter }}</strong>
+              <br><span class="badge {% if r.is_eu %}badge-eu{% else %}badge-non-eu{% endif %}">{% if r.is_eu %}EU{% else %}Non-EU{% endif %}</span>
+            </td>
+            <td>
+              <input type="text" name="row_{{ forloop.counter0 }}_ref" value="{{ r.ref }}">
+            </td>
+            <td style="min-width: 260px;">
+              <input type="text" name="row_{{ forloop.counter0 }}_name" value="{{ r.name }}" style="font-weight:600;margin-bottom:3px;">
+              <input type="text" name="row_{{ forloop.counter0 }}_street" value="{{ r.street }}" placeholder="Street + No." style="margin-bottom:3px;">
+              <input type="text" name="row_{{ forloop.counter0 }}_address2" value="{{ r.address2 }}" placeholder="Address 2" style="margin-bottom:3px;">
+              <div style="display:flex;gap:3px;">
+                <input type="text" name="row_{{ forloop.counter0 }}_postcode" value="{{ r.postcode }}" placeholder="ZIP" style="flex:0 0 75px;">
+                <input type="text" name="row_{{ forloop.counter0 }}_city" value="{{ r.city }}" placeholder="City" style="flex:1;">
+                <input type="text" name="row_{{ forloop.counter0 }}_state" value="{{ r.state }}" placeholder="St" style="flex:0 0 50px;">
+              </div>
+            </td>
+            <td>
+              <input type="text" name="row_{{ forloop.counter0 }}_country" value="{{ r.country }}" maxlength="2" style="width:48px;text-transform:uppercase;font-weight:700;">
+            </td>
+            <td>
+              <input type="number" name="row_{{ forloop.counter0 }}_weight" value="{{ r.weight }}" min="1" step="1" required>
+            </td>
+            <td>
+              <input type="text" name="row_{{ forloop.counter0 }}_phone" value="{{ r.phone }}" placeholder="+...">
+            </td>
+            <td style="min-width:170px;">
+              <input type="email" name="row_{{ forloop.counter0 }}_email" value="{{ r.email }}" placeholder="email@...">
+            </td>
+            <td>
+              {% if not r.is_eu %}
+                <input type="text" name="row_{{ forloop.counter0 }}_value" value="{{ r.item_value }}" placeholder="19.90">
+              {% else %}
+                <span style="color:#9ca3af;font-size:11px;">n/a</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="e2dpi-export-bar">
+        <button type="submit" class="btn-export">⬇️ Export CSV</button>
+        <span style="font-size:12.5px;color:#065f46;">
+          File will contain {{ rows|length }} row(s) · 22 columns · UTF-8 encoded for DPI
+        </span>
+      </div>
+    </form>
+  {% endif %}
 </div>
 {% endblock %}
