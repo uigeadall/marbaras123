@@ -1460,8 +1460,16 @@ class OrderAdmin(admin.ModelAdmin):
             "CURRENCY",
             "HS_CODE",
             "ORIGIN_COUNTRY",
-            "CONTENT_DESCRIPTION",
-            "QUANTITY",
+            # Customs line-item (CN22) — DPI API contentPiece* fields,
+            # mapped to uppercase snake_case column names which the
+            # Customer Portal CSV import uses to populate the per-item
+            # content-entry row.
+            "CONTENT_PIECE_AMOUNT",
+            "CONTENT_PIECE_DESCRIPTION",
+            "CONTENT_PIECE_HSCODE",
+            "CONTENT_PIECE_VALUE",
+            "CONTENT_PIECE_ORIGIN",
+            "CONTENT_PIECE_NETWEIGHT",
         ]
         writer.writerow(columns)
 
@@ -1588,8 +1596,12 @@ class OrderAdmin(admin.ModelAdmin):
                 default_currency,
                 "" if is_eu else default_hs,
                 origin_country,
-                "" if is_eu else content_desc,
                 "" if is_eu else max(qty_total, 1),
+                "" if is_eu else content_desc,
+                "" if is_eu else default_hs,
+                "" if is_eu else f"{round(order_total, 2):.2f}",
+                "" if is_eu else origin_country,
+                "" if is_eu else total_weight_g,
             ]
             writer.writerow(row)
 
@@ -1981,7 +1993,9 @@ class OrderAdmin(admin.ModelAdmin):
                 "CITY", "STATE", "POSTAL_CODE", "DESTINATION_COUNTRY",
                 "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE", "CURRENCY",
                 "HS_CODE", "ORIGIN_COUNTRY",
-                "CONTENT_DESCRIPTION", "QUANTITY",
+                "CONTENT_PIECE_AMOUNT", "CONTENT_PIECE_DESCRIPTION",
+                "CONTENT_PIECE_HSCODE", "CONTENT_PIECE_VALUE",
+                "CONTENT_PIECE_ORIGIN", "CONTENT_PIECE_NETWEIGHT",
             ])
 
             exported = 0
@@ -2021,8 +2035,12 @@ class OrderAdmin(admin.ModelAdmin):
                     currency,
                     "" if is_eu else hs_code,
                     origin,
-                    "" if is_eu else default_desc,
                     "" if is_eu else "1",
+                    "" if is_eu else default_desc,
+                    "" if is_eu else hs_code,
+                    "" if is_eu else item_value,
+                    "" if is_eu else origin,
+                    "" if is_eu else weight,
                 ])
                 exported += 1
 
@@ -4478,7 +4496,9 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             "ADDRESS_LINE_3", "CITY", "STATE", "POSTAL_CODE",
             "DESTINATION_COUNTRY", "WEIGHT", "CONTENT_TYPE", "TOTAL_VALUE",
             "CURRENCY", "HS_CODE", "ORIGIN_COUNTRY",
-            "CONTENT_DESCRIPTION", "QUANTITY",
+            "CONTENT_PIECE_AMOUNT", "CONTENT_PIECE_DESCRIPTION",
+            "CONTENT_PIECE_HSCODE", "CONTENT_PIECE_VALUE",
+            "CONTENT_PIECE_ORIGIN", "CONTENT_PIECE_NETWEIGHT",
         ]
         writer.writerow(columns)
 
@@ -4587,8 +4607,12 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 getattr(mo, "currency", "") or default_currency,
                 "" if is_eu else default_hs,
                 origin_country,
-                "" if is_eu else mp_desc,
                 "" if is_eu else mp_qty,
+                "" if is_eu else mp_desc,
+                "" if is_eu else default_hs,
+                "" if is_eu else f"{round(order_total, 2):.2f}",
+                "" if is_eu else origin_country,
+                "" if is_eu else total_weight_g,
             ]
             writer.writerow(row)
 
