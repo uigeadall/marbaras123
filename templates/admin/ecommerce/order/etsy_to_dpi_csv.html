@@ -40,11 +40,69 @@
     padding: 14px 16px;
   }
   .e2dpi-card h3 {
-    margin: 0 0 10px 0;
-    font-size: 13px;
+    margin: 0 0 12px 0;
+    font-size: 12px;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: #111827;
+    letter-spacing: 0.5px;
+    color: #0f172a;
+    font-weight: 800;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .e2dpi-subcard {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    background: #f8fafc;
+  }
+  .e2dpi-subcard:last-child { margin-bottom: 0; }
+  .e2dpi-subcard-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px 0;
+  }
+  .e2dpi-subcard-head h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1e293b;
+    flex: 1;
+  }
+  .e2dpi-chip {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #0369a1;
+    background: #e0f2fe;
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .e2dpi-file-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px dashed #94a3b8;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12.5px;
+  }
+  .e2dpi-hint ul {
+    margin: 6px 0 0 0;
+    padding-left: 1.1rem;
+    line-height: 1.45;
+  }
+  .e2dpi-hint li { margin-bottom: 4px; }
+  .e2dpi-hint li:last-child { margin-bottom: 0; }
+  .e2dpi-divider {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 18px 0;
+    border: 0;
   }
   .e2dpi-card textarea {
     width: 100%;
@@ -91,13 +149,21 @@
   .btn-ghost   { background: #6b7280; }
 
   .e2dpi-hint {
-    background: #fef3c7;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
     border-left: 4px solid #f59e0b;
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 10px 12px;
+    border-radius: 8px;
     font-size: 12px;
     color: #78350f;
     margin-top: 10px;
+    line-height: 1.45;
+  }
+  .e2dpi-hint--info {
+    background: #f0f9ff;
+    border-color: #bae6fd;
+    border-left-color: #0284c7;
+    color: #0c4a6e;
   }
 
   .e2dpi-summary {
@@ -198,7 +264,12 @@
 <div class="e2dpi-wrap">
   <div class="e2dpi-hero">
     <h1>📋 Etsy / Amazon / eBay → DPI CSV</h1>
-    <p>Качи <strong>Amazon</strong> или <strong>eBay</strong> order CSV, или paste на адрес. След това <strong>Parse &amp; add below</strong>, накрая <strong>Export CSV</strong>.</p>
+    <p style="margin:0 0 10px 0;">Качи CSV или paste на адрес → <strong>Parse &amp; add below</strong> → провери таблицата → <strong>Export CSV</strong> → DPI / етикети.</p>
+    <ol style="margin:0;padding-left:1.2rem;font-size:12.5px;line-height:1.55;opacity:.96;">
+      <li><strong>Вход</strong> — Amazon / eBay файл или текст в полето.</li>
+      <li><strong>Настройки</strong> — EKP, продукт, CN22 (вдясно).</li>
+      <li><strong>Изход</strong> — зеленият бутон за CSV след като има редове в списъка.</li>
+    </ol>
   </div>
 
   {# ========== SINGLE FORM: holds paste area, settings AND the rows ========== #}
@@ -207,50 +278,65 @@
 
     <div class="e2dpi-grid">
       <div class="e2dpi-card">
-        <h3>1a) Amazon — order CSV</h3>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <input type="file" name="amazon_csv" accept=".csv,.tsv,.txt"
-                 style="padding:8px;border:1px dashed #94a3b8;border-radius:6px;background:#f8fafc;">
-          <div class="e2dpi-hint">
-            Файл от <strong>Amazon Seller Central → Orders → Order Reports</strong>
-            (обикновено tab-separated). За всяка поръчка се добавя ред с продукт, количество и цена.
-            Натисни <em>Parse &amp; add below ↓</em>.
+        <h3>1 · Поръчки и адреси</h3>
+
+        <div class="e2dpi-subcard">
+          <div class="e2dpi-subcard-head">
+            <span class="e2dpi-chip">CSV</span>
+            <h4>Amazon — файл с поръчки</h4>
+          </div>
+          <input type="file" name="amazon_csv" accept=".csv,.tsv,.txt" class="e2dpi-file-input">
+          <div class="e2dpi-hint e2dpi-hint--info">
+            <ul>
+              <li>Изтегли от <strong>Seller Central → Orders → Order Reports</strong> (обикновено tab-separated).</li>
+              <li>След избор на файл: <strong>Parse &amp; add below ↓</strong> (вдясно).</li>
+            </ul>
           </div>
         </div>
 
-        <h3 style="margin-top:16px;">1b) eBay — order CSV</h3>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <input type="file" name="ebay_csv" accept=".csv,.tsv,.txt"
-                 style="padding:8px;border:1px dashed #94a3b8;border-radius:6px;background:#f8fafc;">
-          <div class="e2dpi-hint">
-            Експорт от <strong>Seller Hub → Reports → Download → Orders</strong> (напр. Awaiting shipment / All orders), формат <strong>CSV</strong>.
-            Заглавията на колоните се различават по сайт — импортът търси „Ship to …“ / „Post to …“ адрес и обединява редове по номер на поръчка.
-            За <strong>Excel .xlsx</strong> първо запиши като CSV в Excel.
+        <div class="e2dpi-subcard">
+          <div class="e2dpi-subcard-head">
+            <span class="e2dpi-chip">CSV</span>
+            <h4>eBay — файл с поръчки</h4>
+          </div>
+          <input type="file" name="ebay_csv" accept=".csv,.tsv,.txt" class="e2dpi-file-input">
+          <div class="e2dpi-hint e2dpi-hint--info">
+            <ul>
+              <li><strong>Seller Hub → Reports → Download → Orders</strong> (CSV). При .xlsx първо „Запиши като CSV“ от Excel.</li>
+              <li>Търсят се колони „Ship to…“ / „Post to…“; редове на една поръчка се обединяват.</li>
+            </ul>
           </div>
         </div>
 
-        <h3 style="margin-top:16px;">1c) Или paste на адрес (един получател на блок)</h3>
-        <textarea name="addresses" placeholder="Sébastien Mesnard
-16 rue Vandrezanne
-75013 Paris
-France
+        <div class="e2dpi-subcard">
+          <div class="e2dpi-subcard-head">
+            <span class="e2dpi-chip">Paste</span>
+            <h4>Текст — един получател на блок</h4>
+          </div>
+          <textarea name="addresses" placeholder="Име фамилия
+Улица и номер
+Град, щат/област пощ. код
+Държава
+телефон
 
-Lykle Bruinsma
-treilerweg
-8c
-2583 DC Den Haag
-The Netherlands
-0611957095"></textarea>
-        <div class="e2dpi-hint">
-          <strong>The textarea is cleared after each Parse</strong> so you can paste the next recipient(s) without wiping previous ones.
-          Previously parsed rows are preserved in the table below.
-          <span style="display:block;margin-top:6px;">До <strong>три</strong> реда адрес преди град/държава се разпределят в колоните „Street“, „Address line 2“ и „Address line 3“ (DPI <code>ADDRESS_LINE_1…3</code>).</span>
-          <span style="display:block;margin-top:6px;"><strong>eBay:</strong> копирай адреса от поръчката (или блока с редове „Ship to address: …“, „City: …“). Може и ред с <strong>табулации</strong> от таблица. После същият <em>Parse &amp; add below</em> → <em>Export CSV</em> → качваш в DPI и печаташ етикети.</span>
+Пример (AU):
+Valerie Edwards
+7 Gary Rd
+Salisbury North, South Australia 5108
+Australia
++61 416 434 542"></textarea>
+          <div class="e2dpi-hint">
+            <ul>
+              <li>След <strong>Parse</strong> полето се изчиства — редовете в таблицата остават.</li>
+              <li>До <strong>три</strong> реда улица преди град/държава → колони Street / Address 2 / 3 (<code>ADDRESS_LINE_1…3</code>).</li>
+              <li><strong>eBay:</strong> копирай Ship-to или редове „Етикет: стойност“; допустим е и един ред с табулации.</li>
+            </ul>
+          </div>
         </div>
       </div>
 
       <div class="e2dpi-card">
-        <h3>2) Доставка и продукт (глобално)</h3>
+        <h3>2 · Доставка и продукт</h3>
         <div class="e2dpi-settings">
           <label>EKP
             <input type="text" name="ekp" value="{{ default_ekp }}">
@@ -277,10 +363,11 @@ The Netherlands
           </label>
         </div>
 
-        <h3 style="margin-top:18px;">3) CN22 — митническа декларация (Non-EU)</h3>
-        <p style="margin:0 0 10px;font-size:12.5px;color:#475569;line-height:1.45;">
-          Попълни тук стойностите за customs: категория на стоката, HS код, валута, произход, описание и стойност по подразбиране.
-          За всеки ред в таблицата можеш да зададеш отделно количество, описание, HS, произход и нетно тегло на стоката (ако са празни — ползват се стойностите отдолу и колоната „Тегло (g)“).
+        <hr class="e2dpi-divider">
+
+        <h3>3 · CN22 (митница, Non-EU)</h3>
+        <p style="margin:0 0 12px;font-size:12.5px;color:#475569;line-height:1.45;">
+          Стойности за customs по подразбиране. За всеки ред в таблицата можеш да зададеш отделно количество, описание, HS, произход и нетно тегло (ако са празни — ползват се полетата тук и колоната „Тегло (g)“).
         </p>
         <div class="e2dpi-settings">
           <label>Категория (CONTENT_TYPE)
