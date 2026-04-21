@@ -14,6 +14,7 @@ import csv
 import json
 
 from .models import (
+    AdminAppearance,
     BlogPost,
     CustomerReview,
     BannerImage,
@@ -5812,6 +5813,32 @@ class BannerImageAdmin(admin.ModelAdmin):
             else:
                 messages.error(request, f"Error saving banner: {error_msg}")
             raise
+
+
+@admin.register(AdminAppearance)
+class AdminAppearanceAdmin(admin.ModelAdmin):
+    """Single row: admin panel background image (singleton pk=1)."""
+
+    list_display = ("__str__", "background_preview", "updated_at")
+    readonly_fields = ("updated_at", "background_preview")
+    fields = ("background_image", "background_preview", "updated_at")
+
+    def has_add_permission(self, request):
+        return not AdminAppearance.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Preview")
+    def background_preview(self, obj):
+        if not obj or not obj.background_image:
+            return "—"
+        u = escape(obj.background_image.url)
+        return format_html(
+            '<span style="display:inline-block;width:min(280px,100%);height:72px;'
+            "background:url('{}') center/cover;border-radius:8px;border:1px solid #cbd5e1\"></span>",
+            u,
+        )
 
 
 # =============================================================================

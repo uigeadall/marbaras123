@@ -1096,6 +1096,57 @@ class BannerImage(models.Model):
         return self.title or f"Banner {self.id}"
 
 
+class AdminAppearance(models.Model):
+    """
+    Singleton (pk=1): customize Django admin full-page background from the admin UI.
+    When background_image is set, it overrides ADMIN_BACKGROUND_IMAGE in settings/env.
+    """
+
+    @staticmethod
+    def _get_storage():
+        from django.conf import settings
+
+        if getattr(settings, "CLOUDINARY_CLOUD_NAME", None):
+            try:
+                from ecommerce.storage import HybridMediaStorage
+
+                return HybridMediaStorage()
+            except Exception:
+                pass
+        from django.core.files.storage import default_storage
+
+        return default_storage
+
+    background_image = models.ImageField(
+        upload_to="admin_theme/",
+        blank=True,
+        null=True,
+        max_length=512,
+        storage=_get_storage(),
+        help_text="Background photo for the admin panel. Leave empty for gradient only (or use ADMIN_BACKGROUND_IMAGE in env).",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Admin appearance"
+        verbose_name_plural = "Admin appearance"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Keep the singleton row; use “clear” on the image field instead."""
+        pass
+
+    @classmethod
+    def get_solo(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+    def __str__(self) -> str:
+        return "Admin appearance"
+
+
 class MarketplaceOrder(models.Model):
     """Flattened order imported from an external marketplace CSV (Amazon,
     Etsy, eBay, …). Kept intentionally separate from the website ``Order``

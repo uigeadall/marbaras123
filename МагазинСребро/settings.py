@@ -410,7 +410,7 @@ STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
 ]
 
-# Django admin: optional background photo (see ecommerce.context_processors.admin_background).
+# Django admin: fallback background if not set in Admin → Admin appearance (DB upload).
 # Examples: https://example.com/bg.jpg  |  /media/site/admin-bg.jpg  |  admin/marbaras-admin-bg.jpg
 ADMIN_BACKGROUND_IMAGE = env("ADMIN_BACKGROUND_IMAGE", "").strip()
 

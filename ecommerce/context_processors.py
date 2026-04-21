@@ -288,15 +288,32 @@ def cloudinary_config(request):
 def admin_background(request):
     """
     Optional full-page background image for Django admin (templates/admin/base_site.html).
-    Set ADMIN_BACKGROUND_IMAGE in settings: https URL, absolute path (e.g. /media/...),
-    or static-relative path (e.g. admin/your-photo.jpg under static/).
+    Priority: AdminAppearance.background_image (set in admin) → ADMIN_BACKGROUND_IMAGE env.
     """
     from django.conf import settings
     from django.templatetags.static import static as static_url
 
-    raw = (getattr(settings, "ADMIN_BACKGROUND_IMAGE", None) or "").strip()
-    if not raw:
+    if not request.path.startswith("/admin/"):
         return {"admin_background_url": ""}
-    if raw.startswith(("http://", "https://", "/")):
-        return {"admin_background_url": raw}
-    return {"admin_background_url": static_url(raw)}
+
+    url = ""
+    try:
+        from ecommerce.models import AdminAppearance
+
+        row = (
+            AdminAppearance.objects.filter(pk=1).only("background_image").first()
+        )
+        if row and row.background_image:
+            url = row.background_image.url
+    except Exception:
+        pass
+
+    if not url:
+        raw = (getattr(settings, "ADMIN_BACKGROUND_IMAGE", None) or "").strip()
+        if raw:
+            if raw.startswith(("http://", "https://", "/")):
+                url = raw
+            else:
+                url = static_url(raw)
+
+    return {"admin_background_url": url}
