@@ -283,3 +283,20 @@ def cloudinary_config(request):
     """
     from django.conf import settings
     return {"CLOUDINARY_CLOUD_NAME": getattr(settings, "CLOUDINARY_CLOUD_NAME", "")}
+
+
+def admin_background(request):
+    """
+    Optional full-page background image for Django admin (templates/admin/base_site.html).
+    Set ADMIN_BACKGROUND_IMAGE in settings: https URL, absolute path (e.g. /media/...),
+    or static-relative path (e.g. admin/your-photo.jpg under static/).
+    """
+    from django.conf import settings
+    from django.templatetags.static import static as static_url
+
+    raw = (getattr(settings, "ADMIN_BACKGROUND_IMAGE", None) or "").strip()
+    if not raw:
+        return {"admin_background_url": ""}
+    if raw.startswith(("http://", "https://", "/")):
+        return {"admin_background_url": raw}
+    return {"admin_background_url": static_url(raw)}
