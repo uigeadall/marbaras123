@@ -8,7 +8,7 @@
   <a href="{% url 'admin:index' %}">Home</a>
   &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
   &rsaquo; <a href="{% url 'admin:ecommerce_order_changelist' %}">Orders</a>
-  &rsaquo; Etsy/Amazon → DPI CSV
+  &rsaquo; Etsy / Amazon / eBay → DPI CSV
 </div>
 {% endblock %}
 
@@ -197,8 +197,8 @@
 
 <div class="e2dpi-wrap">
   <div class="e2dpi-hero">
-    <h1>📋 Etsy / Amazon → DPI CSV</h1>
-    <p>Paste addresses, click <strong>Parse &amp; add below</strong> to append them to the list. Repeat as many times as needed. When done, <strong>Export CSV</strong>.</p>
+    <h1>📋 Etsy / Amazon / eBay → DPI CSV</h1>
+    <p>Качи <strong>Amazon</strong> или <strong>eBay</strong> order CSV, или paste на адрес. След това <strong>Parse &amp; add below</strong>, накрая <strong>Export CSV</strong>.</p>
   </div>
 
   {# ========== SINGLE FORM: holds paste area, settings AND the rows ========== #}
@@ -207,20 +207,29 @@
 
     <div class="e2dpi-grid">
       <div class="e2dpi-card">
-        <h3>1a) Upload Amazon orders CSV <span style="font-size:12px;font-weight:500;color:#6b7280;">(preferred)</span></h3>
+        <h3>1a) Amazon — order CSV</h3>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <input type="file" name="amazon_csv" accept=".csv,.tsv,.txt"
                  style="padding:8px;border:1px dashed #94a3b8;border-radius:6px;background:#f8fafc;">
           <div class="e2dpi-hint">
-            Upload the <code>*.csv</code> file you download from
-            <strong>Amazon Seller Central → Orders → Order Reports</strong>
-            (tab-separated). Each order becomes a row with the product name,
-            quantity and item price pre-filled. Click
-            <em>Parse &amp; add below ↓</em> to add them to the table.
+            Файл от <strong>Amazon Seller Central → Orders → Order Reports</strong>
+            (обикновено tab-separated). За всяка поръчка се добавя ред с продукт, количество и цена.
+            Натисни <em>Parse &amp; add below ↓</em>.
           </div>
         </div>
 
-        <h3 style="margin-top:16px;">1b) Or paste addresses (one recipient per block)</h3>
+        <h3 style="margin-top:16px;">1b) eBay — order CSV</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input type="file" name="ebay_csv" accept=".csv,.tsv,.txt"
+                 style="padding:8px;border:1px dashed #94a3b8;border-radius:6px;background:#f8fafc;">
+          <div class="e2dpi-hint">
+            Експорт от <strong>Seller Hub → Reports → Download → Orders</strong> (напр. Awaiting shipment / All orders), формат <strong>CSV</strong>.
+            Заглавията на колоните се различават по сайт — импортът търси „Ship to …“ / „Post to …“ адрес и обединява редове по номер на поръчка.
+            За <strong>Excel .xlsx</strong> първо запиши като CSV в Excel.
+          </div>
+        </div>
+
+        <h3 style="margin-top:16px;">1c) Или paste на адрес (един получател на блок)</h3>
         <textarea name="addresses" placeholder="Sébastien Mesnard
 16 rue Vandrezanne
 75013 Paris
@@ -236,6 +245,7 @@ The Netherlands
           <strong>The textarea is cleared after each Parse</strong> so you can paste the next recipient(s) without wiping previous ones.
           Previously parsed rows are preserved in the table below.
           <span style="display:block;margin-top:6px;">До <strong>три</strong> реда адрес преди град/държава се разпределят в колоните „Street“, „Address line 2“ и „Address line 3“ (DPI <code>ADDRESS_LINE_1…3</code>).</span>
+          <span style="display:block;margin-top:6px;"><strong>eBay:</strong> копирай адреса от поръчката (или блока с редове „Ship to address: …“, „City: …“). Може и ред с <strong>табулации</strong> от таблица. После същият <em>Parse &amp; add below</em> → <em>Export CSV</em> → качваш в DPI и печаташ етикети.</span>
         </div>
       </div>
 

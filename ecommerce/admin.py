@@ -2111,7 +2111,7 @@ class OrderAdmin(admin.ModelAdmin):
     )
 
     # ------------------------------------------------------------------
-    # Etsy / Amazon address text → DPI CSV
+    # Etsy / Amazon / eBay address or CSV → DPI CSV
     # ------------------------------------------------------------------
     def etsy_to_dpi_csv_view(self, request):
         """Paste addresses or import Amazon CSV, then download DPI **eFile**
@@ -2344,6 +2344,135 @@ class OrderAdmin(admin.ModelAdmin):
                 return m.group(2), m.group(1)
             return s, ""
 
+        def _normalize_labeled_address_paste(lines):
+            """eBay / Seller Hub: 'Ship to address: …' per line → plain block.
+
+            Also used for other checkout UIs that use 'Label: value' rows.
+            """
+            if not lines or len(lines) < 2:
+                return None
+            pairs = []
+            unlabeled = 0
+            for ln in lines:
+                s = ln.strip()
+                m = _re.match(
+                    r"(?i)^\s*([A-Za-z\*][A-Za-z0-9\s\./\-\(\)]{0,50}?)\s*:"
+                    r"\s*(.+)$",
+                    s,
+                )
+                if m:
+                    val = (m.group(2) or "").strip()
+                    if val:
+                        pairs.append((m.group(1).strip(), val))
+                else:
+                    unlabeled += 1
+            if len(pairs) < 2:
+                return None
+            if unlabeled > max(2, len(pairs) // 2):
+                return None
+
+            def norm_label(key):
+                k = _re.sub(r"\s+", " ", key.lower().strip())
+                for pref in (
+                    "ship to ", "ship-to ", "post to ", "post-to ",
+                    "delivery ", "shipping ", "send to ",
+                ):
+                    if k.startswith(pref):
+                        k = k[len(pref):]
+                return k.strip()
+
+            b = {
+                "name": None,
+                "street": None,
+                "address2": None,
+                "city": None,
+                "state": None,
+                "postcode": None,
+                "country": None,
+                "phone": None,
+            }
+            for key, val in pairs:
+                ck = norm_label(key)
+                if _re.search(
+                    r"(email|e-mail|user\s*name|username|user\s*id|ebay\s*user)",
+                    ck,
+                ):
+                    continue
+                if _re.search(
+                    r"(address\s*line\s*2|address\s*2\b|apt\.?|apartment"
+                    r"|suite|unit\s*#?)",
+                    ck,
+                ):
+                    b["address2"] = val
+                elif _re.search(
+                    r"(^street|^address\s*line\s*1|address\s*1\b"
+                    r"|street\s*address)",
+                    ck,
+                ) or (ck == "address" and not b["street"]):
+                    b["street"] = val
+                elif _re.search(r"(postal|post\s*code|zip)", ck):
+                    b["postcode"] = val
+                elif ck == "country" or ck.endswith(" country"):
+                    b["country"] = val
+                elif _re.search(r"(phone|mobile|tel\.?|telephone)", ck):
+                    b["phone"] = val
+                elif _re.search(r"(state|province|region|county)", ck):
+                    b["state"] = val
+                elif _re.search(r"(^city|^town|suburb)", ck):
+                    b["city"] = val
+                elif _re.search(
+                    r"(^name$|recipient|full\s*name|contact|deliver\s*to"
+                    r"|attention)",
+                    ck,
+                ) or (
+                    "buyer" in ck
+                    and "user" not in ck
+                    and "email" not in ck
+                ):
+                    if b["name"] is None:
+                        b["name"] = val
+                elif "name" in ck and "user" not in ck:
+                    if b["name"] is None:
+                        b["name"] = val
+
+            if not b["name"] or not b["country"]:
+                return None
+            if not b["street"] and not b["city"]:
+                return None
+
+            out = [b["name"]]
+            if b["street"]:
+                out.append(b["street"])
+            if b["address2"]:
+                out.append(b["address2"])
+
+            ci = (b["city"] or "").strip()
+            st = (b["state"] or "").strip()
+            pc = (b["postcode"] or "").strip()
+            if ci and st and pc:
+                out.append(f"{ci}, {st} {pc}")
+            elif ci and pc:
+                out.append(ci)
+                if st:
+                    out.append(st)
+                out.append(pc)
+            elif ci and st:
+                out.append(f"{ci}, {st}")
+            elif ci:
+                out.append(ci)
+                if pc:
+                    out.append(pc)
+            elif pc:
+                out.append(f"{st} {pc}".strip() if st else pc)
+
+            ctry = (b["country"] or "").strip()
+            if ctry:
+                iso = _parse_country(ctry)
+                out.append(iso if iso else ctry)
+            if b["phone"]:
+                out.append(b["phone"])
+            return [x for x in out if x]
+
         def _parse_block(raw):
             lines = [
                 ln.strip().rstrip(",")
@@ -2352,6 +2481,22 @@ class OrderAdmin(admin.ModelAdmin):
             ]
             if not lines:
                 return None
+            # eBay: leading banner line only
+            if len(lines) >= 2 and _re.match(
+                r"(?i)^(ship\s*to|shipping\s*address|delivery\s*address)\s*$",
+                lines[0],
+            ):
+                lines = lines[1:]
+            # eBay / spreadsheet: single row with tabs
+            if len(lines) == 1 and "\t" in lines[0]:
+                lines = [
+                    p.strip() for p in lines[0].split("\t") if p.strip()
+                ]
+            if not lines:
+                return None
+            relabeled = _normalize_labeled_address_paste(lines)
+            if relabeled:
+                lines = relabeled
             if len(lines) == 1 and "," in lines[0]:
                 parts = [p.strip() for p in lines[0].split(",") if p.strip()]
                 lines = parts
@@ -2844,6 +2989,8 @@ class OrderAdmin(admin.ModelAdmin):
                     })
 
             skipped = 0
+            # Index of first row added in this submit (for custom_refs lines).
+            import_start_idx = len(rows)
 
             # ---- Amazon Seller Central CSV import (tab-separated) ----
             # One row per order-id. Duplicate order-item-ids for the same
@@ -2976,7 +3123,7 @@ class OrderAdmin(admin.ModelAdmin):
                                 postcode, state, country
                             )
 
-                            new_idx = len(rows) - starting_idx
+                            new_idx = len(rows) - import_start_idx
                             if (
                                 new_idx < len(custom_refs)
                                 and custom_refs[new_idx]
@@ -3031,6 +3178,430 @@ class OrderAdmin(admin.ModelAdmin):
                             f"Failed to parse Amazon CSV: {e}",
                         )
 
+                # ---- eBay Seller Hub / order report CSV ----
+                # Column names vary by site locale and report type; we match
+                # flexibly (case-insensitive). One aggregated row per order key.
+                ebay_file = request.FILES.get("ebay_csv")
+                if ebay_file:
+                    try:
+                        raw = ebay_file.read()
+                        text_content = None
+                        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+                            try:
+                                text_content = raw.decode(enc)
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        if text_content is None:
+                            text_content = raw.decode("utf-8", errors="replace")
+
+                        import csv as _csv
+                        import io as _io
+                        sniff_sample = text_content[:4096]
+                        delim = (
+                            "\t"
+                            if sniff_sample.count("\t")
+                            > sniff_sample.count(",")
+                            else ","
+                        )
+                        reader = _csv.DictReader(
+                            _io.StringIO(text_content), delimiter=delim
+                        )
+
+                        def _flex_csv_get(rec, *keys):
+                            if not rec:
+                                return ""
+                            for want in keys:
+                                if not want:
+                                    continue
+                                if want in rec:
+                                    v = (rec[want] or "").strip()
+                                    if v:
+                                        return v
+                            low = {
+                                (k or "").strip().lower(): (v or "").strip()
+                                for k, v in rec.items()
+                                if k is not None
+                            }
+                            for want in keys:
+                                if not want:
+                                    continue
+                                lw = want.strip().lower()
+                                if lw in low and low[lw]:
+                                    return low[lw]
+                            return ""
+
+                        _EBAY_COUNTRY_ISO = {
+                            "UNITED STATES": "US",
+                            "UNITED KINGDOM": "GB",
+                            "GREAT BRITAIN": "GB",
+                            "USA": "US",
+                            "U.S.A.": "US",
+                            "U.K.": "GB",
+                            "UK": "GB",
+                            "GERMANY": "DE",
+                            "DEUTSCHLAND": "DE",
+                            "FRANCE": "FR",
+                            "ITALY": "IT",
+                            "ITALIA": "IT",
+                            "SPAIN": "ES",
+                            "ESPAÑA": "ES",
+                            "ESPANA": "ES",
+                            "NETHERLANDS": "NL",
+                            "THE NETHERLANDS": "NL",
+                            "NEDERLAND": "NL",
+                            "NIEDERLANDE": "NL",
+                            "BELGIUM": "BE",
+                            "BELGIË": "BE",
+                            "BELGIQUE": "BE",
+                            "AUSTRIA": "AT",
+                            "ÖSTERREICH": "AT",
+                            "SWITZERLAND": "CH",
+                            "SCHWEIZ": "CH",
+                            "POLAND": "PL",
+                            "POLSKA": "PL",
+                            "CANADA": "CA",
+                            "AUSTRALIA": "AU",
+                            "JAPAN": "JP",
+                            "MEXICO": "MX",
+                            "BRAZIL": "BR",
+                            "IRELAND": "IE",
+                            "SWEDEN": "SE",
+                            "SVERIGE": "SE",
+                            "DENMARK": "DK",
+                            "DANMARK": "DK",
+                            "FINLAND": "FI",
+                            "NORWAY": "NO",
+                            "NORGE": "NO",
+                            "PORTUGAL": "PT",
+                            "GREECE": "GR",
+                            "ROMANIA": "RO",
+                            "BULGARIA": "BG",
+                            "CZECHIA": "CZ",
+                            "CZECH REPUBLIC": "CZ",
+                            "HUNGARY": "HU",
+                            "SLOVAKIA": "SK",
+                            "SLOVENIA": "SI",
+                            "CROATIA": "HR",
+                            "ESTONIA": "EE",
+                            "LATVIA": "LV",
+                            "LITHUANIA": "LT",
+                            "LUXEMBOURG": "LU",
+                            "MALTA": "MT",
+                            "CYPRUS": "CY",
+                        }
+
+                        def _ebay_order_key(rec):
+                            for k in (
+                                "Order number",
+                                "order number",
+                                "Order Number",
+                                "Sales record number",
+                                "Sales Record Number",
+                                "sales record number",
+                                "Order ID",
+                                "order_id",
+                                "eBay order id",
+                                "ebay order id",
+                            ):
+                                v = _flex_csv_get(rec, k)
+                                if v:
+                                    return v
+                            iid = _flex_csv_get(
+                                rec,
+                                "Item ID",
+                                "Item number",
+                                "Item ID",
+                                "*Item ID",
+                            )
+                            tid = _flex_csv_get(
+                                rec,
+                                "Transaction ID",
+                                "transaction ID",
+                                "Transaction id",
+                            )
+                            if iid and tid:
+                                return f"{iid}-{tid}"
+                            if iid:
+                                return str(iid)
+                            return ""
+
+                        by_ebay = {}
+                        ebay_order_seen = []
+                        ebay_row_n = 0
+                        for eb_row in reader:
+                            ebay_row_n += 1
+                            oid = _ebay_order_key(eb_row)
+                            if not oid:
+                                oid = f"__ebay_row_{ebay_row_n}"
+                            if oid not in by_ebay:
+                                by_ebay[oid] = {
+                                    "raw": eb_row,
+                                    "qty": 0,
+                                    "value": 0.0,
+                                    "desc_parts": [],
+                                }
+                                ebay_order_seen.append(oid)
+                            agg_e = by_ebay[oid]
+                            q_raw = _flex_csv_get(
+                                eb_row,
+                                "Quantity sold",
+                                "Quantity",
+                                "quantity",
+                                "Sold quantity",
+                                "Qty",
+                                "Order line quantity",
+                                "Quantity purchased",
+                            ) or "1"
+                            try:
+                                qty_e = int(float(
+                                    str(q_raw).replace(",", ".").strip()
+                                ))
+                            except (ValueError, TypeError):
+                                qty_e = 1
+                            agg_e["qty"] += max(qty_e, 1)
+                            p_raw = _flex_csv_get(
+                                eb_row,
+                                "Sold for",
+                                "Sale price",
+                                "Item subtotal",
+                                "Price",
+                                "Transaction price",
+                                "Amount",
+                                "Total price",
+                                "Item subtotal (excl. tax)",
+                                "Sold For",
+                            ) or "0"
+                            try:
+                                price_e = float(
+                                    str(p_raw).replace(",", ".").strip()
+                                )
+                            except (ValueError, TypeError):
+                                price_e = 0.0
+                            agg_e["value"] += price_e
+                            title_e = _flex_csv_get(
+                                eb_row,
+                                "Item title",
+                                "Item Title",
+                                "Title",
+                                "item title",
+                                "Listing title",
+                            )
+                            if (
+                                title_e
+                                and title_e not in agg_e["desc_parts"]
+                            ):
+                                agg_e["desc_parts"].append(title_e)
+
+                        ebay_added = 0
+                        for oid_e in ebay_order_seen:
+                            agg_e = by_ebay[oid_e]
+                            rec = agg_e["raw"]
+                            fn = _flex_csv_get(
+                                rec,
+                                "Ship to first name",
+                                "Ship First Name",
+                                "Buyer first name",
+                                "Post to first name",
+                            )
+                            ln = _flex_csv_get(
+                                rec,
+                                "Ship to last name",
+                                "Ship Last Name",
+                                "Buyer last name",
+                                "Post to last name",
+                            )
+                            full = _flex_csv_get(
+                                rec,
+                                "Ship to name",
+                                "Ship To Name",
+                                "Ship to full name",
+                                "Buyer full name",
+                                "Buyer name",
+                                "Buyer Name",
+                                "Post to name",
+                                "Recipient name",
+                                "Deliver to name",
+                            )
+                            name_e = (
+                                full
+                                or " ".join(
+                                    p for p in (fn, ln) if p
+                                ).strip()
+                            )
+                            if not name_e:
+                                skipped += 1
+                                continue
+                            country_raw = (
+                                _flex_csv_get(
+                                    rec,
+                                    "Ship to country",
+                                    "Ship Country",
+                                    "ShipCountry",
+                                    "Post to country",
+                                    "Delivery country",
+                                    "Country",
+                                    "Ship-to country",
+                                )
+                                or ""
+                            ).strip().upper()
+                            country_e = ""
+                            if _re.fullmatch(
+                                r"[A-Za-z]{2}", country_raw or "",
+                            ):
+                                country_e = country_raw.upper()
+                            else:
+                                country_e = (
+                                    _EBAY_COUNTRY_ISO.get(country_raw)
+                                    or _EBAY_COUNTRY_ISO.get(
+                                        country_raw.replace(".", "")
+                                    )
+                                    or ""
+                                )
+                            if not country_e and len(country_raw) >= 2:
+                                country_e = country_raw[:2].upper()
+                            if not country_e:
+                                skipped += 1
+                                continue
+
+                            street_e = _flex_csv_get(
+                                rec,
+                                "Ship to address line 1",
+                                "Ship-to address line 1",
+                                "Ship to address 1",
+                                "Ship Address 1",
+                                "ShipAddress1",
+                                "Post to address line 1",
+                                "Post to address 1",
+                                "Delivery address line 1",
+                                "Address line 1",
+                                "Ship to street 1",
+                            )
+                            address2_e = _flex_csv_get(
+                                rec,
+                                "Ship to address line 2",
+                                "Ship Address 2",
+                                "ShipAddress2",
+                                "Post to address line 2",
+                                "Address line 2",
+                            )
+                            address3_e = _flex_csv_get(
+                                rec,
+                                "Ship to address line 3",
+                                "Ship Address 3",
+                            )
+                            city_e = _flex_csv_get(
+                                rec,
+                                "Ship to city",
+                                "Ship City",
+                                "ShipCity",
+                                "Post to town/city",
+                                "Post to city",
+                                "Ship to town",
+                                "Delivery city",
+                                "Ship-to city",
+                            )
+                            state_e = _flex_csv_get(
+                                rec,
+                                "Ship to province",
+                                "Ship to state",
+                                "Ship State",
+                                "ShipState",
+                                "Ship to county",
+                                "Post to county",
+                                "Post to province",
+                                "Ship to region",
+                                "Ship-to province",
+                            )
+                            postcode_e = _flex_csv_get(
+                                rec,
+                                "Ship to postal code",
+                                "Ship to zip",
+                                "Ship Zip Code",
+                                "ShipPostalCode",
+                                "Ship ZipCode",
+                                "ShipZipCode",
+                                "Post to postcode",
+                                "Post to zip",
+                                "Postal code",
+                                "ZIP/Postal code",
+                            )
+                            phone_raw_e = _flex_csv_get(
+                                rec,
+                                "Ship to phone number",
+                                "Buyer phone number",
+                                "Phone",
+                                "Ship Phone",
+                                "ShipPhoneNumber",
+                                "Buyer Phone",
+                            )
+                            phone_e = (
+                                _parse_phone(phone_raw_e) or phone_raw_e
+                            )
+                            email_e = _flex_csv_get(
+                                rec,
+                                "Buyer email",
+                                "Buyer Email",
+                                "buyer email",
+                            )
+                            postcode_e, state_e = _apply_dpi_destination_fixes(
+                                postcode_e, state_e, country_e
+                            )
+
+                            new_idx_e = len(rows) - import_start_idx
+                            if (
+                                new_idx_e < len(custom_refs)
+                                and custom_refs[new_idx_e]
+                            ):
+                                cust_ref_e = custom_refs[new_idx_e]
+                            else:
+                                cust_ref_e = oid_e
+
+                            desc_text_e = (
+                                " / ".join(agg_e["desc_parts"])[:100]
+                                or default_desc
+                            )
+                            item_value_e = (
+                                f"{round(agg_e['value'], 2):.2f}"
+                                if agg_e["value"] > 0
+                                else default_value
+                            )
+
+                            rows.append({
+                                "name": name_e[:35],
+                                "street": street_e,
+                                "address2": address2_e,
+                                "address3": address3_e,
+                                "city": city_e,
+                                "state": state_e,
+                                "postcode": postcode_e,
+                                "country": country_e,
+                                "is_eu": country_e in _EU,
+                                "phone": phone_e or default_phone,
+                                "email": email_e or default_email,
+                                "weight": default_weight,
+                                "ref": cust_ref_e,
+                                "item_value": item_value_e,
+                                "description": desc_text_e,
+                                "qty": str(max(agg_e["qty"], 1)),
+                                "hs_override": "",
+                                "origin_override": "",
+                                "cn22_netweight": "",
+                                "cn22_lines": "",
+                            })
+                            ebay_added += 1
+
+                        if ebay_added:
+                            messages.success(
+                                request,
+                                f"eBay CSV: added {ebay_added} order(s).",
+                            )
+                    except Exception as e:
+                        messages.error(
+                            request,
+                            f"Failed to parse eBay CSV: {e}",
+                        )
+
             if action in ("clear", "delete"):
                 blocks = []
             else:
@@ -3078,7 +3649,7 @@ class OrderAdmin(admin.ModelAdmin):
             from django.template.response import TemplateResponse
             context = {
                 **self.admin_site.each_context(request),
-                "title": "Etsy/Amazon addresses → DPI CSV",
+                "title": "Etsy / Amazon / eBay addresses → DPI CSV",
                 "rows": rows,
                 "skipped": skipped,
                 "ekp": ekp,
@@ -3127,7 +3698,7 @@ class OrderAdmin(admin.ModelAdmin):
         )
         context = {
             **self.admin_site.each_context(request),
-            "title": "Etsy/Amazon addresses → DPI CSV",
+            "title": "Etsy / Amazon / eBay addresses → DPI CSV",
             "default_ekp": default_ekp,
             "default_product": default_product,
             "default_hs": default_hs,
