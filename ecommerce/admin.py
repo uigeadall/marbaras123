@@ -2892,7 +2892,7 @@ class OrderAdmin(admin.ModelAdmin):
                 request.POST.get("origin", default_origin).strip().upper()
                 or default_origin
             )
-            default_weight = (request.POST.get("weight") or "").strip()
+            default_weight = (request.POST.get("weight") or "").strip() or "0"
             default_desc = (
                 request.POST.get("description", "Silver jewellery").strip()
                 or "Silver jewellery"
@@ -3728,7 +3728,7 @@ class OrderAdmin(admin.ModelAdmin):
             "cn22_piece_weight": "",
             "default_shop_email": getattr(settings, "SHOP_EMAIL", "") or "",
             "default_shop_phone": getattr(settings, "SHOP_PHONE", "") or "",
-            "default_weight_val": "",
+            "default_weight_val": "0",
             "default_value_val": "",
             "ref_prefix": "",
             "custom_refs_raw": "",

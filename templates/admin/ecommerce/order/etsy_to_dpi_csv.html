@@ -338,8 +338,8 @@ Australia
             <input type="text" name="product" value="{{ default_product }}">
           </label>
           <label>Тегло пратка по подразбиране (g)
-            <input type="number" name="weight" step="1"
-                   value="{{ default_weight_val|default:'' }}">
+            <input type="number" name="weight" step="1" min="0" autocomplete="off"
+                   value="{% firstof default_weight_val '0' %}">
           </label>
           <label>Префикс референция (CUST_REF)
             <input type="text" name="ref_prefix" value="{{ ref_prefix|default:'' }}">
@@ -472,7 +472,7 @@ Australia
               <input type="text" name="row_{{ forloop.counter0 }}_country" value="{{ r.country }}" maxlength="2" style="width:48px;text-transform:uppercase;font-weight:700;">
             </td>
             <td>
-              <input type="number" name="row_{{ forloop.counter0 }}_weight" value="{{ r.weight }}" min="1" step="1" required>
+              <input type="number" name="row_{{ forloop.counter0 }}_weight" value="{% firstof r.weight '0' %}" min="0" step="1" required>
             </td>
             <td>
               <input type="text" name="row_{{ forloop.counter0 }}_phone" value="{{ r.phone }}" placeholder="+...">
