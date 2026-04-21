@@ -2198,9 +2198,10 @@ class OrderAdmin(admin.ModelAdmin):
                     m.group(1).strip(),
                     m.group(2).upper(),
                 )
-            # Australia: "Sydney NSW 2000" / "Melbourne, VIC 3000" (4-digit postal)
+            # Australia: "Sydney NSW 2000", "Melbourne, VIC 3000",
+            # "Salisbury North, South Australia 5108" (eBay: full state name)
             m = _re.match(
-                r"^(.+?),?\s+([A-Za-z]{2,3})\s+(\d{4})\s*$",
+                r"^(.+?),?\s+(.+?)\s+(\d{4})\s*$",
                 s,
                 _re.IGNORECASE,
             )
