@@ -2198,10 +2198,29 @@ class OrderAdmin(admin.ModelAdmin):
                     m.group(1).strip(),
                     m.group(2).upper(),
                 )
-            # Australia: "Sydney NSW 2000", "Melbourne, VIC 3000",
-            # "Salisbury North, South Australia 5108" (eBay: full state name)
+            # Australia — two patterns:
+            # 1) "City, State 5108" (comma required before state). Needed so
+            #    multi-word cities like "Salisbury North, South Australia 5108"
+            #    are not split wrong by optional comma + non-greedy `.+?`.
+            # 2) "Sydney NSW 2000" (no comma; state = 2–3 letter code).
             m = _re.match(
-                r"^(.+?),?\s+(.+?)\s+(\d{4})\s*$",
+                r"^(.+),\s+(.+?)\s+(\d{4})\s*$",
+                s,
+                _re.IGNORECASE,
+            )
+            if m:
+                city = m.group(1).strip()
+                st_raw = m.group(2).strip()
+                pc = m.group(3).strip()
+                st = _normalize_au_state(st_raw)
+                if st in _AU_STATE_CODES_SET:
+                    return (
+                        _normalize_australian_postal(pc),
+                        city,
+                        st,
+                    )
+            m = _re.match(
+                r"^(.+)\s+([A-Za-z]{2,3})\s+(\d{4})\s*$",
                 s,
                 _re.IGNORECASE,
             )
