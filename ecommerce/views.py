@@ -1356,6 +1356,12 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
     )
     average_rating = review_agg["avg"]
     review_count = review_agg["cnt"] or 0
+    average_rating_pct = None
+    if review_count and average_rating is not None:
+        average_rating_pct = min(
+            100.0,
+            max(0.0, round(float(average_rating) / 5.0 * 100.0, 1)),
+        )
 
     if request.user.is_authenticated:
         user_has_reviewed = ProductReview.objects.filter(
@@ -1528,6 +1534,7 @@ def product_detail(request: HttpRequest, slug: str) -> HttpResponse:
             else []
         ),
         "average_rating": average_rating,
+        "average_rating_pct": average_rating_pct,
         "recently_viewed_products": recently_viewed_products,
         "you_might_like": you_might_like,
         "bundle_items": bundle_items,

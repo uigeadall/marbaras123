@@ -1,0 +1,17 @@
+{% comment %}Inline aggregate: score, partial-fill stars, count (product detail + modal).{% endcomment %}
+<div class="product-review-aggregate{% if compact %} product-review-aggregate--compact{% endif %}">
+  {% if review_count and average_rating_pct is not None %}
+    <div class="product-review-score-row">
+      <span class="product-review-score-num">{{ average_rating|floatformat:1 }}</span>
+      <span class="product-review-score-out">/5</span>
+    </div>
+    <div class="product-review-stars-average" role="img" aria-label="{{ average_rating|floatformat:1 }} out of 5 stars">
+      <span class="product-review-stars-average-bg" aria-hidden="true">★★★★★</span>
+      <span class="product-review-stars-average-fill" style="width: {{ average_rating_pct }}%;" aria-hidden="true">★★★★★</span>
+    </div>
+    <p class="product-review-count-line">{{ review_count }} rating{{ review_count|pluralize }}</p>
+  {% else %}
+    <p class="product-review-empty-lead">No ratings yet</p>
+    <p class="product-review-empty-sub">Be the first to rate this product.</p>
+  {% endif %}
+</div>

@@ -1,0 +1,40 @@
+{% comment %}Single review row: avatar, stars, meta, comment (optional teaser truncate).{% endcomment %}
+<li class="product-review-item">
+  <div class="product-review-item-layout">
+    {% if r.reviewer_name %}
+      {% if not r.comment or r.comment_approved %}
+        <div class="product-review-avatar" aria-hidden="true">{{ r.reviewer_name|slice:":1"|upper }}</div>
+      {% else %}
+        <div class="product-review-avatar product-review-avatar--anon" aria-hidden="true">★</div>
+      {% endif %}
+    {% else %}
+      <div class="product-review-avatar product-review-avatar--anon" aria-hidden="true">?</div>
+    {% endif %}
+    <div class="product-review-item-main">
+      <div class="product-review-meta">
+        <span class="product-review-stars-static" aria-label="{{ r.rating }} out of 5 stars">
+          {% for _ in "12345" %}
+            {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
+          {% endfor %}
+        </span>
+        {% if r.reviewer_name %}
+          {% if not r.comment or r.comment_approved %}
+            <span class="product-review-author">{{ r.reviewer_name }}</span>
+          {% endif %}
+        {% endif %}
+        <time datetime="{{ r.created_at|date:'c' }}">{{ r.created_at|date:"M j, Y" }}</time>
+      </div>
+      {% if r.comment_approved and r.comment %}
+        <div class="product-review-comment-text">
+          {% if teaser_mode %}
+            {{ r.comment|truncatewords:42|linebreaksbr }}
+          {% else %}
+            {{ r.comment|linebreaksbr }}
+          {% endif %}
+        </div>
+      {% elif not r.comment %}
+        <p class="product-review-rating-only">Star rating only — no written review.</p>
+      {% endif %}
+    </div>
+  </div>
+</li>
