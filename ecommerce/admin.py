@@ -177,11 +177,11 @@ def _parse_cn22_package_lines(
         row_total = 1.0
     try:
         row_w = int(
-            float(str(row_weight_str).replace(",", ".").strip() or "80")
+            float(str(row_weight_str).replace(",", ".").strip() or "0")
         )
     except (ValueError, TypeError):
-        row_w = 80
-    row_w = max(row_w, 1)
+        row_w = 0
+    row_w = max(row_w, 0)
 
     explicit_sum = 0.0
     for it in items:
@@ -212,7 +212,7 @@ def _parse_cn22_package_lines(
         try:
             nw = max(
                 int(float(str(it["nw_raw"]).replace(",", ".").strip())),
-                1,
+                0,
             )
             it["netw_int"] = nw
             sum_explicit_nw += nw
@@ -221,7 +221,7 @@ def _parse_cn22_package_lines(
     missing_nw = [it for it in items if it["netw_int"] is None]
     rem_w = max(row_w - sum_explicit_nw, 0)
     if missing_nw:
-        each = max(rem_w // len(missing_nw), 1)
+        each = max(rem_w // len(missing_nw), 0)
         for it in missing_nw:
             it["netw"] = each
     for it in items:
@@ -267,7 +267,7 @@ def _dpi_efile_row(
     is_eu,
     declared_qty=1,
     declared_description="",
-    declared_netweight_g=80,
+    declared_netweight_g=0,
     declared_line_value="1.00",
     declared_hs="",
     declared_origin="",
@@ -285,8 +285,8 @@ def _dpi_efile_row(
     try:
         w_int = int(float(str(weight_g).replace(",", ".").strip()))
     except (ValueError, TypeError):
-        w_int = 80
-    w_int = max(w_int, 1)
+        w_int = 0
+    w_int = max(w_int, 0)
 
     row = [
         product,
@@ -341,7 +341,7 @@ def _dpi_efile_row(
             slots.append({
                 "qty": it.get("qty", 1),
                 "desc": it.get("desc", ""),
-                "netw": max(int(it.get("netw", 1)), 1),
+                "netw": max(int(it.get("netw") or 0), 0),
                 "value_str": vstr,
                 "hs": _dpi_csv_hs_code_digits(
                     it.get("hs") or declared_hs
@@ -376,7 +376,7 @@ def _dpi_efile_row(
             )
         except (ValueError, TypeError):
             nw = w_int
-        nw = max(nw, 1)
+        nw = max(nw, 0)
 
         row.extend([
             str(dq),
@@ -437,10 +437,10 @@ def _dpi_csv_piece_netweight(*candidates):
             continue
         try:
             w = int(float(str(c).replace(",", ".").strip()))
-            return max(w, 1)
+            return max(w, 0)
         except (ValueError, TypeError):
             continue
-    return 80
+    return 0
 
 
 # Canada: DPI / paste parsing — province names from Amazon, postal A1A 1A1
