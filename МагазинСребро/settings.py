@@ -186,7 +186,6 @@ TEMPLATES = [
                 "ecommerce.context_processors.google_analytics_id",
                 "ecommerce.context_processors.show_welcome_discount_button",
                 "ecommerce.context_processors.cloudinary_config",
-                "ecommerce.context_processors.admin_background",
             ],
         },
     },
@@ -409,10 +408,6 @@ STATICFILES_FINDERS = [
     "django.contrib.staticfiles.finders.FileSystemFinder",
     "django.contrib.staticfiles.finders.AppDirectoriesFinder",
 ]
-
-# Django admin: fallback background if not set in Admin → Admin appearance (DB upload).
-# Examples: https://example.com/bg.jpg  |  /media/site/admin-bg.jpg  |  admin/marbaras-admin-bg.jpg
-ADMIN_BACKGROUND_IMAGE = env("ADMIN_BACKGROUND_IMAGE", "").strip()
 
 # Cloudinary Configuration for Media Files
 # If Cloudinary credentials are provided, use Cloudinary for media storage
