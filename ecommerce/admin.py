@@ -5901,15 +5901,6 @@ class _MarketplacePasteForm(forms.Form):
         ],
         initial="",
     )
-    prepare_in_dp = forms.BooleanField(
-        label="Send to Deutsche Post shipment preparation (don't finalize)",
-        required=False,
-        help_text="Pushes each order into the Deutsche Post 'shipment "
-        "preparation' summary (orderStatus=OPEN) — you finalize and print the "
-        "labels there. Leave unchecked to import only and print labels here.",
-    )
-
-
 class _MarketplaceOrderAdapter:
     """Adapter that lets a :class:`MarketplaceOrder` quack like a website
     :class:`Order` so that the shared DPI payload builder
@@ -7280,12 +7271,17 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 self._report_import_result(
                     request, marketplace, created, skipped, errors
                 )
-
-                # Toggle: push the imported orders straight into the Deutsche
-                # Post shipment-preparation summary (orderStatus=OPEN) instead of
-                # finalizing/printing here.
-                if form.cleaned_data.get("prepare_in_dp") and objects:
-                    self._send_orders_to_dp_preparation(request, objects)
+                # Import only stages the orders locally — nothing goes to DHL
+                # here. Gather several, then select them and run
+                # "📦 Combine into ONE shipment / shared AWB" to send them
+                # together on one AWB.
+                if created or skipped:
+                    messages.info(
+                        request,
+                        "Orders are staged. When you've gathered a batch, select "
+                        "them and run “📦 Combine into ONE shipment / shared AWB” "
+                        "to send them to DHL together on one AWB.",
+                    )
 
                 from django.urls import reverse
 
