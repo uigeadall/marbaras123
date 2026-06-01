@@ -6577,7 +6577,12 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 content_type="text/plain; charset=utf-8",
             )
         item_id = shipments[0]["items"][0].get("id")
-        awb = shipments[0].get("awb") or shipments[0]["items"][0].get("barcode") or ""
+        awb = shipments[0].get("awb") or ""
+        # The item barcode (S10 format, e.g. "LY709462786DE") is the number
+        # buyers actually track with on the carrier/Amazon. The AWB is the
+        # internal dispatch/airwaybill grouping number — keep it for the AWB
+        # document, but prefer the barcode as the customer tracking number.
+        barcode = shipments[0]["items"][0].get("barcode") or ""
         successful_product = payload["items"][0].get("product")
         if successful_product != original_product:
             import logging as _logging
@@ -6620,7 +6625,9 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         mo.status = "label_created"
         mo.dpi_item_id = str(item_id)
         mo.awb = str(awb)
-        mo.tracking_number = str(awb or item_id)
+        # Prefer the trackable item barcode for the customer-facing tracking
+        # number; fall back to the AWB, then the internal item id.
+        mo.tracking_number = str(barcode or awb or item_id)
         mo.label_created_at = timezone.now()
         mo.notes = None
         mo.save(
@@ -6641,6 +6648,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         )
         response["X-DPI-Item-Id"] = str(item_id)
         response["X-DPI-AWB"] = str(awb)
+        response["X-DPI-Barcode"] = str(barcode)
         return response
 
     # ------------------------------------------------------------------
