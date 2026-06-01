@@ -1495,9 +1495,20 @@ class GlobalMailShipping(ShippingCarrierBase):
             'contents': contents,
         }
 
+        # FINALIZE = create + close (instant AWB/label). OPEN = leave the order
+        # in the Deutsche Post "shipment preparation" summary to finalize there.
+        # Honors an explicit per-order override, then the global setting.
+        order_status = (
+            getattr(order, 'dpi_order_status', '')
+            or getattr(settings, 'GLOBAL_MAIL_ORDER_STATUS', 'FINALIZE')
+            or 'FINALIZE'
+        ).upper()
+        if order_status not in ('OPEN', 'FINALIZE'):
+            order_status = 'FINALIZE'
+
         payload = {
             'customerEkp': str(self.customer_ekp),
-            'orderStatus': 'FINALIZE',
+            'orderStatus': order_status,
             'paperwork': {
                 'contactName': (getattr(settings, 'SHOP_CONTACT_NAME', 'Marbaras'))[:35],
                 'jobReference': f'Order-{order.id}'[:17],

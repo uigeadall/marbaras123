@@ -5901,6 +5901,13 @@ class _MarketplacePasteForm(forms.Form):
         ],
         initial="",
     )
+    prepare_in_dp = forms.BooleanField(
+        label="Send to Deutsche Post shipment preparation (don't finalize)",
+        required=False,
+        help_text="Pushes each order into the Deutsche Post 'shipment "
+        "preparation' summary (orderStatus=OPEN) — you finalize and print the "
+        "labels there. Leave unchecked to import only and print labels here.",
+    )
 
 
 class _MarketplaceOrderAdapter:
@@ -5909,10 +5916,13 @@ class _MarketplaceOrderAdapter:
     (``GlobalMailShipping._prepare_shipment_data``) can consume it.
     """
 
-    def __init__(self, mo: "MarketplaceOrder"):
+    def __init__(self, mo: "MarketplaceOrder", dpi_order_status: str = ""):
         from types import SimpleNamespace
         from django.utils import timezone
 
+        # "OPEN" → Deutsche Post shipment-preparation; "FINALIZE"/"" → instant
+        # label. Read by GlobalMailShipping._prepare_shipment_data.
+        self.dpi_order_status = (dpi_order_status or "").upper()
         self.id = f"MP{mo.id}"
         self.pk = mo.pk
         self.full_name = mo.buyer_name or "Recipient"
@@ -6046,9 +6056,14 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
     actions = [
         "bulk_create_labels_action",
+        "send_to_dp_preparation_action",
         "export_amazon_confirm_csv",
         "export_dpi_bulk_csv",
     ]
+
+    @admin.action(description="📋 Send to Deutsche Post shipment preparation (OPEN)")
+    def send_to_dp_preparation_action(self, request, queryset):
+        self._send_orders_to_dp_preparation(request, list(queryset.order_by("id")))
 
     # ------------------------------------------------------------------
     # DPI bulk-dispatch CSV export (same format as OrderAdmin)
@@ -6454,7 +6469,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     context["form"] = form
                     return render(request, "admin/marketplace_csv_import.html", context)
 
-                created, skipped, errors = self._persist_parsed_orders(parsed)
+                created, skipped, errors, _objs = self._persist_parsed_orders(parsed)
                 self._report_import_result(request, marketplace, created, skipped, errors)
 
                 from django.urls import reverse
@@ -6480,6 +6495,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         created = 0
         skipped = 0
         errors = []
+        objects = []
         for entry in parsed:
             try:
                 obj, is_created = MarketplaceOrder.objects.update_or_create(
@@ -6503,13 +6519,14 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                         "raw_csv_data": entry.get("raw_csv_data"),
                     },
                 )
+                objects.append(obj)
                 if is_created:
                     created += 1
                 else:
                     skipped += 1
             except Exception as exc:
                 errors.append(f"Order {entry.get('external_order_id')}: {exc}")
-        return created, skipped, errors
+        return created, skipped, errors, objects
 
     def _report_import_result(self, request, marketplace, created, skipped, errors):
         """Flash user-facing messages summarizing an import run."""
@@ -6526,6 +6543,120 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             messages.error(request, err)
         if not created and not skipped and not errors:
             messages.warning(request, "No orders found in the input.")
+
+    # ------------------------------------------------------------------
+    # Send orders to the Deutsche Post shipment-preparation summary (OPEN)
+    # ------------------------------------------------------------------
+    def _send_orders_to_dp_preparation(self, request, objects):
+        """Create each order on DPI with orderStatus=OPEN so it lands in the
+        Deutsche Post "shipment preparation" summary (to be finalized/printed
+        there) instead of being finalized + labelled here."""
+        import logging
+        import requests
+        from django.utils import timezone
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        logger = logging.getLogger(__name__)
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            messages.error(
+                request,
+                "Can't reach Deutsche Post: missing GLOBAL_MAIL_API_KEY / "
+                "_API_SECRET / _CUSTOMER_EKP.",
+            )
+            return
+        token = dpi._get_access_token()
+        if not token:
+            messages.error(
+                request,
+                "Deutsche Post auth failed — check the API credentials / mode.",
+            )
+            return
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        prepared = 0
+        failed = 0
+        for mo in objects:
+            try:
+                adapter = _MarketplaceOrderAdapter(mo, dpi_order_status="OPEN")
+                payload = dpi._prepare_shipment_data(adapter)
+                payload["orderStatus"] = "OPEN"
+                _mp_prefix = {"amazon": "A", "etsy": "E"}.get(mo.marketplace, "M")
+                _ext = (mo.external_order_id or str(mo.pk)).strip()
+                payload["paperwork"]["jobReference"] = f"{_mp_prefix}-{_ext}"[:17]
+
+                original_product = payload["items"][0].get("product")
+                candidates = [original_product] + [
+                    c
+                    for c in ("GPP", "GPT", "GMT", "GMP", "PKM", "PLT", "WPI", "WP")
+                    if c != original_product
+                ]
+                r = None
+                last = ""
+                for cand in candidates:
+                    payload["items"][0]["product"] = cand
+                    r = requests.post(
+                        dpi.orders_url, json=payload, headers=headers, timeout=30
+                    )
+                    if r.status_code in (200, 201):
+                        break
+                    last = r.text or ""
+                    t = last.lower()
+                    is_product_err = r.status_code in (400, 422) and (
+                        "product" in t or "destination country is invalid" in t
+                    )
+                    if not is_product_err:
+                        break
+
+                if r is None or r.status_code not in (200, 201):
+                    failed += 1
+                    mo.status = "failed"
+                    mo.notes = (
+                        f"DP preparation failed HTTP "
+                        f"{getattr(r, 'status_code', '?')}: {last[:300]}"
+                    )
+                    mo.save(update_fields=["status", "notes"])
+                    continue
+
+                body = r.json() or {}
+                order_id_dpi = body.get("orderId")
+                mo.notes = (
+                    f"📋 In Deutsche Post shipment preparation "
+                    f"(DPI order #{order_id_dpi}) since "
+                    f"{timezone.now():%Y-%m-%d %H:%M}"
+                )
+                mo.save(update_fields=["notes"])
+                prepared += 1
+            except Exception as exc:
+                failed += 1
+                logger.exception(
+                    "DP preparation submit failed for MarketplaceOrder #%s", mo.pk
+                )
+                try:
+                    mo.status = "failed"
+                    mo.notes = f"DP preparation exception: {exc}"
+                    mo.save(update_fields=["status", "notes"])
+                except Exception:
+                    pass
+
+        if prepared:
+            messages.success(
+                request,
+                f"📋 Sent {prepared} order(s) to Deutsche Post shipment "
+                f"preparation. Finalize & print them in the DP portal.",
+            )
+        if failed:
+            messages.error(
+                request,
+                f"{failed} order(s) couldn't be sent to DP preparation — "
+                f"see each order's notes for the reason.",
+            )
 
     # ------------------------------------------------------------------
     # Paste import view (copy/paste rows instead of uploading a file)
@@ -6572,10 +6703,16 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     if currency:
                         entry["currency"] = currency
 
-                created, skipped, errors = self._persist_parsed_orders(parsed)
+                created, skipped, errors, objects = self._persist_parsed_orders(parsed)
                 self._report_import_result(
                     request, marketplace, created, skipped, errors
                 )
+
+                # Toggle: push the imported orders straight into the Deutsche
+                # Post shipment-preparation summary (orderStatus=OPEN) instead of
+                # finalizing/printing here.
+                if form.cleaned_data.get("prepare_in_dp") and objects:
+                    self._send_orders_to_dp_preparation(request, objects)
 
                 from django.urls import reverse
 

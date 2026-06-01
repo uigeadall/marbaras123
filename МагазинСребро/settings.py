@@ -880,6 +880,11 @@ AMAZON_CONFIRM_CARRIER_CODE = env("AMAZON_CONFIRM_CARRIER_CODE", "DHL eCommerce"
 AMAZON_CONFIRM_CARRIER_NAME = env("AMAZON_CONFIRM_CARRIER_NAME", "DHL eCommerce")
 AMAZON_CONFIRM_SHIP_METHOD = env("AMAZON_CONFIRM_SHIP_METHOD", "")  # optional, e.g. "Standard"
 
+# DPI order workflow. "FINALIZE" closes each order immediately and returns the
+# AWB/label. "OPEN" leaves it in the Deutsche Post "shipment preparation"
+# summary to finalize/print there. The paste page can override this per import.
+GLOBAL_MAIL_ORDER_STATUS = env("GLOBAL_MAIL_ORDER_STATUS", "FINALIZE")
+
 # Automatic shipping label creation on checkout. Set to "False" in Railway
 # to require manual label creation from the admin (recommended during
 # production soft-launch).
