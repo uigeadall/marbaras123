@@ -6055,6 +6055,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     )
 
     actions = [
+        "combine_into_one_awb_action",
         "bulk_create_labels_action",
         "send_to_dp_preparation_action",
         "update_dp_items_action",
@@ -6933,6 +6934,178 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     @admin.action(description="✏️ Push edits to Deutsche Post (after changing fields)")
     def update_dp_items_action(self, request, queryset):
         self._update_dpi_items(request, list(queryset.order_by("id")))
+
+    # ------------------------------------------------------------------
+    # Combine many orders into ONE shipment / shared AWB
+    # ------------------------------------------------------------------
+    def _create_combined_dpi_shipment(self, request, objects):
+        """Bundle the selected orders into as few DHL shipments as possible.
+
+        DHL groups items onto one AWB by (product, serviceLevel), so we build
+        one DPI order per group (chunked to keep each order a sane size). Every
+        package keeps its own tracking barcode + 4x6 label, but they share a
+        single AWB dispatch document — so you hand DHL one AWB for hundreds of
+        parcels instead of one AWB each.
+        """
+        import logging
+        import requests
+        from collections import OrderedDict
+        from django.utils import timezone
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        logger = logging.getLogger(__name__)
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+        if not (dpi.consumer_key and dpi.consumer_secret and dpi.customer_ekp):
+            messages.error(
+                request,
+                "Missing GLOBAL_MAIL_API_KEY / _API_SECRET / _CUSTOMER_EKP.",
+            )
+            return
+        token = dpi._get_access_token()
+        if not token:
+            messages.error(
+                request,
+                "Deutsche Post auth failed — check the API credentials / mode.",
+            )
+            return
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        try:
+            max_items = int(getattr(settings, "GLOBAL_MAIL_MAX_ITEMS_PER_ORDER", 100) or 100)
+        except (TypeError, ValueError):
+            max_items = 100
+        max_items = max(1, min(max_items, 250))
+
+        # Build one item per order, grouped by (product, serviceLevel).
+        groups = OrderedDict()
+        custref_to_mo = {}
+        build_errors = 0
+        for mo in objects:
+            try:
+                adapter = _MarketplaceOrderAdapter(mo)
+                payload = dpi._prepare_shipment_data(adapter)
+                item = payload["items"][0]
+                item["custRef"] = f"MP{mo.pk}"
+                key = (item.get("product"), item.get("serviceLevel"))
+                groups.setdefault(key, []).append(item)
+                custref_to_mo[f"MP{mo.pk}"] = mo
+            except Exception:
+                build_errors += 1
+                logger.exception(
+                    "combined shipment: payload build failed for MO #%s", mo.pk
+                )
+
+        if not groups:
+            messages.error(
+                request, "Couldn't build any shipment from the selected orders."
+            )
+            return
+
+        labelled = 0
+        failed = 0
+        awbs = set()
+        for (product, service), items in groups.items():
+            # Chunk so each DPI order stays within a sane item count; each
+            # chunk becomes one AWB.
+            for start in range(0, len(items), max_items):
+                chunk = items[start : start + max_items]
+                payload = {
+                    "customerEkp": str(dpi.customer_ekp),
+                    "orderStatus": "FINALIZE",
+                    "paperwork": {
+                        "contactName": (
+                            getattr(settings, "SHOP_CONTACT_NAME", "Marbaras")
+                        )[:35],
+                        "jobReference": f"BATCH-{timezone.now():%y%m%d%H%M%S}"[:17],
+                        "telephoneNumber": (
+                            getattr(settings, "SHOP_PHONE", "") or "+359888000000"
+                        ),
+                        "awbCopyCount": 1,
+                    },
+                    "items": chunk,
+                }
+                try:
+                    r = requests.post(
+                        dpi.orders_url, json=payload, headers=headers, timeout=90
+                    )
+                    if r.status_code not in (200, 201):
+                        for it in chunk:
+                            mo = custref_to_mo.get(it.get("custRef"))
+                            if mo:
+                                mo.status = "failed"
+                                mo.notes = (
+                                    f"Combined shipment HTTP {r.status_code}: "
+                                    f"{(r.text or '')[:200]}"
+                                )
+                                mo.save(update_fields=["status", "notes"])
+                                failed += 1
+                        continue
+
+                    body = r.json() or {}
+                    for sh in body.get("shipments") or []:
+                        awb = sh.get("awb")
+                        if awb:
+                            awbs.add(awb)
+                        for it in sh.get("items") or []:
+                            mo = custref_to_mo.get(it.get("custRef"))
+                            if not mo:
+                                continue
+                            mo.awb = str(awb) if awb else None
+                            if it.get("barcode"):
+                                mo.tracking_number = str(it["barcode"])
+                            if it.get("id"):
+                                mo.dpi_item_id = str(it["id"])
+                            mo.status = "label_created"
+                            mo.label_created_at = timezone.now()
+                            mo.notes = (
+                                f"📦 Combined shipment AWB {awb} on "
+                                f"{timezone.now():%Y-%m-%d %H:%M}"
+                            )
+                            mo.save(
+                                update_fields=[
+                                    "awb",
+                                    "tracking_number",
+                                    "dpi_item_id",
+                                    "status",
+                                    "label_created_at",
+                                    "notes",
+                                ]
+                            )
+                            labelled += 1
+                except Exception as exc:
+                    logger.exception("combined shipment POST failed")
+                    for it in chunk:
+                        mo = custref_to_mo.get(it.get("custRef"))
+                        if mo:
+                            mo.status = "failed"
+                            mo.notes = f"Combined shipment exception: {exc}"
+                            mo.save(update_fields=["status", "notes"])
+                            failed += 1
+
+        if labelled:
+            messages.success(
+                request,
+                f"📦 Created {labelled} label(s) sharing {len(awbs)} AWB(s). "
+                f"Print each AWB once to dispatch all its parcels together.",
+            )
+        if build_errors:
+            messages.warning(
+                request, f"{build_errors} order(s) couldn't be prepared."
+            )
+        if failed:
+            messages.error(
+                request, f"{failed} order(s) failed — see their notes."
+            )
+
+    @admin.action(description="📦 Combine into ONE shipment / shared AWB (+labels)")
+    def combine_into_one_awb_action(self, request, queryset):
+        self._create_combined_dpi_shipment(request, list(queryset.order_by("id")))
 
     # ------------------------------------------------------------------
     # Paste import view (copy/paste rows instead of uploading a file)
