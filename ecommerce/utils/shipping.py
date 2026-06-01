@@ -1187,6 +1187,47 @@ class GlobalMailShipping(ShippingCarrierBase):
         logger.info(f"DPI: fetched AWB label for {awb_number} ({len(r.content)} bytes)")
         return r.content
 
+    def get_item_labels(self, awb_number: str) -> Optional[bytes]:
+        """Fetch ALL item labels for a shipment (one AWB) as a single PDF.
+
+        This is the bulk-print companion to a combined shipment: instead of
+        pulling each item's label one by one, DPI returns one PDF containing
+        every label under the AWB, in 4x6 single-page format.
+
+        Endpoint: GET /dpi/shipping/v1/shipments/{awb}/itemlabels
+        Returns raw PDF bytes on success, None on failure.
+        """
+        if not awb_number:
+            logger.error("get_item_labels called without an AWB number")
+            return None
+        token = self._get_access_token()
+        if not token:
+            logger.error("DPI: cannot fetch item labels without access token")
+            return None
+        url = f"{self.shipments_url}/{awb_number}/itemlabels"
+        try:
+            r = requests.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    # 4x6 single page per label — matches Zebra ZP-505.
+                    "Accept": "application/pdf+singlepage+6x4",
+                },
+                timeout=60,
+            )
+        except Exception as exc:
+            logger.error(f"DPI item labels fetch exception: {exc}")
+            return None
+        if r.status_code != 200 or not r.content:
+            logger.error(
+                f"DPI item labels HTTP {r.status_code}: {(r.text or '')[:400]}"
+            )
+            return None
+        logger.info(
+            f"DPI: fetched item labels for AWB {awb_number} ({len(r.content)} bytes)"
+        )
+        return r.content
+
     # ------------------------------------------------------------------
     # OAuth 2.0 access token (cached 4h to stay under the 5h expiry)
     # ------------------------------------------------------------------
@@ -1354,6 +1395,11 @@ class GlobalMailShipping(ShippingCarrierBase):
         else:
             total_weight_kg = max(sum(item.quantity for item in order.items.all()) * 0.5, 0.1)
             total_weight_g = int(total_weight_kg * 1000)
+        # DPI floors each content piece at 10 g and rejects the order if the
+        # content weights exceed the shipment gross weight. Ensure the gross
+        # weight is at least 10 g per item so a tiny/typo weight can't fail.
+        _num_pieces = max(len(order.items.all()), 1)
+        total_weight_g = max(total_weight_g, 10 * _num_pieces)
         dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
         default_product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
         # Built-in fallback for common non-EU destinations where GPT isn't valid

@@ -6056,6 +6056,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
     actions = [
         "combine_into_one_awb_action",
+        "print_all_awb_labels_action",
         "bulk_create_labels_action",
         "send_to_dp_preparation_action",
         "update_dp_items_action",
@@ -7148,6 +7149,87 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     @admin.action(description="📦 Combine into ONE shipment / shared AWB (+labels)")
     def combine_into_one_awb_action(self, request, queryset):
         self._create_combined_dpi_shipment(request, list(queryset.order_by("id")))
+
+    # ------------------------------------------------------------------
+    # Print ALL item labels for the selected orders' AWB(s), one PDF
+    # ------------------------------------------------------------------
+    @admin.action(description="🖨️ Print ALL labels for selected AWB(s) (one PDF)")
+    def print_all_awb_labels_action(self, request, queryset):
+        import logging
+        from io import BytesIO
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        logger = logging.getLogger(__name__)
+
+        # Distinct AWBs across the selection (skip orders not yet shipped).
+        awbs = []
+        for awb in queryset.exclude(awb__isnull=True).exclude(awb="").values_list(
+            "awb", flat=True
+        ):
+            awb = (awb or "").strip()
+            if awb and awb not in awbs:
+                awbs.append(awb)
+
+        if not awbs:
+            self.message_user(
+                request,
+                "None of the selected orders have an AWB yet — create labels or "
+                "combine them into a shipment first.",
+                level=messages.WARNING,
+            )
+            return
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+
+        pdfs = []
+        failed_awbs = []
+        for awb in awbs:
+            pdf = dpi.get_item_labels(awb)
+            if pdf:
+                pdfs.append(pdf)
+            else:
+                failed_awbs.append(awb)
+
+        if not pdfs:
+            self.message_user(
+                request,
+                f"Couldn't fetch labels for AWB(s): {', '.join(failed_awbs)}. "
+                f"See Railway logs.",
+                level=messages.ERROR,
+            )
+            return
+
+        # One AWB → stream as-is; several → merge into a single PDF.
+        if len(pdfs) == 1:
+            out = pdfs[0]
+        else:
+            try:
+                from pypdf import PdfReader, PdfWriter
+
+                writer = PdfWriter()
+                for pdf in pdfs:
+                    for page in PdfReader(BytesIO(pdf)).pages:
+                        writer.add_page(page)
+                buf = BytesIO()
+                writer.write(buf)
+                out = buf.getvalue()
+            except Exception:
+                logger.exception("Merging AWB label PDFs failed; returning first only")
+                out = pdfs[0]
+
+        if failed_awbs:
+            self.message_user(
+                request,
+                f"Some AWB(s) failed: {', '.join(failed_awbs)} — see logs.",
+                level=messages.WARNING,
+            )
+
+        resp = HttpResponse(out, content_type="application/pdf")
+        resp["Content-Disposition"] = (
+            'inline; filename="dpi_all_labels.pdf"'
+        )
+        return resp
 
     # ------------------------------------------------------------------
     # Paste import view (copy/paste rows instead of uploading a file)
