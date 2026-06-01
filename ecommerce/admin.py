@@ -6057,6 +6057,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     actions = [
         "bulk_create_labels_action",
         "send_to_dp_preparation_action",
+        "update_dp_items_action",
         "cancel_dp_items_action",
         "export_amazon_confirm_csv",
         "export_dpi_bulk_csv",
@@ -6771,6 +6772,129 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     @admin.action(description="🗑️ Cancel at Deutsche Post (buyer cancelled)")
     def cancel_dp_items_action(self, request, queryset):
         self._cancel_dpi_items(request, list(queryset.order_by("id")))
+
+    # ------------------------------------------------------------------
+    # Push local edits to an order already sent to DHL (PUT the DPI item)
+    # ------------------------------------------------------------------
+    def _update_dpi_items(self, request, objects):
+        """Push edited address/weight/price to DHL for orders already sent to
+        the shipment-preparation summary (``PUT /dpi/shipping/v1/items/{id}``).
+
+        Workflow: fix the fields on the order here, save, then run this so the
+        change is reflected at Deutsche Post (the portal won't let you edit a
+        webservice order by hand).
+        """
+        import logging
+        import requests
+        from django.utils import timezone
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        logger = logging.getLogger(__name__)
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+        token = dpi._get_access_token()
+        if not token:
+            messages.error(
+                request,
+                "Deutsche Post auth failed — check the API credentials / mode.",
+            )
+            return
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        updated = 0
+        skipped = 0
+        failed = 0
+        for mo in objects:
+            item_id = (mo.dpi_item_id or "").strip()
+            if not item_id:
+                skipped += 1
+                continue
+            try:
+                adapter = _MarketplaceOrderAdapter(mo)
+                payload = dpi._prepare_shipment_data(adapter)
+                item = payload["items"][0]
+
+                original_product = item.get("product")
+                candidates = [original_product] + [
+                    c
+                    for c in ("GPP", "GPT", "GMT", "GMP", "PKM", "PLT", "WPI", "WP")
+                    if c != original_product
+                ]
+                r = None
+                last = ""
+                for cand in candidates:
+                    item["product"] = cand
+                    r = requests.put(
+                        f"{dpi.item_label_url}/{item_id}",
+                        json=item,
+                        headers=headers,
+                        timeout=30,
+                    )
+                    if r.status_code in (200, 201):
+                        break
+                    last = r.text or ""
+                    t = last.lower()
+                    is_product_err = r.status_code in (400, 422) and (
+                        "product" in t or "destination country is invalid" in t
+                    )
+                    if not is_product_err:
+                        break
+
+                if r is None or r.status_code not in (200, 201):
+                    failed += 1
+                    mo.notes = (
+                        f"DP update failed HTTP "
+                        f"{getattr(r, 'status_code', '?')}: {last[:300]}"
+                    )
+                    mo.save(update_fields=["notes"])
+                    continue
+
+                body = r.json() if r.content else {}
+                barcode = (body or {}).get("barcode")
+                fields = ["notes"]
+                if barcode and str(barcode) != (mo.tracking_number or ""):
+                    mo.tracking_number = str(barcode)
+                    fields.append("tracking_number")
+                mo.notes = (
+                    f"✏️ Updated at Deutsche Post (item #{item_id}) on "
+                    f"{timezone.now():%Y-%m-%d %H:%M}"
+                )
+                mo.save(update_fields=fields)
+                updated += 1
+            except Exception as exc:
+                failed += 1
+                logger.exception("DPI item update failed for MarketplaceOrder #%s", mo.pk)
+                try:
+                    mo.notes = f"DP update exception: {exc}"
+                    mo.save(update_fields=["notes"])
+                except Exception:
+                    pass
+
+        if updated:
+            messages.success(
+                request, f"✏️ Pushed updates for {updated} order(s) to Deutsche Post."
+            )
+        if skipped:
+            messages.info(
+                request,
+                f"{skipped} order(s) aren't at DHL yet — use 'Send to "
+                f"preparation' first, then edit.",
+            )
+        if failed:
+            messages.error(
+                request,
+                f"{failed} order(s) couldn't be updated — see their notes. "
+                f"(Dispatched items can't be changed.)",
+            )
+
+    @admin.action(description="✏️ Push edits to Deutsche Post (after changing fields)")
+    def update_dp_items_action(self, request, queryset):
+        self._update_dpi_items(request, list(queryset.order_by("id")))
 
     # ------------------------------------------------------------------
     # Paste import view (copy/paste rows instead of uploading a file)
