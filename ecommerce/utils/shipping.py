@@ -1342,8 +1342,18 @@ class GlobalMailShipping(ShippingCarrierBase):
         Uses product GPT (Packet Tracked, lightweight goods) by default.
         Product can be overridden via settings.GLOBAL_MAIL_PRODUCT_CODE.
         """
-        total_weight_kg = max(sum(item.quantity for item in order.items.all()) * 0.5, 0.1)
-        total_weight_g = int(total_weight_kg * 1000)
+        # Prefer an explicit per-order weight (set on marketplace orders / the
+        # paste page) and fall back to the old 0.5 kg-per-item estimate.
+        explicit_weight_g = getattr(order, 'total_weight_g', None)
+        try:
+            explicit_weight_g = int(explicit_weight_g) if explicit_weight_g else 0
+        except (TypeError, ValueError):
+            explicit_weight_g = 0
+        if explicit_weight_g > 0:
+            total_weight_g = explicit_weight_g
+        else:
+            total_weight_kg = max(sum(item.quantity for item in order.items.all()) * 0.5, 0.1)
+            total_weight_g = int(total_weight_kg * 1000)
         dest = self._normalize_country_code(getattr(order, 'country', 'BG'))
         default_product = getattr(settings, 'GLOBAL_MAIL_PRODUCT_CODE', 'GPT')
         # Built-in fallback for common non-EU destinations where GPT isn't valid

@@ -5870,6 +5870,37 @@ class _MarketplacePasteForm(forms.Form):
         initial="auto",
         required=True,
     )
+    default_price = forms.DecimalField(
+        label="Price (optional)",
+        required=False,
+        min_value=0,
+        max_digits=10,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"step": "0.01", "placeholder": "e.g. 29.90"}),
+        help_text="Declared/customs value applied to every pasted order. "
+        "Leave blank to keep the report's price (address blocks default to 0).",
+    )
+    default_weight_g = forms.IntegerField(
+        label="Weight in grams (optional)",
+        required=False,
+        min_value=1,
+        widget=forms.NumberInput(attrs={"placeholder": "e.g. 250"}),
+        help_text="Parcel weight in grams applied to every pasted order. "
+        "Drives the weight printed on the DHL label.",
+    )
+    default_currency = forms.ChoiceField(
+        label="Currency",
+        required=False,
+        choices=[
+            ("", "— keep as-is —"),
+            ("EUR", "EUR"),
+            ("CHF", "CHF"),
+            ("GBP", "GBP"),
+            ("USD", "USD"),
+            ("BGN", "BGN"),
+        ],
+        initial="",
+    )
 
 
 class _MarketplaceOrderAdapter:
@@ -5897,6 +5928,8 @@ class _MarketplaceOrderAdapter:
         self.total_price = mo.total_amount or Decimal("0")
         self.total = mo.total_amount or Decimal("0")
         self.currency = mo.currency or "EUR"
+        # Explicit parcel weight (grams) — drives the DPI label weight.
+        self.total_weight_g = mo.total_weight_g or None
         # DHL Express _prepare_shipment_data expects a created_at datetime
         self.created_at = mo.imported_at or timezone.now()
 
@@ -6525,6 +6558,19 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     return render(
                         request, "admin/marketplace_paste_import.html", context
                     )
+
+                # Apply the manual price / weight / currency overrides (if given)
+                # to every parsed order before persisting.
+                price = form.cleaned_data.get("default_price")
+                weight = form.cleaned_data.get("default_weight_g")
+                currency = (form.cleaned_data.get("default_currency") or "").strip().upper()
+                for entry in parsed:
+                    if price is not None:
+                        entry["total_amount"] = price
+                    if weight:
+                        entry["total_weight_g"] = int(weight)
+                    if currency:
+                        entry["currency"] = currency
 
                 created, skipped, errors = self._persist_parsed_orders(parsed)
                 self._report_import_result(

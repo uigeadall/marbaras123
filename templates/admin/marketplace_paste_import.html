@@ -46,6 +46,28 @@
       </div>
     </div>
 
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:14px; margin-bottom: 18px;">
+      <div>
+        <label style="display:block; font-weight: 600; margin-bottom: 6px;">Price</label>
+        {{ form.default_price }}
+        <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Customs / declared value.</div>
+      </div>
+      <div>
+        <label style="display:block; font-weight: 600; margin-bottom: 6px;">Weight (grams)</label>
+        {{ form.default_weight_g }}
+        <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Printed on the DHL label.</div>
+      </div>
+      <div>
+        <label style="display:block; font-weight: 600; margin-bottom: 6px;">Currency</label>
+        {{ form.default_currency }}
+        <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">Leave blank to keep as-is.</div>
+      </div>
+    </div>
+    <div style="font-size:12px; color:#6b7280; margin:-6px 0 18px;">
+      Price &amp; weight apply to <b>every</b> order in this paste. Ideal when
+      pasting a single address block (which carries no price/weight).
+    </div>
+
     <div style="margin-bottom: 24px;">
       <label style="display:block; font-weight: 600; margin-bottom: 6px;">Pasted order data</label>
       {{ form.pasted_data }}
