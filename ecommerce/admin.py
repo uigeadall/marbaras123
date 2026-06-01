@@ -6057,6 +6057,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     actions = [
         "bulk_create_labels_action",
         "send_to_dp_preparation_action",
+        "cancel_dp_items_action",
         "export_amazon_confirm_csv",
         "export_dpi_bulk_csv",
     ]
@@ -6626,12 +6627,27 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
                 body = r.json() or {}
                 order_id_dpi = body.get("orderId")
+                # OPEN returns items at the top level; FINALIZE nests them under
+                # shipments[0]. Capture the item id (needed to cancel later) and
+                # the tracking barcode.
+                items = body.get("items") or (
+                    (body.get("shipments") or [{}])[0].get("items") or []
+                )
+                item_id = items[0].get("id") if items else None
+                barcode = items[0].get("barcode") if items else None
+                update_fields = ["notes"]
+                if item_id:
+                    mo.dpi_item_id = str(item_id)
+                    update_fields.append("dpi_item_id")
+                if barcode:
+                    mo.tracking_number = str(barcode)
+                    update_fields.append("tracking_number")
                 mo.notes = (
                     f"📋 In Deutsche Post shipment preparation "
                     f"(DPI order #{order_id_dpi}) since "
                     f"{timezone.now():%Y-%m-%d %H:%M}"
                 )
-                mo.save(update_fields=["notes"])
+                mo.save(update_fields=update_fields)
                 prepared += 1
             except Exception as exc:
                 failed += 1
@@ -6657,6 +6673,104 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 f"{failed} order(s) couldn't be sent to DP preparation — "
                 f"see each order's notes for the reason.",
             )
+
+    # ------------------------------------------------------------------
+    # Cancel an order created via webservice (delete its DPI item)
+    # ------------------------------------------------------------------
+    def _cancel_dpi_items(self, request, objects):
+        """Cancel orders that were pushed to DHL by deleting their DPI item
+        (``DELETE /dpi/shipping/v1/items/{itemId}``).
+
+        Use this when a buyer cancels an order that you already sent to the
+        Deutsche Post shipment-preparation summary (or created a label for but
+        haven't dispatched). Items created by webservice can't be removed in
+        the DP portal UI, so this is the way to take them back out.
+        """
+        import logging
+        import requests
+        from django.utils import timezone
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        logger = logging.getLogger(__name__)
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+        token = dpi._get_access_token()
+        if not token:
+            messages.error(
+                request,
+                "Deutsche Post auth failed — check the API credentials / mode.",
+            )
+            return
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+        cancelled = 0
+        skipped = 0
+        failed = 0
+        for mo in objects:
+            item_id = (mo.dpi_item_id or "").strip()
+            if not item_id:
+                skipped += 1
+                continue
+            try:
+                r = requests.delete(
+                    f"{dpi.item_label_url}/{item_id}", headers=headers, timeout=30
+                )
+                if r.status_code in (200, 204):
+                    mo.status = "cancelled"
+                    mo.tracking_number = None
+                    mo.awb = None
+                    mo.dpi_item_id = None
+                    mo.notes = (
+                        f"🗑️ Removed from Deutsche Post (item #{item_id}) on "
+                        f"{timezone.now():%Y-%m-%d %H:%M}"
+                    )
+                    mo.save(
+                        update_fields=[
+                            "status",
+                            "tracking_number",
+                            "awb",
+                            "dpi_item_id",
+                            "notes",
+                        ]
+                    )
+                    cancelled += 1
+                else:
+                    failed += 1
+                    mo.notes = (
+                        f"Cancel failed HTTP {r.status_code}: "
+                        f"{(r.text or '')[:200]}"
+                    )
+                    mo.save(update_fields=["notes"])
+            except Exception as exc:
+                failed += 1
+                logger.exception("DPI item cancel failed for MarketplaceOrder #%s", mo.pk)
+                try:
+                    mo.notes = f"Cancel exception: {exc}"
+                    mo.save(update_fields=["notes"])
+                except Exception:
+                    pass
+
+        if cancelled:
+            messages.success(
+                request, f"🗑️ Cancelled {cancelled} order(s) at Deutsche Post."
+            )
+        if skipped:
+            messages.info(
+                request,
+                f"{skipped} order(s) had no DPI item to cancel (never sent to "
+                f"DHL) — set their status manually if needed.",
+            )
+        if failed:
+            messages.error(
+                request,
+                f"{failed} order(s) couldn't be cancelled — see their notes. "
+                f"(Already dispatched items can't be deleted.)",
+            )
+
+    @admin.action(description="🗑️ Cancel at Deutsche Post (buyer cancelled)")
+    def cancel_dp_items_action(self, request, queryset):
+        self._cancel_dpi_items(request, list(queryset.order_by("id")))
 
     # ------------------------------------------------------------------
     # Paste import view (copy/paste rows instead of uploading a file)
