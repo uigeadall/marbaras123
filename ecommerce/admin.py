@@ -6717,6 +6717,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
         cancelled = 0
         shells = 0
+        finalized_locked = 0
         skipped = 0
         failed = 0
         for mo in objects:
@@ -6736,14 +6737,21 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     )
                     whole_order_gone = ro.status_code in (200, 204)
 
-                # 2) Otherwise delete the item — this empties the order (leaves
-                #    an empty shell in the DP summary, qty/weight 0).
+                # 2) Otherwise delete the item. DHL only allows this for OPEN
+                #    (prepared) items — a FINALIZED item returns 422/404 and
+                #    cannot be deleted via the API.
                 emptied = False
+                is_finalized = False
                 if not whole_order_gone and item_id:
                     ri = requests.delete(
                         f"{dpi.item_label_url}/{item_id}", headers=headers, timeout=30
                     )
                     emptied = ri.status_code in (200, 204)
+                    if not emptied:
+                        body_l = (ri.text or "").lower()
+                        is_finalized = ri.status_code in (404, 422) and (
+                            "finalized" in body_l or "cannot be found" in body_l
+                        )
 
                 if whole_order_gone or emptied:
                     mo.status = "cancelled"
@@ -6772,6 +6780,18 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                             "notes",
                         ]
                     )
+                elif is_finalized:
+                    # Finalized at DHL — API can't delete it. Mark cancelled
+                    # locally so the list is clean; just don't ship the parcel.
+                    finalized_locked += 1
+                    mo.status = "cancelled"
+                    mo.notes = (
+                        f"⚠️ Label already FINALIZED at DHL — can't be deleted "
+                        f"via API (AWB {mo.awb or '?'}). Marked cancelled here; "
+                        f"simply DON'T ship the parcel. To void the record, "
+                        f"contact DHL with the AWB. {timezone.now():%Y-%m-%d %H:%M}"
+                    )
+                    mo.save(update_fields=["status", "notes"])
                 else:
                     failed += 1
                     mo.notes = "Cancel failed — see Railway logs for the DHL response."
@@ -6797,6 +6817,15 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 f"ship). An empty order shell stays in the DP summary because "
                 f"your DHL app can't delete whole orders — ask DHL to enable the "
                 f"'delete order' permission to clear those automatically.",
+            )
+        if finalized_locked:
+            messages.warning(
+                request,
+                f"⚠️ {finalized_locked} order(s) were already FINALIZED — DHL's "
+                f"API can't delete a finalized label. Marked them Cancelled "
+                f"here; just don't hand those parcels to DHL. You're billed only "
+                f"on physical handover, so an unshipped label costs nothing. To "
+                f"void the record formally, email DHL the AWB number(s).",
             )
         if skipped:
             messages.info(
