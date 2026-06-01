@@ -872,6 +872,14 @@ GLOBAL_MAIL_LABEL_FORMAT = env("GLOBAL_MAIL_LABEL_FORMAT", "")  # blank → PDF 
 # Set to "False" to disable and pass the DHL PDF through unchanged.
 GLOBAL_MAIL_LABEL_FORCE_4X6 = env("GLOBAL_MAIL_LABEL_FORCE_4X6", "True")
 
+# Amazon "Confirm Shipments" flat-file export. Carrier shown to the buyer in
+# Seller Central. Defaults to DHL eCommerce (DHL Global Mail's tracked product).
+# If Amazon doesn't auto-link tracking for your AWB numbers, set
+# AMAZON_CONFIRM_CARRIER_CODE="Other" and rely on AMAZON_CONFIRM_CARRIER_NAME.
+AMAZON_CONFIRM_CARRIER_CODE = env("AMAZON_CONFIRM_CARRIER_CODE", "DHL eCommerce")
+AMAZON_CONFIRM_CARRIER_NAME = env("AMAZON_CONFIRM_CARRIER_NAME", "DHL eCommerce")
+AMAZON_CONFIRM_SHIP_METHOD = env("AMAZON_CONFIRM_SHIP_METHOD", "")  # optional, e.g. "Standard"
+
 # Automatic shipping label creation on checkout. Set to "False" in Railway
 # to require manual label creation from the admin (recommended during
 # production soft-launch).

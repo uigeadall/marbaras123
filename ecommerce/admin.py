@@ -5973,7 +5973,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         ("Debug", {"classes": ("collapse",), "fields": ("notes", "raw_csv_data")}),
     )
 
-    actions = ["bulk_create_labels_action", "export_dpi_bulk_csv"]
+    actions = [
+        "bulk_create_labels_action",
+        "export_amazon_confirm_csv",
+        "export_dpi_bulk_csv",
+    ]
 
     # ------------------------------------------------------------------
     # DPI bulk-dispatch CSV export (same format as OrderAdmin)
@@ -6138,6 +6142,102 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         return response
 
     export_dpi_bulk_csv.short_description = "📄 Export to DPI prelabeled items CSV"
+
+    # ------------------------------------------------------------------
+    # Amazon "Confirm Shipments" flat-file export
+    # ------------------------------------------------------------------
+    def export_amazon_confirm_csv(self, request, queryset):
+        """Export selected Amazon orders as a Seller-Central "Confirm
+        Shipments" flat file (tab-delimited).
+
+        Upload the downloaded file once in Seller Central
+        (Orders → Upload Order Related Files → Confirm Shipments). Every
+        order in it flips to *Shipped* with its DHL tracking number, so you
+        never have to open orders one by one.
+
+        Only Amazon rows that actually have a ``tracking_number`` are written.
+        Rows that are written are marked ``shipped`` locally so you can see
+        what has already been confirmed.
+        """
+        from django.db.models import Q
+        from django.utils import timezone
+
+        amazon_with_tracking = queryset.filter(
+            marketplace="amazon"
+        ).exclude(tracking_number__isnull=True).exclude(tracking_number="")
+
+        written = list(amazon_with_tracking.order_by("id"))
+
+        # Surface what got skipped so it's never a silent no-op.
+        total = queryset.count()
+        skipped_marketplace = queryset.exclude(marketplace="amazon").count()
+        skipped_no_tracking = (
+            queryset.filter(marketplace="amazon")
+            .filter(Q(tracking_number__isnull=True) | Q(tracking_number=""))
+            .count()
+        )
+
+        if not written:
+            self.message_user(
+                request,
+                "No Amazon orders with a tracking number in the selection. "
+                "Create the labels first (that fills the tracking number).",
+                level=messages.WARNING,
+            )
+            return
+
+        carrier_code = getattr(settings, "AMAZON_CONFIRM_CARRIER_CODE", "DHL eCommerce") or "DHL eCommerce"
+        carrier_name = getattr(settings, "AMAZON_CONFIRM_CARRIER_NAME", "DHL eCommerce") or "DHL eCommerce"
+        ship_method = getattr(settings, "AMAZON_CONFIRM_SHIP_METHOD", "") or ""
+
+        response = HttpResponse(content_type="text/tab-separated-values; charset=utf-8")
+        response["Content-Disposition"] = (
+            'attachment; filename="amazon_confirm_shipments.txt"'
+        )
+        writer = csv.writer(response, delimiter="\t", quoting=csv.QUOTE_NONE, escapechar="\\")
+        writer.writerow([
+            "order-id",
+            "order-item-id",
+            "quantity",
+            "ship-date",
+            "carrier-code",
+            "carrier-name",
+            "tracking-number",
+            "ship-method",
+        ])
+
+        now = timezone.now()
+        for mo in written:
+            ship_date = (mo.shipped_at or mo.label_created_at or now).strftime("%Y-%m-%d")
+            writer.writerow([
+                mo.external_order_id,
+                "",  # blank = confirm the whole order, not a single item
+                "",  # quantity left blank with order-item-id blank
+                ship_date,
+                carrier_code,
+                carrier_name,
+                (mo.tracking_number or "").strip(),
+                ship_method,
+            ])
+
+        # Mark exported rows as shipped so the list view reflects reality.
+        ids = [mo.pk for mo in written]
+        MarketplaceOrder.objects.filter(pk__in=ids, shipped_at__isnull=True).update(
+            status="shipped", shipped_at=now
+        )
+
+        msg = f"✅ Exported {len(written)} Amazon order(s) to confirm-shipments file."
+        extras = []
+        if skipped_no_tracking:
+            extras.append(f"{skipped_no_tracking} Amazon order(s) skipped (no tracking yet)")
+        if skipped_marketplace:
+            extras.append(f"{skipped_marketplace} non-Amazon order(s) skipped")
+        if extras:
+            msg += " " + "; ".join(extras) + "."
+        self.message_user(request, msg, level=messages.SUCCESS)
+        return response
+
+    export_amazon_confirm_csv.short_description = "📦 Export Amazon Confirm-Shipments file"
 
     # ------------------------------------------------------------------
     # Custom URLs
