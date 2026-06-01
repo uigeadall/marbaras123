@@ -1368,8 +1368,14 @@ class GlobalMailShipping(ShippingCarrierBase):
             "GB": "GPP",  # Great Britain is post-Brexit non-EU
         }
         user_map = getattr(settings, 'GLOBAL_MAIL_PRODUCT_MAP', {}) or {}
-        if self.test_mode:
-            # Sandbox: only apply the user's explicit override, never the built-in.
+        # Some DPI contracts don't include GPP (the product the built-in map
+        # uses for non-EU). Set GLOBAL_MAIL_DISABLE_BUILTIN_PRODUCT_MAP=True to
+        # skip it so every destination uses GLOBAL_MAIL_PRODUCT_CODE (e.g. GPT).
+        disable_builtin = str(
+            getattr(settings, 'GLOBAL_MAIL_DISABLE_BUILTIN_PRODUCT_MAP', '') or ''
+        ).lower() in ('1', 'true', 'yes', 'y', 'on')
+        if self.test_mode or disable_builtin:
+            # Only apply the user's explicit override, never the built-in GPP map.
             product_map = user_map
         else:
             product_map = {**_BUILTIN_NON_EU_PRODUCT_MAP, **user_map}

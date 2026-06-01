@@ -838,6 +838,9 @@ GLOBAL_MAIL_ACCOUNT_NUMBER = env("GLOBAL_MAIL_ACCOUNT_NUMBER", "")  # userId (em
 GLOBAL_MAIL_CUSTOMER_EKP = env("GLOBAL_MAIL_CUSTOMER_EKP", "")      # 10-digit EKP customer number (REQUIRED)
 GLOBAL_MAIL_TEST_MODE = env("GLOBAL_MAIL_TEST_MODE", "True").lower() in ("1", "true", "yes", "y", "on")
 GLOBAL_MAIL_PRODUCT_CODE = env("GLOBAL_MAIL_PRODUCT_CODE", "GPT")   # GPT=Packet Tracked (default, EU)
+# Set True if your DPI contract has no GPP product (so non-EU destinations
+# should use GLOBAL_MAIL_PRODUCT_CODE / GPT instead of the built-in GPP map).
+GLOBAL_MAIL_DISABLE_BUILTIN_PRODUCT_MAP = env("GLOBAL_MAIL_DISABLE_BUILTIN_PRODUCT_MAP", "False")
 GLOBAL_MAIL_SERVICE_LEVEL = env("GLOBAL_MAIL_SERVICE_LEVEL", "PRIORITY")
 
 # Per-destination product/service overrides for DPI. Format (env var):

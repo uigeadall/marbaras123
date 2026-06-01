@@ -7000,7 +7000,10 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 payload = dpi._prepare_shipment_data(adapter)
                 item = payload["items"][0]
                 item["custRef"] = f"MP{mo.pk}"
-                key = (item.get("product"), item.get("serviceLevel"))
+                # Group by destination + service so every item in a group shares
+                # one valid product (and one AWB). Grouping by product alone
+                # breaks when the mapped product isn't valid for the country.
+                key = (item.get("destinationCountry"), item.get("serviceLevel"))
                 groups.setdefault(key, []).append(item)
                 custref_to_mo[f"MP{mo.pk}"] = mo
             except Exception:
@@ -7018,7 +7021,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         labelled = 0
         failed = 0
         awbs = set()
-        for (product, service), items in groups.items():
+        for (country, service), items in groups.items():
             # Chunk so each DPI order stays within a sane item count; each
             # chunk becomes one AWB.
             for start in range(0, len(items), max_items):
@@ -7039,13 +7042,34 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     "items": chunk,
                 }
                 try:
-                    r = requests.post(
-                        dpi.orders_url, json=payload, headers=headers, timeout=90
-                    )
+                    # Try the mapped product, then fall back through alternatives
+                    # until DHL accepts one for this destination. A failed POST
+                    # creates nothing, so retrying is safe.
+                    original_product = chunk[0].get("product")
+                    product_candidates = [original_product] + [
+                        c
+                        for c in ("GPT", "GPP", "GMT", "GMP", "PKM", "PLT", "WPI", "WP")
+                        if c != original_product
+                    ]
+                    r = None
+                    for cand in product_candidates:
+                        for it in chunk:
+                            it["product"] = cand
+                        r = requests.post(
+                            dpi.orders_url, json=payload, headers=headers, timeout=90
+                        )
+                        if r.status_code in (200, 201):
+                            break
+                        t = (r.text or "").lower()
+                        is_product_err = r.status_code in (400, 422) and (
+                            "product" in t or "destination country is invalid" in t
+                        )
+                        if not is_product_err:
+                            break
                     if r.status_code not in (200, 201):
                         logger.error(
                             "Combined shipment FAILED (%s/%s, %d items): HTTP %s %s",
-                            product, service, len(chunk), r.status_code,
+                            country, service, len(chunk), r.status_code,
                             (r.text or "")[:300],
                         )
                         for it in chunk:
@@ -7063,7 +7087,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     body = r.json() or {}
                     logger.info(
                         "Combined shipment OK (%s/%s, %d items): AWB(s) %s",
-                        product, service, len(chunk),
+                        country, service, len(chunk),
                         [s.get("awb") for s in (body.get("shipments") or [])],
                     )
                     for sh in body.get("shipments") or []:
