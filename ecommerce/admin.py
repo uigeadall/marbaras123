@@ -6643,6 +6643,13 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 if barcode:
                     mo.tracking_number = str(barcode)
                     update_fields.append("tracking_number")
+                # Stash the DPI order id so a later cancel can try to remove the
+                # whole order (not just empty the item).
+                if order_id_dpi:
+                    data = dict(mo.raw_csv_data) if isinstance(mo.raw_csv_data, dict) else {}
+                    data["dpi_order_id"] = order_id_dpi
+                    mo.raw_csv_data = data
+                    update_fields.append("raw_csv_data")
                 mo.notes = (
                     f"📋 In Deutsche Post shipment preparation "
                     f"(DPI order #{order_id_dpi}) since "
@@ -6706,26 +6713,53 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
         headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
         cancelled = 0
+        shells = 0
         skipped = 0
         failed = 0
         for mo in objects:
+            raw = mo.raw_csv_data if isinstance(mo.raw_csv_data, dict) else {}
+            order_id_dpi = (raw.get("dpi_order_id") or "") if raw else ""
             item_id = (mo.dpi_item_id or "").strip()
-            if not item_id:
+            if not item_id and not order_id_dpi:
                 skipped += 1
                 continue
             try:
-                r = requests.delete(
-                    f"{dpi.item_label_url}/{item_id}", headers=headers, timeout=30
-                )
-                if r.status_code in (200, 204):
+                whole_order_gone = False
+                # 1) Try to remove the WHOLE order (needs the delete-order
+                #    permission on your DHL app — currently returns 401).
+                if order_id_dpi:
+                    ro = requests.delete(
+                        f"{dpi.orders_url}/{order_id_dpi}", headers=headers, timeout=30
+                    )
+                    whole_order_gone = ro.status_code in (200, 204)
+
+                # 2) Otherwise delete the item — this empties the order (leaves
+                #    an empty shell in the DP summary, qty/weight 0).
+                emptied = False
+                if not whole_order_gone and item_id:
+                    ri = requests.delete(
+                        f"{dpi.item_label_url}/{item_id}", headers=headers, timeout=30
+                    )
+                    emptied = ri.status_code in (200, 204)
+
+                if whole_order_gone or emptied:
                     mo.status = "cancelled"
                     mo.tracking_number = None
                     mo.awb = None
                     mo.dpi_item_id = None
-                    mo.notes = (
-                        f"🗑️ Removed from Deutsche Post (item #{item_id}) on "
-                        f"{timezone.now():%Y-%m-%d %H:%M}"
-                    )
+                    if whole_order_gone:
+                        mo.notes = (
+                            f"🗑️ Whole order removed from Deutsche Post "
+                            f"(order #{order_id_dpi}) on "
+                            f"{timezone.now():%Y-%m-%d %H:%M}"
+                        )
+                        cancelled += 1
+                    else:
+                        mo.notes = (
+                            f"🗑️ Item removed (order emptied — empty shell "
+                            f"remains in DP) on {timezone.now():%Y-%m-%d %H:%M}"
+                        )
+                        shells += 1
                     mo.save(
                         update_fields=[
                             "status",
@@ -6735,17 +6769,13 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                             "notes",
                         ]
                     )
-                    cancelled += 1
                 else:
                     failed += 1
-                    mo.notes = (
-                        f"Cancel failed HTTP {r.status_code}: "
-                        f"{(r.text or '')[:200]}"
-                    )
+                    mo.notes = "Cancel failed — see Railway logs for the DHL response."
                     mo.save(update_fields=["notes"])
             except Exception as exc:
                 failed += 1
-                logger.exception("DPI item cancel failed for MarketplaceOrder #%s", mo.pk)
+                logger.exception("DPI cancel failed for MarketplaceOrder #%s", mo.pk)
                 try:
                     mo.notes = f"Cancel exception: {exc}"
                     mo.save(update_fields=["notes"])
@@ -6754,13 +6784,21 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
         if cancelled:
             messages.success(
-                request, f"🗑️ Cancelled {cancelled} order(s) at Deutsche Post."
+                request,
+                f"🗑️ Removed {cancelled} whole order(s) from Deutsche Post.",
+            )
+        if shells:
+            messages.warning(
+                request,
+                f"🗑️ Emptied {shells} order(s) (item deleted, nothing will "
+                f"ship). An empty order shell stays in the DP summary because "
+                f"your DHL app can't delete whole orders — ask DHL to enable the "
+                f"'delete order' permission to clear those automatically.",
             )
         if skipped:
             messages.info(
                 request,
-                f"{skipped} order(s) had no DPI item to cancel (never sent to "
-                f"DHL) — set their status manually if needed.",
+                f"{skipped} order(s) had nothing at DHL to cancel (never sent).",
             )
         if failed:
             messages.error(
