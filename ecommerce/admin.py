@@ -5845,10 +5845,13 @@ class _MarketplacePasteForm(forms.Form):
                 "rows": 14,
                 "style": "width:100%;font-family:monospace;font-size:13px;",
                 "placeholder": (
-                    "Paste rows copied from your Amazon/Etsy order report here, "
-                    "including the top header row.\n\n"
-                    "order-id\tbuyer-name\tship-address-1\tship-city\t...\n"
-                    "111-2223334-5556667\tNatascha Humrich\tAm Hegkopf 4\tHohenahr\t..."
+                    "Paste an address block straight from the order page:\n\n"
+                    "Anita Leuenberger\n"
+                    "Hauptstrasse 14\n"
+                    "4492 Tecknau\n"
+                    "Switzerland\n\n"
+                    "…or a report with a header row "
+                    "(order-id, buyer-name, ship-address-1, …)."
                 ),
             }
         ),
@@ -6495,7 +6498,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     # Paste import view (copy/paste rows instead of uploading a file)
     # ------------------------------------------------------------------
     def paste_import_view(self, request):
-        from ecommerce.utils.marketplace_csv import parse_csv_auto
+        from ecommerce.utils.marketplace_csv import parse_pasted
 
         context = dict(
             self.admin_site.each_context(request),
@@ -6512,15 +6515,10 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     forced = None
 
                 raw = form.cleaned_data["pasted_data"] or ""
-                # Normalize line endings, then hand the parser bytes — it sniffs
-                # the delimiter (tab/comma/semicolon) and decodes exactly like an
-                # uploaded file.
-                normalized = raw.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+                # parse_pasted accepts either a delimited report (with a header
+                # row) or a free-form "ship to" address block, and sniffs which.
                 try:
-                    if not normalized.strip():
-                        raise ValueError("Nothing was pasted.")
-                    content = normalized.encode("utf-8")
-                    marketplace, parsed = parse_csv_auto(content, forced)
+                    marketplace, parsed = parse_pasted(raw, forced)
                 except Exception as exc:
                     messages.error(request, f"Failed to parse pasted data: {exc}")
                     context["form"] = form

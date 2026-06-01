@@ -23,6 +23,7 @@ import csv
 import io
 import logging
 import re
+import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -375,3 +376,166 @@ def parse_csv_auto(
         len(orders),
     )
     return marketplace, orders
+
+
+# ---------------------------------------------------------------------------
+# Free-form address-block parsing (paste raw "ship to" text, no headers)
+# ---------------------------------------------------------------------------
+_HEADER_TOKENS = (
+    "order-id",
+    "order id",
+    "amazon-order-id",
+    "merchant-order-id",
+    "recipient-name",
+    "recipient name",
+    "buyer-name",
+    "ship-address",
+    "ship address",
+    "ship-city",
+    "ship city",
+    "ship-country",
+    "ship country",
+    "ship-postal",
+    "full name",
+    "street 1",
+    "ship name",
+    "ship zipcode",
+    "transaction id",
+)
+
+
+def _looks_like_header(line: str) -> bool:
+    """True if a line looks like a marketplace CSV header row."""
+    low = (line or "").lower()
+    return any(tok in low for tok in _HEADER_TOKENS)
+
+
+def _split_postal_city(line: str) -> Tuple[str, str]:
+    """Split a "postal + city" line into ``(postal, city)``.
+
+    Handles the common European order — postal first ("4492 Tecknau",
+    "35644 Hohenahr") — and the postal-last variant ("Tecknau 4492").
+    """
+    parts = (line or "").split()
+    if not parts:
+        return "", ""
+    if any(ch.isdigit() for ch in parts[0]):
+        return parts[0], " ".join(parts[1:]).strip()
+    if any(ch.isdigit() for ch in parts[-1]):
+        return parts[-1], " ".join(parts[:-1]).strip()
+    # No digits at all → treat the whole thing as the city.
+    return "", line.strip()
+
+
+def parse_address_block(text: str, marketplace: str = "other") -> List[Dict[str, Any]]:
+    """Parse one or more pasted "ship to" address blocks into order dicts.
+
+    Each block is a few short lines, e.g.::
+
+        Anita Leuenberger
+        Hauptstrasse 14
+        4492 Tecknau
+        Switzerland
+
+    Multiple orders can be pasted at once, separated by a blank line.
+    Because an address block carries no order id, a placeholder
+    ``external_order_id`` is generated (editable afterwards in the admin).
+    """
+    mk = (marketplace or "other").lower()
+    if mk not in ("amazon", "etsy", "ebay", "other"):
+        mk = "other"
+
+    results: List[Dict[str, Any]] = []
+    blocks = re.split(r"\n\s*\n", (text or "").strip())
+    for block in blocks:
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if len(lines) < 3:
+            # Need at least name + street + (postal/city or country).
+            continue
+
+        name = lines[0]
+        country = _normalize_country(lines[-1])
+        middle = lines[1:-1]
+
+        # Find the postal/city line: the lowest middle line containing a digit.
+        pc_idx = None
+        postal, city = "", ""
+        for i in range(len(middle) - 1, -1, -1):
+            if any(ch.isdigit() for ch in middle[i]):
+                pc_idx = i
+                postal, city = _split_postal_city(middle[i])
+                break
+
+        if pc_idx is not None:
+            street_lines = middle[:pc_idx]
+        else:
+            street_lines = middle
+        address1 = street_lines[0] if street_lines else ""
+        address2 = " ".join(street_lines[1:]).strip() if len(street_lines) > 1 else ""
+
+        results.append(
+            {
+                "marketplace": mk,
+                "external_order_id": f"PASTE-{uuid.uuid4().hex[:8].upper()}",
+                "buyer_name": name,
+                "buyer_email": None,
+                "buyer_phone": None,
+                "address_line1": address1,
+                "address_line2": address2 or None,
+                "city": city,
+                "state": None,
+                "postal_code": postal,
+                "country": country,
+                "items_summary": "",
+                "item_count": 1,
+                "total_weight_g": 100,
+                "total_amount": Decimal("0"),
+                "currency": "EUR",
+                "raw_csv_data": {"address_block": block},
+            }
+        )
+    return results
+
+
+def parse_pasted(
+    text: str, forced_marketplace: Optional[str] = None
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Smart entry point for the admin paste page.
+
+    Accepts either a spreadsheet-style report (delimited, with a header row)
+    or a free-form "ship to" address block, and returns
+    ``(marketplace, orders)`` just like :func:`parse_csv_auto`.
+    """
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        raise ValueError("Nothing was pasted.")
+
+    first_line = next((ln for ln in text.splitlines() if ln.strip()), "")
+    has_delim = any(d in first_line for d in ("\t", ",", ";", "|"))
+
+    # Tabular report with a recognizable header → reuse the CSV parser.
+    if has_delim and _looks_like_header(first_line):
+        return parse_csv_auto(text.encode("utf-8"), forced_marketplace)
+
+    # Delimited but no obvious header → try CSV, fall back to address block.
+    if has_delim:
+        try:
+            mk, rows = parse_csv_auto(text.encode("utf-8"), forced_marketplace)
+            if rows:
+                return mk, rows
+        except Exception:
+            pass
+
+    # Otherwise treat it as a pasted address block.
+    mk = (forced_marketplace or "other").lower()
+    if mk not in ("amazon", "etsy", "ebay", "other"):
+        mk = "other"
+    rows = parse_address_block(text, mk)
+    if not rows:
+        raise ValueError(
+            "Couldn't read an order from the pasted text. Paste either a "
+            "report with a header row, or an address block laid out as: "
+            "name / street / postal + city / country (one line each)."
+        )
+    logger.info("Parsed pasted address block → %d order(s)", len(rows))
+    return mk, rows

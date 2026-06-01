@@ -21,10 +21,18 @@
   </p>
 
   <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:14px; margin:18px 0; font-size:13px; color:#065f46;">
-    <b>Tip:</b> Include the <b>header row</b> (the line with column names like
-    <code>order-id</code>, <code>buyer-name</code>, <code>ship-address-1</code>…)
-    as the first pasted line — that's how we know which column is which.
-    Tabs, commas, and semicolons are all detected automatically.
+    <b>Two ways to paste — both work:</b>
+    <ol style="margin:8px 0 0; padding-left:18px;">
+      <li><b>An address block</b> straight from the order page, one line each:<br>
+        <code>Name</code> / <code>Street</code> / <code>Postal&nbsp;code&nbsp;City</code> / <code>Country</code>.
+        Paste several at once by leaving a blank line between them. Pick the
+        marketplace on the left first.</li>
+      <li><b>A spreadsheet/report</b> with a <b>header row</b> (column names like
+        <code>order-id</code>, <code>buyer-name</code>, <code>ship-address-1</code>…)
+        as the first line. Tabs, commas, semicolons all auto-detected.</li>
+    </ol>
+    <div style="margin-top:8px;">For an address block we generate a placeholder
+    order number (starting <code>PASTE-</code>) you can edit afterwards.</div>
   </div>
 
   <form method="post" style="background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 24px;">
