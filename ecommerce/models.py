@@ -1115,6 +1115,7 @@ class MarketplaceOrder(models.Model):
 
     STATUS_CHOICES = [
         ("imported", "Imported"),
+        ("prepared", "Preparing at DHL"),
         ("label_created", "Label created"),
         ("shipped", "Shipped"),
         ("failed", "Failed"),

@@ -6047,6 +6047,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
     actions = [
         "combine_into_one_awb_action",
+        "finalize_dp_orders_action",
         "print_all_awb_labels_action",
         "bulk_create_labels_action",
         "send_to_dp_preparation_action",
@@ -6378,6 +6379,7 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
     def status_badge(self, obj):
         colors = {
             "imported": ("#64748b", "#fff"),
+            "prepared": ("#f59e0b", "#fff"),
             "label_created": ("#0ea5e9", "#fff"),
             "shipped": ("#16a34a", "#fff"),
             "failed": ("#dc2626", "#fff"),
@@ -7010,17 +7012,21 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             )
             return
 
-        labelled = 0
+        prepared = 0
         failed = 0
-        awbs = set()
+        order_ids = set()
         for (country, service), items in groups.items():
             # Chunk so each DPI order stays within a sane item count; each
-            # chunk becomes one AWB.
+            # chunk becomes one order = one AWB (assigned at finalize).
             for start in range(0, len(items), max_items):
                 chunk = items[start : start + max_items]
                 payload = {
                     "customerEkp": str(dpi.customer_ekp),
-                    "orderStatus": "FINALIZE",
+                    # OPEN: the combined order lands in the Deutsche Post
+                    # shipment-preparation summary. Finalize it (in the portal
+                    # or via the Finalize action) to assign the shared AWB and
+                    # generate the labels.
+                    "orderStatus": "OPEN",
                     "paperwork": {
                         "contactName": (
                             getattr(settings, "SHOP_CONTACT_NAME", "Marbaras")
@@ -7077,56 +7083,65 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                         continue
 
                     body = r.json() or {}
-                    logger.info(
-                        "Combined shipment OK (%s/%s, %d items): AWB(s) %s",
-                        country, service, len(chunk),
-                        [s.get("awb") for s in (body.get("shipments") or [])],
+                    order_id_dpi = body.get("orderId")
+                    if order_id_dpi:
+                        order_ids.add(order_id_dpi)
+                    # OPEN returns items at the top level (no shipment/AWB yet).
+                    resp_items = body.get("items") or (
+                        (body.get("shipments") or [{}])[0].get("items") or []
                     )
-                    for sh in body.get("shipments") or []:
-                        awb = sh.get("awb")
-                        if awb:
-                            awbs.add(awb)
-                        for it in sh.get("items") or []:
-                            mo = custref_to_mo.get(it.get("custRef"))
-                            if not mo:
-                                continue
-                            mo.awb = str(awb) if awb else None
-                            if it.get("barcode"):
-                                mo.tracking_number = str(it["barcode"])
-                            if it.get("id"):
-                                mo.dpi_item_id = str(it["id"])
-                            mo.status = "label_created"
-                            mo.label_created_at = timezone.now()
-                            mo.notes = (
-                                f"📦 Combined shipment AWB {awb} on "
-                                f"{timezone.now():%Y-%m-%d %H:%M}"
-                            )
-                            mo.save(
-                                update_fields=[
-                                    "awb",
-                                    "tracking_number",
-                                    "dpi_item_id",
-                                    "status",
-                                    "label_created_at",
-                                    "notes",
-                                ]
-                            )
-                            labelled += 1
+                    logger.info(
+                        "Combined prep OK (%s/%s, %d items): DPI order #%s",
+                        country, service, len(chunk), order_id_dpi,
+                    )
+                    for it in resp_items:
+                        mo = custref_to_mo.get(it.get("custRef"))
+                        if not mo:
+                            continue
+                        if it.get("barcode"):
+                            mo.tracking_number = str(it["barcode"])
+                        if it.get("id"):
+                            mo.dpi_item_id = str(it["id"])
+                        data = (
+                            dict(mo.raw_csv_data)
+                            if isinstance(mo.raw_csv_data, dict)
+                            else {}
+                        )
+                        data["dpi_order_id"] = order_id_dpi
+                        mo.raw_csv_data = data
+                        mo.status = "prepared"
+                        mo.notes = (
+                            f"📋 In Deutsche Post preparation — combined order "
+                            f"#{order_id_dpi} ({len(chunk)} parcels, "
+                            f"{country}). Finalize for the shared AWB + labels."
+                        )
+                        mo.save(
+                            update_fields=[
+                                "tracking_number",
+                                "dpi_item_id",
+                                "raw_csv_data",
+                                "status",
+                                "notes",
+                            ]
+                        )
+                        prepared += 1
                 except Exception as exc:
-                    logger.exception("combined shipment POST failed")
+                    logger.exception("combined prep POST failed")
                     for it in chunk:
                         mo = custref_to_mo.get(it.get("custRef"))
                         if mo:
                             mo.status = "failed"
-                            mo.notes = f"Combined shipment exception: {exc}"
+                            mo.notes = f"Combined prep exception: {exc}"
                             mo.save(update_fields=["status", "notes"])
                             failed += 1
 
-        if labelled:
+        if prepared:
             messages.success(
                 request,
-                f"📦 Created {labelled} label(s) sharing {len(awbs)} AWB(s). "
-                f"Print each AWB once to dispatch all its parcels together.",
+                f"📋 Sent {prepared} order(s) to Deutsche Post preparation as "
+                f"{len(order_ids)} combined order(s). Each becomes ONE shared "
+                f"AWB when finalized — run “✅ Finalize at Deutsche Post” or "
+                f"finalize in the DP portal.",
             )
         if build_errors:
             messages.warning(
@@ -7137,9 +7152,156 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 request, f"{failed} order(s) failed — see their notes."
             )
 
-    @admin.action(description="📦 Combine into ONE shipment / shared AWB (+labels)")
+    @admin.action(description="📦 Combine into ONE prep shipment (one AWB after finalize)")
     def combine_into_one_awb_action(self, request, queryset):
         self._create_combined_dpi_shipment(request, list(queryset.order_by("id")))
+
+    # ------------------------------------------------------------------
+    # Finalize prepared orders → assign AWB + labels
+    # ------------------------------------------------------------------
+    def _finalize_dpi_orders(self, request, objects):
+        """Finalize the Deutsche Post orders behind the selected rows
+        (``POST /dpi/shipping/v1/orders/{orderId}/finalization``).
+
+        Turns OPEN/prepared orders into committed shipments: assigns the shared
+        AWB and makes the labels printable. Orders sharing one combined DPI
+        order are finalized once.
+        """
+        import logging
+        import requests
+        from django.utils import timezone
+        from ecommerce.utils.shipping import GlobalMailShipping
+
+        logger = logging.getLogger(__name__)
+
+        force_sandbox = bool(getattr(settings, "GLOBAL_MAIL_TEST_MODE", True))
+        dpi = GlobalMailShipping(force_sandbox=force_sandbox)
+        token = dpi._get_access_token()
+        if not token:
+            messages.error(
+                request,
+                "Deutsche Post auth failed — check the API credentials / mode.",
+            )
+            return
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        paperwork = {
+            "contactName": (getattr(settings, "SHOP_CONTACT_NAME", "Marbaras"))[:35],
+            "jobReference": f"FIN-{timezone.now():%y%m%d%H%M%S}"[:17],
+            "telephoneNumber": (getattr(settings, "SHOP_PHONE", "") or "+359888000000"),
+            "awbCopyCount": 1,
+        }
+
+        # Group the selected rows by their DPI order id (combined orders share
+        # one) so each underlying order is finalized exactly once.
+        by_order = {}
+        skipped = 0
+        for mo in objects:
+            raw = mo.raw_csv_data if isinstance(mo.raw_csv_data, dict) else {}
+            oid = raw.get("dpi_order_id") if raw else None
+            if not oid:
+                skipped += 1
+                continue
+            by_order.setdefault(str(oid), []).append(mo)
+
+        finalized = 0
+        awbs = set()
+        failed = 0
+        for oid, mos in by_order.items():
+            try:
+                r = requests.post(
+                    f"{dpi.orders_url}/{oid}/finalization",
+                    json=paperwork,
+                    headers=headers,
+                    timeout=90,
+                )
+                if r.status_code not in (200, 201):
+                    failed += len(mos)
+                    logger.error(
+                        "Finalize FAILED for DPI order #%s: HTTP %s %s",
+                        oid, r.status_code, (r.text or "")[:300],
+                    )
+                    for mo in mos:
+                        mo.notes = (
+                            f"Finalize failed HTTP {r.status_code}: "
+                            f"{(r.text or '')[:200]}"
+                        )
+                        mo.save(update_fields=["notes"])
+                    continue
+
+                body = r.json() or {}
+                # Map AWB + barcode back to each row via custRef / item id.
+                item_to_awb = {}
+                barcode_by_ref = {}
+                for sh in body.get("shipments") or []:
+                    awb = sh.get("awb")
+                    if awb:
+                        awbs.add(awb)
+                    for it in sh.get("items") or []:
+                        if it.get("custRef"):
+                            item_to_awb[it["custRef"]] = awb
+                            if it.get("barcode"):
+                                barcode_by_ref[it["custRef"]] = it["barcode"]
+                logger.info(
+                    "Finalize OK for DPI order #%s: AWB(s) %s", oid, list(awbs)
+                )
+                for mo in mos:
+                    ref = f"MP{mo.pk}"
+                    awb = item_to_awb.get(ref)
+                    if awb:
+                        mo.awb = str(awb)
+                    if barcode_by_ref.get(ref):
+                        mo.tracking_number = str(barcode_by_ref[ref])
+                    mo.status = "label_created"
+                    mo.label_created_at = timezone.now()
+                    mo.notes = (
+                        f"✅ Finalized — AWB {mo.awb or '?'} on "
+                        f"{timezone.now():%Y-%m-%d %H:%M}"
+                    )
+                    mo.save(
+                        update_fields=[
+                            "awb",
+                            "tracking_number",
+                            "status",
+                            "label_created_at",
+                            "notes",
+                        ]
+                    )
+                    finalized += 1
+            except Exception as exc:
+                failed += len(mos)
+                logger.exception("Finalize exception for DPI order #%s", oid)
+                for mo in mos:
+                    try:
+                        mo.notes = f"Finalize exception: {exc}"
+                        mo.save(update_fields=["notes"])
+                    except Exception:
+                        pass
+
+        if finalized:
+            messages.success(
+                request,
+                f"✅ Finalized {finalized} order(s) on {len(awbs)} AWB(s). "
+                f"Now print labels: select them → “🖨️ Print ALL labels for "
+                f"selected AWB(s)”.",
+            )
+        if skipped:
+            messages.info(
+                request,
+                f"{skipped} order(s) skipped (not in DP preparation — combine "
+                f"them first).",
+            )
+        if failed:
+            messages.error(
+                request, f"{failed} order(s) couldn't be finalized — see notes."
+            )
+
+    @admin.action(description="✅ Finalize at Deutsche Post (assign AWB + labels)")
+    def finalize_dp_orders_action(self, request, queryset):
+        self._finalize_dpi_orders(request, list(queryset.order_by("id")))
 
     # ------------------------------------------------------------------
     # Print ALL item labels for the selected orders' AWB(s), one PDF
