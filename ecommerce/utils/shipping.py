@@ -1471,8 +1471,10 @@ class GlobalMailShipping(ShippingCarrierBase):
             'recipientPhone': _sanitize_phone(getattr(order, 'phone', '') or ''),
             'recipientEmail': getattr(order, 'email', '') or '',
             'addressLine1': (getattr(order, 'address', '') or '')[:40] or 'Address',
-            'city': getattr(order, 'city', '') or 'City',
-            'postalCode': getattr(order, 'postal_code', '') or '0000',
+            # DPI enforces city length 1..30 and postalCode 1..10 — clamp so a
+            # long/messy parsed address never hard-fails the create-order call.
+            'city': ((getattr(order, 'city', '') or '').strip().rstrip(',').strip()[:30]) or 'City',
+            'postalCode': ((getattr(order, 'postal_code', '') or '').strip()[:10]) or '0000',
             'destinationCountry': dest,
             'shipmentAmount': round(total_amount or 1.0, 2),
             'shipmentCurrency': currency,

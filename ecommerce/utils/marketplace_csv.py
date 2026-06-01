@@ -410,21 +410,35 @@ def _looks_like_header(line: str) -> bool:
     return any(tok in low for tok in _HEADER_TOKENS)
 
 
+# UK postcode: e.g. "SL4 6JN", "SW1A 1AA", "EC1A1BB" (optional internal space).
+_UK_POSTCODE_RE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\s*$", re.I)
+
+
 def _split_postal_city(line: str) -> Tuple[str, str]:
     """Split a "postal + city" line into ``(postal, city)``.
 
     Handles the common European order — postal first ("4492 Tecknau",
-    "35644 Hohenahr") — and the postal-last variant ("Tecknau 4492").
+    "35644 Hohenahr") — the postal-last variant ("Tecknau 4492"), and
+    UK postcodes at the end of the line ("… Windsor SL4 6JN").
     """
-    parts = (line or "").split()
-    if not parts:
+    s = (line or "").strip()
+    if not s:
         return "", ""
+
+    # UK two-part postcode at the end of the line.
+    m = _UK_POSTCODE_RE.search(s)
+    if m:
+        postal = re.sub(r"\s+", " ", m.group(1).upper()).strip()
+        city = s[: m.start()].strip().rstrip(",").strip()
+        return postal, city
+
+    parts = s.split()
     if any(ch.isdigit() for ch in parts[0]):
-        return parts[0], " ".join(parts[1:]).strip()
+        return parts[0], " ".join(parts[1:]).strip().rstrip(",").strip()
     if any(ch.isdigit() for ch in parts[-1]):
-        return parts[-1], " ".join(parts[:-1]).strip()
+        return parts[-1], " ".join(parts[:-1]).strip().rstrip(",").strip()
     # No digits at all → treat the whole thing as the city.
-    return "", line.strip()
+    return "", s
 
 
 def parse_address_block(text: str, marketplace: str = "other") -> List[Dict[str, Any]]:
