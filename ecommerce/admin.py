@@ -5834,6 +5834,41 @@ class _MarketplaceCSVUploadForm(forms.Form):
     )
 
 
+class _MarketplacePasteForm(forms.Form):
+    """Paste raw rows (copied straight from an Amazon/Etsy report or a
+    spreadsheet) instead of uploading a file. Reuses the same parser."""
+
+    pasted_data = forms.CharField(
+        label="Paste order data",
+        widget=forms.Textarea(
+            attrs={
+                "rows": 14,
+                "style": "width:100%;font-family:monospace;font-size:13px;",
+                "placeholder": (
+                    "Paste rows copied from your Amazon/Etsy order report here, "
+                    "including the top header row.\n\n"
+                    "order-id\tbuyer-name\tship-address-1\tship-city\t...\n"
+                    "111-2223334-5556667\tNatascha Humrich\tAm Hegkopf 4\tHohenahr\t..."
+                ),
+            }
+        ),
+        help_text=(
+            "Copy the rows straight from your order report (include the header "
+            "row) and paste here. Tab, comma, or semicolon separated all work."
+        ),
+    )
+    marketplace = forms.ChoiceField(
+        label="Marketplace",
+        choices=[
+            ("auto", "Auto-detect"),
+            ("amazon", "Amazon"),
+            ("etsy", "Etsy"),
+        ],
+        initial="auto",
+        required=True,
+    )
+
+
 class _MarketplaceOrderAdapter:
     """Adapter that lets a :class:`MarketplaceOrder` quack like a website
     :class:`Order` so that the shared DPI payload builder
@@ -6251,6 +6286,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                 name="marketplace_order_import_csv",
             ),
             path(
+                "paste-import/",
+                self.admin_site.admin_view(self.paste_import_view),
+                name="marketplace_order_paste_import",
+            ),
+            path(
                 "<int:pk>/print-label/",
                 self.admin_site.admin_view(self.print_label_view),
                 name="marketplace_order_print_label",
@@ -6378,51 +6418,8 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     context["form"] = form
                     return render(request, "admin/marketplace_csv_import.html", context)
 
-                created = 0
-                skipped = 0
-                errors = []
-                for entry in parsed:
-                    try:
-                        obj, is_created = MarketplaceOrder.objects.update_or_create(
-                            marketplace=entry["marketplace"],
-                            external_order_id=entry["external_order_id"],
-                            defaults={
-                                "buyer_name": entry["buyer_name"] or "Recipient",
-                                "buyer_email": entry.get("buyer_email") or None,
-                                "buyer_phone": entry.get("buyer_phone") or None,
-                                "address_line1": entry.get("address_line1") or "",
-                                "address_line2": entry.get("address_line2") or None,
-                                "city": entry.get("city") or "",
-                                "state": entry.get("state") or None,
-                                "postal_code": entry.get("postal_code") or "",
-                                "country": (entry.get("country") or "")[:2].upper(),
-                                "items_summary": entry.get("items_summary") or "",
-                                "item_count": entry.get("item_count") or 1,
-                                "total_weight_g": entry.get("total_weight_g") or 100,
-                                "total_amount": entry.get("total_amount") or Decimal("0"),
-                                "currency": (entry.get("currency") or "EUR")[:3],
-                                "raw_csv_data": entry.get("raw_csv_data"),
-                            },
-                        )
-                        if is_created:
-                            created += 1
-                        else:
-                            skipped += 1
-                    except Exception as exc:
-                        errors.append(f"Order {entry.get('external_order_id')}: {exc}")
-
-                if created:
-                    messages.success(
-                        request,
-                        f"✅ Imported {created} new {marketplace} order(s).",
-                    )
-                if skipped:
-                    messages.info(
-                        request,
-                        f"ℹ️ {skipped} existing order(s) updated (already imported).",
-                    )
-                for err in errors[:10]:
-                    messages.error(request, err)
+                created, skipped, errors = self._persist_parsed_orders(parsed)
+                self._report_import_result(request, marketplace, created, skipped, errors)
 
                 from django.urls import reverse
 
@@ -6434,6 +6431,118 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
         context["form"] = form
         return render(request, "admin/marketplace_csv_import.html", context)
+
+    # ------------------------------------------------------------------
+    # Shared import helpers (used by both CSV upload and paste import)
+    # ------------------------------------------------------------------
+    def _persist_parsed_orders(self, parsed):
+        """Upsert normalized order dicts into MarketplaceOrder rows.
+
+        Returns ``(created, skipped, errors)`` where ``errors`` is a list of
+        human-readable strings.
+        """
+        created = 0
+        skipped = 0
+        errors = []
+        for entry in parsed:
+            try:
+                obj, is_created = MarketplaceOrder.objects.update_or_create(
+                    marketplace=entry["marketplace"],
+                    external_order_id=entry["external_order_id"],
+                    defaults={
+                        "buyer_name": entry["buyer_name"] or "Recipient",
+                        "buyer_email": entry.get("buyer_email") or None,
+                        "buyer_phone": entry.get("buyer_phone") or None,
+                        "address_line1": entry.get("address_line1") or "",
+                        "address_line2": entry.get("address_line2") or None,
+                        "city": entry.get("city") or "",
+                        "state": entry.get("state") or None,
+                        "postal_code": entry.get("postal_code") or "",
+                        "country": (entry.get("country") or "")[:2].upper(),
+                        "items_summary": entry.get("items_summary") or "",
+                        "item_count": entry.get("item_count") or 1,
+                        "total_weight_g": entry.get("total_weight_g") or 100,
+                        "total_amount": entry.get("total_amount") or Decimal("0"),
+                        "currency": (entry.get("currency") or "EUR")[:3],
+                        "raw_csv_data": entry.get("raw_csv_data"),
+                    },
+                )
+                if is_created:
+                    created += 1
+                else:
+                    skipped += 1
+            except Exception as exc:
+                errors.append(f"Order {entry.get('external_order_id')}: {exc}")
+        return created, skipped, errors
+
+    def _report_import_result(self, request, marketplace, created, skipped, errors):
+        """Flash user-facing messages summarizing an import run."""
+        if created:
+            messages.success(
+                request, f"✅ Imported {created} new {marketplace} order(s)."
+            )
+        if skipped:
+            messages.info(
+                request,
+                f"ℹ️ {skipped} existing order(s) updated (already imported).",
+            )
+        for err in errors[:10]:
+            messages.error(request, err)
+        if not created and not skipped and not errors:
+            messages.warning(request, "No orders found in the input.")
+
+    # ------------------------------------------------------------------
+    # Paste import view (copy/paste rows instead of uploading a file)
+    # ------------------------------------------------------------------
+    def paste_import_view(self, request):
+        from ecommerce.utils.marketplace_csv import parse_csv_auto
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title="Paste marketplace orders",
+            opts=self.model._meta,
+            has_view_permission=True,
+        )
+
+        if request.method == "POST":
+            form = _MarketplacePasteForm(request.POST)
+            if form.is_valid():
+                forced = form.cleaned_data["marketplace"]
+                if forced == "auto":
+                    forced = None
+
+                raw = form.cleaned_data["pasted_data"] or ""
+                # Normalize line endings, then hand the parser bytes — it sniffs
+                # the delimiter (tab/comma/semicolon) and decodes exactly like an
+                # uploaded file.
+                normalized = raw.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+                try:
+                    if not normalized.strip():
+                        raise ValueError("Nothing was pasted.")
+                    content = normalized.encode("utf-8")
+                    marketplace, parsed = parse_csv_auto(content, forced)
+                except Exception as exc:
+                    messages.error(request, f"Failed to parse pasted data: {exc}")
+                    context["form"] = form
+                    return render(
+                        request, "admin/marketplace_paste_import.html", context
+                    )
+
+                created, skipped, errors = self._persist_parsed_orders(parsed)
+                self._report_import_result(
+                    request, marketplace, created, skipped, errors
+                )
+
+                from django.urls import reverse
+
+                return HttpResponseRedirect(
+                    reverse("admin:ecommerce_marketplaceorder_changelist")
+                )
+        else:
+            form = _MarketplacePasteForm()
+
+        context["form"] = form
+        return render(request, "admin/marketplace_paste_import.html", context)
 
     # ------------------------------------------------------------------
     # Create label & stream PDF
@@ -6771,5 +6880,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
             )
         except Exception:
             extra_context["import_csv_url"] = ""
+        try:
+            extra_context["paste_import_url"] = reverse(
+                "admin:marketplace_order_paste_import"
+            )
+        except Exception:
+            extra_context["paste_import_url"] = ""
         return super().changelist_view(request, extra_context=extra_context)
 

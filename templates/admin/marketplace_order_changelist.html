@@ -2,6 +2,13 @@
 {% load i18n %}
 
 {% block object-tools-items %}
+  {% if paste_import_url %}
+    <li>
+      <a href="{{ paste_import_url }}" class="addlink" style="background:#16a34a;">
+        📋 Paste orders (copy/paste)
+      </a>
+    </li>
+  {% endif %}
   {% if import_csv_url %}
     <li>
       <a href="{{ import_csv_url }}" class="addlink" style="background:#2563eb;">

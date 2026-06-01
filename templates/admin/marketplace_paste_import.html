@@ -1,0 +1,68 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='ecommerce' %}">Ecommerce</a>
+    &rsaquo; <a href="{% url 'admin:ecommerce_marketplaceorder_changelist' %}">Marketplace Orders</a>
+    &rsaquo; Paste orders
+</div>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 820px; margin: 20px auto;">
+  <h1 style="margin-bottom: 6px;">📋 Paste orders from Amazon / Etsy</h1>
+  <p style="color: #6b7280; margin-top: 0;">
+    No file needed — copy the rows straight from your order report (or a
+    spreadsheet) and paste them below. We parse them the same way as a CSV
+    upload, de-duplicate against existing orders, and you can print DPI labels
+    right after.
+  </p>
+
+  <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:14px; margin:18px 0; font-size:13px; color:#065f46;">
+    <b>Tip:</b> Include the <b>header row</b> (the line with column names like
+    <code>order-id</code>, <code>buyer-name</code>, <code>ship-address-1</code>…)
+    as the first pasted line — that's how we know which column is which.
+    Tabs, commas, and semicolons are all detected automatically.
+  </div>
+
+  <form method="post" style="background: #fff; border: 1px solid #d1d5db; border-radius: 10px; padding: 24px;">
+    {% csrf_token %}
+
+    <div style="margin-bottom: 18px;">
+      <label style="display:block; font-weight: 600; margin-bottom: 6px;">Marketplace</label>
+      {{ form.marketplace }}
+      <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+        Leave on "Auto-detect" unless the headers are unusual.
+      </div>
+    </div>
+
+    <div style="margin-bottom: 24px;">
+      <label style="display:block; font-weight: 600; margin-bottom: 6px;">Pasted order data</label>
+      {{ form.pasted_data }}
+      <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+        {{ form.pasted_data.help_text }}
+      </div>
+    </div>
+
+    {% if form.errors %}
+      <div style="background:#fee2e2;color:#991b1b;padding:10px;border-radius:6px;margin-bottom:14px;">
+        {{ form.errors }}
+      </div>
+    {% endif %}
+
+    <button type="submit" style="background: #16a34a; color: #fff; border: 0; padding: 10px 22px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer;">
+      ✨ Parse &amp; import
+    </button>
+    <a href="{% url 'admin:ecommerce_marketplaceorder_changelist' %}" style="margin-left: 12px; color: #6b7280; font-size: 13px;">Cancel</a>
+  </form>
+
+  <div style="background:#f3f4f6; border-radius: 8px; padding: 14px; margin-top: 24px; font-size: 13px; color: #374151;">
+    <b>After importing:</b> each order appears in the Marketplace Orders list.
+    Click <span style="background:#0ea5e9;color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;">🖨️ Create</span>
+    on any row to generate the DHL / DPI label (4×6 PDF), or select multiple
+    rows and run <b>Actions → 🖨️ Print labels for selected</b> to mass-print.
+  </div>
+</div>
+{% endblock %}
