@@ -6619,6 +6619,10 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
 
                 if r is None or r.status_code not in (200, 201):
                     failed += 1
+                    logger.error(
+                        "DP preparation FAILED for MO #%s: HTTP %s %s",
+                        mo.pk, getattr(r, "status_code", "?"), last[:300],
+                    )
                     mo.status = "failed"
                     mo.notes = (
                         f"DP preparation failed HTTP "
@@ -6657,6 +6661,10 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                     f"{timezone.now():%Y-%m-%d %H:%M}"
                 )
                 mo.save(update_fields=update_fields)
+                logger.info(
+                    "DP preparation OK for MO #%s: DPI order #%s item #%s barcode %s",
+                    mo.pk, order_id_dpi, item_id, barcode,
+                )
                 prepared += 1
             except Exception as exc:
                 failed += 1
@@ -7035,6 +7043,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                         dpi.orders_url, json=payload, headers=headers, timeout=90
                     )
                     if r.status_code not in (200, 201):
+                        logger.error(
+                            "Combined shipment FAILED (%s/%s, %d items): HTTP %s %s",
+                            product, service, len(chunk), r.status_code,
+                            (r.text or "")[:300],
+                        )
                         for it in chunk:
                             mo = custref_to_mo.get(it.get("custRef"))
                             if mo:
@@ -7048,6 +7061,11 @@ class MarketplaceOrderAdmin(admin.ModelAdmin):
                         continue
 
                     body = r.json() or {}
+                    logger.info(
+                        "Combined shipment OK (%s/%s, %d items): AWB(s) %s",
+                        product, service, len(chunk),
+                        [s.get("awb") for s in (body.get("shipments") or [])],
+                    )
                     for sh in body.get("shipments") or []:
                         awb = sh.get("awb")
                         if awb:
